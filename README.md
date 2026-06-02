@@ -37,7 +37,7 @@ Use it as a simple personal transcription app in `single` mode, or run it as a t
 ### User Experience
 -   **Intuitive Web Interface:** Clean and simple UI for uploading files, managing history and running workflows.
 -   **Live Progress & Cancellation:** Track uploads/transcriptions with live updates and cancel long-running jobs without leaving the page.
--   **Comprehensive History:** View, search, pin, copy, download (.txt), soft-delete, restore and clear past transcriptions.
+-   **Comprehensive History:** View, search, pin, copy, download (.txt), delete, restore and clear past transcriptions.
 -   **User Preferences:** Set profile details, interface language, default transcription model, default content language and automatic title generation.
 -   **Internationalization (i18n):** Multi-language support (English, Spanish, French, Dutch).
 
@@ -228,7 +228,7 @@ The application is configured using environment variables in a `.env` file. The 
 5.  **Transcribe:** Click the "Transcribe" button.
 6.  **Manage History:** Your completed transcriptions will appear in the history panel. From there you can:
     *   View, search, pin, copy or download the text.
-    *   Soft-delete individual transcriptions, restore them when available or clear your history.
+    *   Delete individual transcriptions, restore them when available or clear your history.
     *   Run, edit or delete an AI workflow result (ex. summarize, extract action items).
 
 ### Workflow Prompts
