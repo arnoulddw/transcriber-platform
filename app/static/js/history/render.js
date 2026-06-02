@@ -22,8 +22,12 @@
  * @param {boolean} [hadPendingWorkflow=false] - If true, indicates a workflow was pre-applied.
  */
 function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, prepend = false, shouldPollTitle = false, hadPendingWorkflow = false) {
+    if (!transcription || !transcription.id) {
+        window.logger.error(historyLogPrefix, "Cannot add transcription to history: missing transcription data or ID.", transcription);
+        return;
+    }
     const logPrefix = `[HistoryJS:addTranscriptionToHistory:${transcription.id.substring(0, 8)}]`;
-window.logger.debug(logPrefix, "Attempting to add/update history item:", transcription, "Should Poll Title:", shouldPollTitle, "Had Pending WF:", hadPendingWorkflow);
+    window.logger.debug(logPrefix, "Attempting to add/update history item:", transcription, "Should Poll Title:", shouldPollTitle, "Had Pending WF:", hadPendingWorkflow);
 
     const historyList = document.getElementById('transcriptionHistory');
     if (!historyList) {

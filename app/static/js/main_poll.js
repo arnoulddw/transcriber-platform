@@ -33,6 +33,15 @@ function setProgressBarWidth(progressBarElement, value) {
     progressBarElement.style.setProperty('--progress', normalizedValue);
 }
 
+function scheduleFinalUiReset(jobId, delayMs = 5000) {
+    setTimeout(() => {
+        const progressContainer = document.getElementById('progressContainer');
+        if (progressContainer && currentJobId === jobId && jobIsFinishedOrErrored) {
+            resetTranscribeUI();
+        }
+    }, delayMs);
+}
+
 /**
  * Utility to convert seconds into a compact display string (e.g., "23m 20s").
  */
@@ -218,20 +227,6 @@ function pollProgress(jobId) {
         }
 
         try {
-            let currentReadiness = null;
-            if (typeof window.fetchReadinessData === 'function') {
-                currentReadiness = await window.fetchReadinessData();
-                if (!currentReadiness) {
-                    window.logger.warn(mainPollLogPrefix, "Readiness check failed during poll. Stopping poll.");
-                    jobIsFinishedOrErrored = true;
-                    resetTranscribeUI(true, true);
-                    return;
-                }
-            }
-            const permissions = currentReadiness?.permissions || {};
-            const canDownload = window.IS_MULTI_USER ? (permissions.allow_download_transcript === true) : true;
-            const canRunWorkflow = window.IS_MULTI_USER ? (permissions.allow_workflows === true) : true;
-
             const response = await fetch('/api/progress/' + jobId, {
                  headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken }
             });
@@ -351,35 +346,71 @@ function pollProgress(jobId) {
             updateProgressActivity(activityIcon, activityMessage, activityColor);
 
             if (transcriptionStatus === 'finished') {
+                if (currentPollIntervalId) {
+                    clearInterval(currentPollIntervalId);
+                    currentPollIntervalId = null;
+                    window.logger.info(mainPollLogPrefix, `Polling stopped for Job ID: ${jobId}. Reason: Transcription finished.`);
+                }
+
+                if (typeof window.invalidateReadinessCache === 'function') {
+                    window.invalidateReadinessCache();
+                }
+
                 const contextField = document.getElementById('contextPrompt');
                 if (contextField && typeof validateContextPrompt === 'function') { contextField.value = ""; validateContextPrompt(); }
                 else if (contextField) { contextField.value = ""; }
 
-                if (typeof window.addTranscriptionToHistory === 'function') {
-                    window.logger.debug(mainPollLogPrefix, `Calling addTranscriptionToHistory for job ${jobId}`);
-                    const hadPendingWorkflow = jobData.result && jobData.result.pending_workflow_prompt_text && jobData.result.pending_workflow_prompt_text.trim() !== '';
-                    window.addTranscriptionToHistory(
-                        jobData.result, 
-                        canDownload,
-                        canRunWorkflow,
-                        true, 
-                        jobData.should_poll_title,
-                        hadPendingWorkflow 
-                    );
-                } else {
-                    window.logger.error(mainPollLogPrefix, "addTranscriptionToHistory function is missing. Cannot update history item.");
+                let permissions = window.USER_PERMISSIONS || {};
+                if (typeof window.fetchReadinessData === 'function') {
+                    try {
+                        const freshReadiness = await window.fetchReadinessData();
+                        permissions = freshReadiness?.permissions || permissions;
+                    } catch (readinessError) {
+                        window.logger.warn(mainPollLogPrefix, "Readiness refresh failed after completed transcription; using current permissions for history controls.", readinessError);
+                    }
                 }
+                const canDownload = window.IS_MULTI_USER ? (permissions.allow_download_transcript === true) : true;
+                const canRunWorkflow = window.IS_MULTI_USER ? (permissions.allow_workflows === true) : true;
+
+                try {
+                    if (typeof window.addTranscriptionToHistory === 'function') {
+                        window.logger.debug(mainPollLogPrefix, `Calling addTranscriptionToHistory for job ${jobId}`);
+                        const hadPendingWorkflow = jobData.result && jobData.result.pending_workflow_prompt_text && jobData.result.pending_workflow_prompt_text.trim() !== '';
+                        window.addTranscriptionToHistory(
+                            jobData.result,
+                            canDownload,
+                            canRunWorkflow,
+                            true,
+                            jobData.should_poll_title,
+                            hadPendingWorkflow
+                        );
+                    } else {
+                        window.logger.error(mainPollLogPrefix, "addTranscriptionToHistory function is missing. Cannot update history item.");
+                    }
+                } catch (renderError) {
+                    window.logger.error(mainPollLogPrefix, "Transcription finished, but updating the history UI failed.", renderError);
+                }
+                scheduleFinalUiReset(jobId);
 
             } else if (transcriptionStatus === 'error') {
+                if (currentPollIntervalId) {
+                    clearInterval(currentPollIntervalId);
+                    currentPollIntervalId = null;
+                }
                 // M.toast({ html: 'Transcription failed. See status for details.', classes: 'red', displayLength: 8000 }); // Replaced
                 window.showNotification('Transcription failed. See status for details.', 'error', 8000, false);
                 resetTranscribeUI(true, true);
 
             } else if (transcriptionStatus === 'cancelled') {
+                if (currentPollIntervalId) {
+                    clearInterval(currentPollIntervalId);
+                    currentPollIntervalId = null;
+                }
                 if (window.cancellationRequestedForJobId === jobId) {
                     window.cancellationRequestedForJobId = null;
                     window.logger.debug(mainPollLogPrefix, `Backend confirmed cancellation for ${jobId}. Frontend flag cleared.`);
                 }
+                scheduleFinalUiReset(jobId);
             }
 
         } catch (error) {
