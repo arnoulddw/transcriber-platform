@@ -32,7 +32,7 @@ from limits import parse # Import the parse function from the limits library
 # --- Constants ---
 TITLE_GENERATION_RATE_LIMIT = "10 per minute" # Example rate limit
 TITLE_GENERATION_TIMEOUT_SECONDS = 30 # Timeout for the LLM call
-TITLE_GENERATION_MAX_OUTPUT_TOKENS = 128
+TITLE_GENERATION_MAX_OUTPUT_TOKENS = 512
 
 # Utils
 from app.utils.title_utils import (
