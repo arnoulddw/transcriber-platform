@@ -104,7 +104,7 @@ class GeminiClient(BaseLLMClient):
         logger.debug("Generating text...")
  
         # --- MODIFIED: Get config values from self.config (stored by base class) ---
-        max_output_tokens = kwargs.get("max_tokens", self.config.get('WORKFLOW_MAX_OUTPUT_TOKENS', 1024))
+        max_output_tokens = kwargs["max_tokens"] if "max_tokens" in kwargs else self.config.get('WORKFLOW_MAX_OUTPUT_TOKENS', 1024)
         temperature = kwargs.get("temperature", 0.7)
         # --- END MODIFIED ---
 
@@ -129,10 +129,11 @@ class GeminiClient(BaseLLMClient):
         ]
 
         generation_config_kwargs = {
-            "max_output_tokens": max_output_tokens,
             "temperature": temperature,
             "safety_settings": safety_settings_list,
         }
+        if max_output_tokens is not None:
+            generation_config_kwargs["max_output_tokens"] = max_output_tokens
         actual_model = kwargs.get('model', self.model_name)
         if kwargs.get("disable_thinking"):
             if hasattr(genai_types, "ThinkingConfig"):
