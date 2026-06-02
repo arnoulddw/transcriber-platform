@@ -21,7 +21,7 @@
     "flask",
     "tailwind"
   ],
-  "author": "Arnould De Wachter",
+  "author": "Arnould de Wasseige",
   "license": "MIT",
   "devDependencies": {
     "@headlessui/tailwindcss": "^0.2.1",

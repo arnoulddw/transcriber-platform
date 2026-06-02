@@ -229,24 +229,6 @@ Use your deployment’s base URL (or `http://localhost:5004` in local dev). The 
 
 Database migrations are handled automatically by the application on startup; no manual migration commands are required.
 
-### Translation Workflow
-
-To add or update UI translations:
-
-1.  **Extract strings** from the code to a template file:
-    ```bash
-    pybabel extract -F babel.cfg -k lazy_gettext -o messages.pot .
-    ```
-2.  **Update language files** with the new strings:
-    ```bash
-    pybabel update -i messages.pot -d app/translations
-    ```
-3.  **Edit the `.po` files** (ex. `app/translations/es/LC_MESSAGES/messages.po`) to add the new translations.
-4.  **Compile the translations** into binary files the app can use:
-    ```bash
-    pybabel compile -d app/translations
-    ```
-
 ## 🤔 Troubleshooting
 
 -   **Port in use:** Change `APP_PORT` in `.env` and restart. If using Docker Compose, you can also change the host port in `docker-compose.yml` (ex. `"5005:5004"`).
