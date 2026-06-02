@@ -32,6 +32,7 @@ from limits import parse # Import the parse function from the limits library
 # --- Constants ---
 TITLE_GENERATION_RATE_LIMIT = "10 per minute" # Example rate limit
 TITLE_GENERATION_TIMEOUT_SECONDS = 30 # Timeout for the LLM call
+TITLE_GENERATION_MAX_OUTPUT_TOKENS = 128
 
 # Utils
 from app.utils.title_utils import (
@@ -53,14 +54,18 @@ def _call_gemini_for_title(app: Flask, user_id: int, prompt: str, operation_id: 
         effective_provider = provider or app.config.get('TITLE_GENERATION_LLM_PROVIDER', app.config.get('LLM_PROVIDER', 'GEMINI'))
         provider_name = effective_provider.lower()
         effective_model = model_name or app.config.get('TITLE_GENERATION_LLM_MODEL') or app.config.get('LLM_MODEL')
+        model_supports_thinking_budget = (
+            effective_model
+            and effective_model.lower().strip().startswith(("gemini-2.5-flash", "gemini-2.5-flash-lite"))
+        )
         # --- MODIFIED: Pass user_id to llm_service, remove api_key and config ---
         result = llm_service.generate_text_via_llm(
             provider_name=provider_name,
             model=effective_model,
             user_id=user_id, # Pass user_id
             prompt=prompt,
-            max_tokens=20, # Limit output tokens for a title
-            disable_thinking=True,
+            max_tokens=TITLE_GENERATION_MAX_OUTPUT_TOKENS,
+            disable_thinking=model_supports_thinking_budget,
             operation_id=operation_id,
             operation_type=operation_type,
         )
