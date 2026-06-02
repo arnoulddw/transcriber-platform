@@ -60,6 +60,7 @@ def _call_gemini_for_title(app: Flask, user_id: int, prompt: str, operation_id: 
             user_id=user_id, # Pass user_id
             prompt=prompt,
             max_tokens=20, # Limit output tokens for a title
+            disable_thinking=True,
             operation_id=operation_id,
             operation_type=operation_type,
         )

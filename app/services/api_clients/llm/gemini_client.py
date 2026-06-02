@@ -119,11 +119,21 @@ class GeminiClient(BaseLLMClient):
             ),
         ]
 
-        generation_config = genai_types.GenerateContentConfig(
-            max_output_tokens=max_output_tokens,
-            temperature=temperature,
-            safety_settings=safety_settings_list
-        )
+        generation_config_kwargs = {
+            "max_output_tokens": max_output_tokens,
+            "temperature": temperature,
+            "safety_settings": safety_settings_list,
+        }
+        if kwargs.get("disable_thinking"):
+            if hasattr(genai_types, "ThinkingConfig"):
+                generation_config_kwargs["thinking_config"] = genai_types.ThinkingConfig(
+                    thinking_budget=0,
+                    include_thoughts=False,
+                )
+                logger.debug("Gemini thinking disabled for this request.")
+            else:
+                logger.warning("Gemini thinking disable requested, but ThinkingConfig is unavailable in this SDK.")
+        generation_config = genai_types.GenerateContentConfig(**generation_config_kwargs)
 
         try:
             # Respect model overridden in kwargs, fallback to client's default model
