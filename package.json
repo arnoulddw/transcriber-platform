@@ -1,7 +1,7 @@
 {
   "name": "transcriber-platform",
   "version": "1.0.0",
-  "description": "Audio transcription application with a user-friendly web interface.",
+  "description": "Self-hosted AI transcription platform for teams with RBAC, admin analytics, public API, and reusable LLM workflows.",
   "main": "index.js",
   "scripts": {
     "build:css:dev": "tailwindcss -i ./app/static/css/tailwind_input.css -o ./app/static/css/tailwind_output.css --watch",
@@ -9,11 +9,19 @@
   },
   "keywords": [
     "transcription",
+    "audio-transcription",
+    "speech-to-text",
+    "self-hosted",
+    "whisper",
+    "openai",
+    "assemblyai",
+    "speaker-diarization",
+    "rbac",
     "audio",
     "flask",
     "tailwind"
   ],
-  "author": "Your Name/Team",
+  "author": "Arnould De Wachter",
   "license": "MIT",
   "devDependencies": {
     "@headlessui/tailwindcss": "^0.2.1",

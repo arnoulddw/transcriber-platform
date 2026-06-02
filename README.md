@@ -1,8 +1,10 @@
 # Transcriber Platform
 
-**A powerful, self-hostable transcription solution designed for small to medium-sized businesses (SMBs), teams and individuals who need full control over their data and transcription workflow.**
+**Self-hosted AI transcription platform for teams, SMBs and individuals who need control over their data, users, API keys and transcription costs.**
 
-Transcriber Platform turns audio into accurate organized text through a user-friendly web interface. Upload audio files and get transcriptions from top-tier APIs like **OpenAI GPT-4o Transcribe**, **OpenAI Whisper** and **AssemblyAI Universal** (from AssemblyAI). It intelligently handles large files, supports single and multi-user modes and includes powerful administrative tools for managing users, costs and custom AI workflows.
+Transcriber Platform turns audio into organized text through a web UI, a public transcription API and reusable AI workflows. It supports **OpenAI GPT-4o Transcribe**, **OpenAI Whisper**, **AssemblyAI Universal** and LLM providers such as **OpenAI** and **Google Gemini** for titles, summaries and custom post-processing.
+
+Use it as a simple personal transcription app in `single` mode, or run it as a team platform in `multi` mode with authentication, RBAC, per-user API keys, admin analytics, cost tracking and workflow templates.
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/arnoulddw/transcriber-platform)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -27,6 +29,7 @@ Transcriber Platform turns audio into accurate organized text through a user-fri
 -   **Large File Handling:** Automatically splits files over 25MB into chunks for seamless processing.
 -   **AI-Powered Title Generation:** Automatically generates a concise title for each transcription.
 -   **Custom AI Workflows:** Execute custom prompts (ex. summarize, extract action items) on transcribed text using LLMs like OpenAI models or Google Gemini; save reusable workflows from the UI.
+-   **Public Transcription API:** Submit audio programmatically and track progress from external tools.
 -   **Flexible Language Options:** Select the audio language manually or use automatic detection.
 -   **Context Prompting:** Improve accuracy for jargon or specific names by providing context hints to OpenAI models.
 
@@ -34,7 +37,7 @@ Transcriber Platform turns audio into accurate organized text through a user-fri
 -   **Intuitive Web Interface:** Clean and simple UI for uploading files, managing history and running workflows.
 -   **Live Progress & Cancellation:** Track uploads/transcriptions with live updates and cancel long-running jobs without leaving the page.
 -   **Comprehensive History:** View, copy, download (.txt) and delete past transcriptions.
--   **Internationalization (i1n):** Multi-language support (English, Spanish, French, Dutch).
+-   **Internationalization (i18n):** Multi-language support (English, Spanish, French, Dutch).
 
 ### Multi-User & Admin Features
 -   **Dual Deployment Modes:**

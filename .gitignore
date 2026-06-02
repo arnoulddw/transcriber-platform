@@ -73,6 +73,7 @@ coverage.xml
 .pytest_cache/
 .tox/
 nosetests.xml
+pytest_output.log
 # Ignore self
 .gitignore
 # Test files and directories
