@@ -130,7 +130,7 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
                 <div class="flex justify-between items-start gap-4">
                     <div class="flex-grow min-w-0">
                         <div class="title-wrapper">
-                            <b id="title-${transcription.id}" class="text-gray-800 font-medium block truncate leading-tight">
+                            <b id="title-${transcription.id}" class="text-text-strong font-medium sm:truncate leading-tight">
                                 ${window.escapeHtml(initialTitleText)}<i class="material-icons tiny text-primary align-middle ml-1 ${showInitialTitleIcon ? '' : 'hidden'}" id="title-icon-${transcription.id}">auto_awesome</i>
                             </b>
                         </div>
