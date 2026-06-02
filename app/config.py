@@ -48,11 +48,11 @@ class Config:
     WORKFLOW_LLM_PROVIDER = os.environ.get('WORKFLOW_LLM_PROVIDER', LLM_PROVIDER).upper()
 
     # --- MODIFIED: Add specific model configs and API provider map ---
-    TITLE_GENERATION_LLM_MODEL = os.environ.get('TITLE_GENERATION_LLM_MODEL', 'gemini-2.5-flash')
+    TITLE_GENERATION_LLM_MODEL = os.environ.get('TITLE_GENERATION_LLM_MODEL', 'gemma-4-26b-a4b-it')
     WORKFLOW_LLM_MODEL = os.environ.get('WORKFLOW_LLM_MODEL', LLM_MODEL)
 
     # --- NEW: Centralized model lists ---
-    GEMINI_MODELS = os.environ.get('GEMINI_MODELS', 'gemini-2.5-flash,gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it').split(',')
+    GEMINI_MODELS = os.environ.get('GEMINI_MODELS', 'gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it').split(',')
     OPENAI_MODELS = os.environ.get('OPENAI_MODELS', 'gpt-4o').split(',')
     # --- END NEW ---
 
@@ -66,7 +66,6 @@ class Config:
         "OPENAI": "OpenAI",
         # Specific Models (add more as needed for display)
         "gemini-2.0-flash": "Gemini 2.0 Flash",
-        "gemini-2.5-flash": "Gemini 2.5 Flash",
         "gemini-3.0-flash": "Gemini 3.0 Flash",
         "gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
         "gpt-4o": "OpenAI GPT-4o",

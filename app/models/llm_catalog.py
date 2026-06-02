@@ -37,11 +37,6 @@ _DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "provider": "GEMINI",
         "sort_order": 10,
     },
-    "gemini-2.5-flash": {
-        "display_name": "Gemini 2.5 Flash",
-        "provider": "GEMINI",
-        "sort_order": 15,
-    },
     "gemini-3.0-flash": {
         "display_name": "Gemini 3.0 Flash",
         "provider": "GEMINI",
