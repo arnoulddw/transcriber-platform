@@ -40,6 +40,15 @@ RETRYABLE_GOOGLE_ERRORS = (
     google_exceptions.ResourceExhausted, # Rate limiting
 ) if google_exceptions else ()
 
+
+def _supports_thinking_budget(model_name: Optional[str]) -> bool:
+    """Return True for Gemini models where thinking can be disabled with a zero budget."""
+    if not model_name:
+        return False
+    normalized = model_name.lower().strip()
+    return normalized.startswith(("gemini-2.5-flash", "gemini-2.5-flash-lite"))
+
+
 class GeminiClient(BaseLLMClient):
     """Handles LLM requests using the Google Gemini API."""
 
@@ -124,20 +133,23 @@ class GeminiClient(BaseLLMClient):
             "temperature": temperature,
             "safety_settings": safety_settings_list,
         }
+        actual_model = kwargs.get('model', self.model_name)
         if kwargs.get("disable_thinking"):
             if hasattr(genai_types, "ThinkingConfig"):
-                generation_config_kwargs["thinking_config"] = genai_types.ThinkingConfig(
-                    thinking_budget=0,
-                    include_thoughts=False,
-                )
-                logger.debug("Gemini thinking disabled for this request.")
+                if _supports_thinking_budget(actual_model):
+                    generation_config_kwargs["thinking_config"] = genai_types.ThinkingConfig(
+                        thinking_budget=0,
+                        include_thoughts=False,
+                    )
+                    logger.debug("Gemini thinking disabled for this request.")
+                else:
+                    logger.warning(f"Gemini thinking disable requested, but model '{actual_model}' does not support thinking budgets.")
             else:
                 logger.warning("Gemini thinking disable requested, but ThinkingConfig is unavailable in this SDK.")
         generation_config = genai_types.GenerateContentConfig(**generation_config_kwargs)
 
         try:
             # Respect model overridden in kwargs, fallback to client's default model
-            actual_model = kwargs.get('model', self.model_name)
             logger.info(f"Using actual_model: {actual_model}")
             response = self.client.models.generate_content(
                 model=actual_model,
