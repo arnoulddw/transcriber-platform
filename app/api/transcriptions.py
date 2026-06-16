@@ -3,15 +3,12 @@
 
 import os
 import uuid
-import threading
 import logging
 import json
 import math
 from flask import Blueprint, request, jsonify, current_app
 from flask_babel import gettext as _
 from werkzeug.utils import secure_filename
-from pydub import AudioSegment
-from pydub.exceptions import CouldntDecodeError
 
 # Import Flask-Login decorators and current_user proxy
 from flask_login import login_required, current_user
@@ -28,6 +25,7 @@ from app.services.user_service import MissingApiKeyError
 from app.services.api_clients.exceptions import TranscriptionApiError
 from app.core.decorators import check_permission, check_usage_limits
 from app.extensions import limiter, build_user_limit_key, csrf
+from app.tasks.transcription_queue import submit_transcription_job
 from mysql.connector import Error as MySQLError
 # --- ADDED: Import Optional ---
 from typing import Optional
@@ -242,27 +240,24 @@ def transcribe_audio_public():
 
     try:
         app_instance = current_app._get_current_object()
-        thread = threading.Thread(
-            target=transcription_service.process_transcription,
-            args=(
-                app_instance,
-                job_id,
-                user_id,
-                temp_filename,
-                language_code,
-                api_choice,
-                original_filename,
-                "",
-                None,
-                None,
-                None,
-                None,
-                False
-            ),
-            daemon=True
+        submit_transcription_job(
+            current_app.config,
+            transcription_service.process_transcription,
+            app_instance,
+            job_id,
+            user_id,
+            temp_filename,
+            language_code,
+            api_choice,
+            original_filename,
+            "",
+            None,
+            None,
+            None,
+            None,
+            False,
         )
-        thread.start()
-        logging.info(f"{job_log_prefix} Background transcription thread initiated.")
+        logging.info(f"{job_log_prefix} Background transcription job queued.")
 
         return jsonify({
             'job_id': job_id,
@@ -477,28 +472,24 @@ def transcribe_audio():
 
         app_instance = current_app._get_current_object()
 
-        thread = threading.Thread(
-            target=transcription_service.process_transcription,
-            args=(
-                app_instance,
-                job_id,
-                user_id,
-                temp_filename,
-                language_code,
-                api_choice,
-                original_filename,
-                context_prompt,
-                pending_workflow_prompt_text,
-                pending_workflow_prompt_title,
-                pending_workflow_prompt_color,
-                parsed_pending_workflow_origin_id # Already passed here
-                ,
-                speaker_diarization_enabled
-            ),
-            daemon=True
+        submit_transcription_job(
+            current_app.config,
+            transcription_service.process_transcription,
+            app_instance,
+            job_id,
+            user_id,
+            temp_filename,
+            language_code,
+            api_choice,
+            original_filename,
+            context_prompt,
+            pending_workflow_prompt_text,
+            pending_workflow_prompt_title,
+            pending_workflow_prompt_color,
+            parsed_pending_workflow_origin_id,
+            speaker_diarization_enabled,
         )
-        thread.start()
-        logging.info(f"{job_log_prefix} Background transcription thread initiated.")
+        logging.info(f"{job_log_prefix} Background transcription job queued.")
 
         return jsonify({
             'job_id': job_id,

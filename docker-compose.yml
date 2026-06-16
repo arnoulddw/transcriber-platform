@@ -104,6 +104,8 @@ services:
       WORKFLOW_RATE_LIMIT: ${WORKFLOW_RATE_LIMIT:-10 per hour}
 
       # --- Transcription Performance ---
+      TRANSCRIPTION_QUEUE_WORKERS: ${TRANSCRIPTION_QUEUE_WORKERS:-1}
+      TRANSCRIPTION_GLOBAL_LOCK_FILE: ${TRANSCRIPTION_GLOBAL_LOCK_FILE:-/app/runtime/transcription_job.lock}
       TRANSCRIPTION_WORKERS: ${TRANSCRIPTION_WORKERS:-4}
 
     depends_on:

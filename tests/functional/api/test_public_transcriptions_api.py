@@ -7,19 +7,6 @@ from app.services import user_service
 import app.api.transcriptions as transcriptions_api
 
 
-class DummyThread:
-    """Test double to avoid spawning real threads during public API tests."""
-    def __init__(self, target=None, args=None, kwargs=None, daemon=None):
-        self.target = target
-        self.args = args or ()
-        self.kwargs = kwargs or {}
-        self.daemon = daemon
-        self.started = False
-
-    def start(self):
-        self.started = True
-
-
 def _generate_user_api_key(app):
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
@@ -29,7 +16,7 @@ def _generate_user_api_key(app):
 
 def test_public_transcribe_creates_job(app, logged_in_client_with_permissions, monkeypatch):
     user, key_data = _generate_user_api_key(app)
-    monkeypatch.setattr(transcriptions_api.threading, "Thread", DummyThread)
+    monkeypatch.setattr(transcriptions_api, "submit_transcription_job", lambda *args, **kwargs: None)
 
     data = {
         "audio_file": (io.BytesIO(b"fake audio bytes"), "sample.wav"),
@@ -57,7 +44,7 @@ def test_public_transcribe_requires_permission(app, logged_in_client_with_permis
         role = role_model.get_role_by_id(user.role_id)
         role_model.update_role(role.id, {"allow_public_api_access": 0})
 
-    monkeypatch.setattr(transcriptions_api.threading, "Thread", DummyThread)
+    monkeypatch.setattr(transcriptions_api, "submit_transcription_job", lambda *args, **kwargs: None)
 
     data = {
         "audio_file": (io.BytesIO(b"fake audio bytes"), "sample.wav"),

@@ -9,13 +9,14 @@ import math
 import subprocess
 import json
 from typing import List, Callable, Optional, Tuple
-from pydub import AudioSegment, exceptions as pydub_exceptions
 
 # --- Configuration Constants ---
 ALLOWED_EXTENSIONS = {'mp3', 'm4a', 'wav', 'ogg', 'webm', 'mpga', 'mpeg'}
 DEFAULT_CHUNK_LENGTH_MS = 7 * 60 * 1000
 OPENAI_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024
 TARGET_CHUNK_SIZE_BYTES = 24 * 1024 * 1024
+CHUNK_AUDIO_BITRATE = "64k"
+CHUNK_AUDIO_SAMPLE_RATE = 16000
 IGNORE_FILES = {'.DS_Store', '.gitkeep'}
 
 # --- Helper Functions ---
@@ -114,6 +115,42 @@ def get_audio_duration(file_path: str) -> Tuple[float, float]:
         logging.error(f"{log_prefix} An unexpected error occurred while getting duration for {os.path.basename(file_path)}: {e}", exc_info=True)
         return 0.0, 0.0
 
+
+def _parse_audio_bitrate_bytes_per_second(bitrate: str) -> int:
+    """Parse ffmpeg-style bitrates such as '64k' into bytes per second."""
+    normalized = bitrate.strip().lower()
+    multiplier = 1
+    if normalized.endswith("k"):
+        multiplier = 1000
+        normalized = normalized[:-1]
+    elif normalized.endswith("m"):
+        multiplier = 1000 * 1000
+        normalized = normalized[:-1]
+
+    bits_per_second = int(float(normalized) * multiplier)
+    return max(1, bits_per_second // 8)
+
+
+def _export_audio_chunk_ffmpeg(source_path: str, output_path: str, start_ms: int, duration_ms: int) -> None:
+    """Export a single compressed audio chunk without loading the source into Python memory."""
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-ss", f"{start_ms / 1000:.3f}",
+        "-t", f"{duration_ms / 1000:.3f}",
+        "-i", source_path,
+        "-vn",
+        "-ac", "1",
+        "-ar", str(CHUNK_AUDIO_SAMPLE_RATE),
+        "-b:a", CHUNK_AUDIO_BITRATE,
+        "-f", "mp3",
+        output_path,
+    ]
+    subprocess.run(command, capture_output=True, text=True, check=True)
+
+
 # --- Core File Operations ---
 
 def split_audio_file(file_path: str, temp_dir: str,
@@ -122,7 +159,7 @@ def split_audio_file(file_path: str, temp_dir: str,
                      target_chunk_size_bytes: int = TARGET_CHUNK_SIZE_BYTES
                      ) -> List[str]:
     """
-    Splits a large audio file into smaller WAV chunks suitable for transcription APIs.
+    Splits a large audio file into smaller MP3 chunks suitable for transcription APIs.
     Adjusts chunk duration dynamically to attempt to stay under target_chunk_size_bytes,
     while also respecting the maximum chunk_length_ms.
     Checks for cancellation signal via the progress_callback.
@@ -132,7 +169,7 @@ def split_audio_file(file_path: str, temp_dir: str,
         temp_dir: Directory to save the output chunk files.
         progress_callback: Optional function to report progress updates. Can raise InterruptedError.
         chunk_length_ms: Maximum desired length of each chunk in milliseconds.
-        target_chunk_size_bytes: Target maximum size in bytes for each output WAV chunk.
+        target_chunk_size_bytes: Target maximum size in bytes for each output chunk.
 
     Returns:
         A list of absolute paths to the created chunk files, or an empty list on failure or cancellation.
@@ -167,54 +204,34 @@ def split_audio_file(file_path: str, temp_dir: str,
          return []
 
     try:
-        report_progress("Loading audio file for splitting...")
-        audio = AudioSegment.from_file(file_path)
-        logging.debug(f"{log_prefix} Successfully loaded. Duration: {len(audio) / 1000:.2f}s")
+        report_progress("Inspecting audio file for splitting...")
+        duration_seconds, _duration_minutes = get_audio_duration(file_path)
+        if duration_seconds <= 0:
+            raise ValueError("Could not determine audio duration.")
+        total_length_ms = int(math.ceil(duration_seconds * 1000))
+        logging.debug(f"{log_prefix} Duration from ffprobe: {duration_seconds:.2f}s")
     except InterruptedError:
-        logging.info(f"{log_prefix} Cancellation detected during audio loading.")
-        return [] # Return empty list on cancellation
-    except pydub_exceptions.CouldntDecodeError as cde:
-        msg = f"ERROR: Could not decode audio file. Ensure ffmpeg is installed and the file is a valid audio format. Details: {cde}"
-        try: report_progress(msg, True)
-        except InterruptedError: pass
-        except Exception: pass
-        return []
-    except FileNotFoundError:
-        msg = f"ERROR: Audio file not found at path: {file_path}"
-        try: report_progress(msg, True)
-        except InterruptedError: pass
-        except Exception: pass
+        logging.info(f"{log_prefix} Cancellation detected during audio inspection.")
         return []
     except Exception as e:
-        msg = f"ERROR: Failed loading audio file: {e}"
+        msg = f"ERROR: Failed inspecting audio file: {e}"
         try: report_progress(msg, True)
         except InterruptedError: pass
         except Exception: pass
-        logging.exception(f"{log_prefix} Unexpected error loading audio:")
+        logging.exception(f"{log_prefix} Unexpected error inspecting audio:")
         return []
 
-    total_length_ms = len(audio)
     chunk_files = []
     base_name_no_ext = os.path.splitext(base_name_orig)[0]
 
     effective_chunk_length_ms = chunk_length_ms
     try:
-        sample_rate = audio.frame_rate
-        channels = audio.channels
-        bytes_per_sample = audio.sample_width
-
-        if not all([sample_rate, channels, bytes_per_sample]):
-            raise ValueError("Audio properties (sample rate, channels, sample width) missing or invalid.")
-
-        bytes_per_second = sample_rate * channels * bytes_per_sample
-        if bytes_per_second <= 0:
-            raise ValueError(f"Calculated bytes_per_second is invalid ({bytes_per_second}). Check audio properties.")
-
+        bytes_per_second = _parse_audio_bitrate_bytes_per_second(CHUNK_AUDIO_BITRATE)
         max_duration_seconds_for_size = target_chunk_size_bytes / bytes_per_second
         max_duration_ms_for_size = max(1000, int(max_duration_seconds_for_size * 1000))
         effective_chunk_length_ms = min(chunk_length_ms, max_duration_ms_for_size)
 
-        logging.debug(f"{log_prefix} Calculated max duration for {target_chunk_size_bytes / (1024*1024):.1f}MB WAV chunk: {max_duration_ms_for_size / 1000:.2f}s.")
+        logging.debug(f"{log_prefix} Calculated max duration for {target_chunk_size_bytes / (1024*1024):.1f}MB MP3 chunk: {max_duration_ms_for_size / 1000:.2f}s.")
         logging.debug(f"{log_prefix} Using effective chunk length: {effective_chunk_length_ms / 1000:.2f}s (min of default {chunk_length_ms / 1000}s and calculated max).")
 
     except Exception as e:
@@ -250,12 +267,12 @@ def split_audio_file(file_path: str, temp_dir: str,
             end_ms = min(i + effective_chunk_length_ms, total_length_ms)
             if start_ms >= end_ms: continue
 
-            chunk = audio[start_ms:end_ms]
-            chunk_filename_base = f"{base_name_no_ext}_chunk_{chunk_index}.wav"
+            chunk_duration_ms = end_ms - start_ms
+            chunk_filename_base = f"{base_name_no_ext}_chunk_{chunk_index}.mp3"
             chunk_filename_full = os.path.join(temp_dir, chunk_filename_base)
 
             logging.debug(f"{log_prefix} Exporting chunk {chunk_index}/{num_chunks} to '{chunk_filename_base}'...")
-            chunk.export(chunk_filename_full, format="wav")
+            _export_audio_chunk_ffmpeg(file_path, chunk_filename_full, start_ms, chunk_duration_ms)
             chunk_files.append(chunk_filename_full)
 
             actual_size = os.path.getsize(chunk_filename_full)

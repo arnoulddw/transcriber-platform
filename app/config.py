@@ -198,6 +198,13 @@ class Config:
     }
 
     # --- Transcription Workers ---
+    TRANSCRIPTION_QUEUE_WORKERS = int(os.environ.get('TRANSCRIPTION_QUEUE_WORKERS', 1))
+    if TRANSCRIPTION_QUEUE_WORKERS <= 0:
+        raise ValueError("TRANSCRIPTION_QUEUE_WORKERS must be a positive integer.")
+    TRANSCRIPTION_GLOBAL_LOCK_FILE = os.environ.get(
+        'TRANSCRIPTION_GLOBAL_LOCK_FILE',
+        os.path.join(RUNTIME_DIR, 'transcription_job.lock')
+    )
     TRANSCRIPTION_WORKERS = int(os.environ.get('TRANSCRIPTION_WORKERS', 4))
     if TRANSCRIPTION_WORKERS <= 0:
         raise ValueError("TRANSCRIPTION_WORKERS must be a positive integer.")

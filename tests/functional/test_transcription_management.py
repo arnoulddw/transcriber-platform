@@ -19,12 +19,12 @@ class TestTranscriptionManagement:
     Test suite for transcription management functionalities such as
     file uploads and history pagination.
     """
-    @patch("app.api.transcriptions.transcription_service.process_transcription")
-    def test_successful_upload_and_transcription(self, mock_process_transcription, logged_in_client):
+    @patch("app.api.transcriptions.submit_transcription_job")
+    def test_successful_upload_and_transcription(self, mock_submit_transcription_job, logged_in_client):
         """
         Test case for a successful file upload and transcription initiation.
         """
-        mock_process_transcription.return_value = None  # The function runs in a thread and does not return a value
+        mock_submit_transcription_job.return_value = None
 
         # Prepare the data for the POST request
         data = {
@@ -46,8 +46,8 @@ class TestTranscriptionManagement:
         assert response_data["message"] == "Transcription job started successfully."
         assert "job_id" in response_data
 
-        # Assert that the background process was called
-        mock_process_transcription.assert_called_once()
+        # Assert that the background process was queued
+        mock_submit_transcription_job.assert_called_once()
 
     def test_upload_with_invalid_file_type(self, logged_in_client):
         """
@@ -123,12 +123,12 @@ class TestTranscriptionManagement:
         assert response.status_code == 200
         assert response.data.count(b"test_") == 2
 
-    @patch("app.api.transcriptions.transcription_service.process_transcription")
-    def test_successful_gpt4o_upload(self, mock_process_transcription, logged_in_client):
+    @patch("app.api.transcriptions.submit_transcription_job")
+    def test_successful_gpt4o_upload(self, mock_submit_transcription_job, logged_in_client):
         """
         Test case for a successful file upload using GPT-4o Transcribe.
         """
-        mock_process_transcription.return_value = None
+        mock_submit_transcription_job.return_value = None
 
         data = {
             "api_choice": "gpt-4o-transcribe",
@@ -147,4 +147,4 @@ class TestTranscriptionManagement:
         assert response_data["message"] == "Transcription job started successfully."
         assert "job_id" in response_data
 
-        mock_process_transcription.assert_called_once()
+        mock_submit_transcription_job.assert_called_once()
