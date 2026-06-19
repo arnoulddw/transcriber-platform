@@ -49,6 +49,11 @@ class Config:
 
     # --- MODIFIED: Add specific model configs and API provider map ---
     TITLE_GENERATION_LLM_MODEL = os.environ.get('TITLE_GENERATION_LLM_MODEL', 'gemma-4-26b-a4b-it')
+    TITLE_GENERATION_FALLBACK_MODELS = [
+        model.strip()
+        for model in os.environ.get('TITLE_GENERATION_FALLBACK_MODELS', 'gemini-2.0-flash').split(',')
+        if model.strip()
+    ]
     WORKFLOW_LLM_MODEL = os.environ.get('WORKFLOW_LLM_MODEL', LLM_MODEL)
 
     # --- NEW: Centralized model lists ---

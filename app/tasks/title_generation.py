@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 from flask import Flask, current_app # Added current_app
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 # Import models
 from app.models import user as user_model
@@ -32,6 +32,7 @@ from limits import parse # Import the parse function from the limits library
 # --- Constants ---
 TITLE_GENERATION_RATE_LIMIT = "10 per minute" # Example rate limit
 TITLE_GENERATION_TIMEOUT_SECONDS = 30 # Timeout for the LLM call
+DEFAULT_TITLE_GENERATION_FALLBACK_MODELS = ("gemini-2.0-flash",)
 
 # Utils
 from app.utils.title_utils import (
@@ -74,6 +75,51 @@ def _call_gemini_for_title(app: Flask, user_id: int, prompt: str, operation_id: 
         raise e
     except Exception as e:
         raise LlmGenerationError(f"Unexpected error calling LLM for title: {e}") from e
+
+
+def _append_title_generation_attempt(
+    attempts: List[Tuple[str, Optional[str]]],
+    seen: set,
+    provider: Optional[str],
+    model_name: Optional[str],
+) -> None:
+    provider_clean = (provider or "").strip().upper()
+    model_clean = model_name.strip() if isinstance(model_name, str) and model_name.strip() else None
+    key = (provider_clean, model_clean)
+    if not provider_clean or key in seen:
+        return
+    attempts.append((provider_clean, model_clean))
+    seen.add(key)
+
+
+def _normalize_fallback_models(config: Dict) -> List[str]:
+    configured = config.get("TITLE_GENERATION_FALLBACK_MODELS", DEFAULT_TITLE_GENERATION_FALLBACK_MODELS)
+    if isinstance(configured, str):
+        candidates = configured.split(",")
+    else:
+        candidates = configured or []
+    return [candidate.strip() for candidate in candidates if isinstance(candidate, str) and candidate.strip()]
+
+
+def _build_title_generation_attempts(
+    provider: Optional[str],
+    model_name: Optional[str],
+    config: Dict,
+) -> List[Tuple[str, Optional[str]]]:
+    attempts: List[Tuple[str, Optional[str]]] = []
+    seen = set()
+    primary_provider = (provider or config.get("TITLE_GENERATION_LLM_PROVIDER") or config.get("LLM_PROVIDER") or "GEMINI").upper()
+    _append_title_generation_attempt(attempts, seen, primary_provider, model_name)
+
+    for fallback_model in _normalize_fallback_models(config):
+        fallback_provider = llm_service.get_provider_for_model_code(fallback_model) or primary_provider
+        _append_title_generation_attempt(attempts, seen, fallback_provider, fallback_model)
+
+    return attempts
+
+
+def _should_try_next_title_model(error: Exception) -> bool:
+    return isinstance(error, LlmGenerationError)
 
 
 # --- Background Task ---
@@ -233,9 +279,6 @@ Generated Title:"""
                 transcription_model.update_title_generation_status(transcription_id, 'failed')
                 return
 
-            result_container = {}
-            exception_container = {}
-
             def llm_call_wrapper(flask_app: Flask, current_user_id: int, op_id: int, op_type: str, provider_override: str, model_override: Optional[str]):
                 with flask_app.app_context():
                     try:
@@ -243,23 +286,38 @@ Generated Title:"""
                     except Exception as e:
                         exception_container['error'] = e
 
-            llm_thread = threading.Thread(target=llm_call_wrapper, args=(app, user_id, operation_id, 'title_generation', provider_config, model_name))
-            # --- END MODIFIED ---
-            llm_thread.start()
-            llm_thread.join(timeout=TITLE_GENERATION_TIMEOUT_SECONDS)
+            attempts = _build_title_generation_attempts(provider_config, model_name, current_app.config)
+            for attempt_index, (attempt_provider, attempt_model) in enumerate(attempts, start=1):
+                result_container = {}
+                exception_container = {}
+                llm_thread = threading.Thread(target=llm_call_wrapper, args=(app, user_id, operation_id, 'title_generation', attempt_provider, attempt_model))
+                # --- END MODIFIED ---
+                llm_thread.start()
+                llm_thread.join(timeout=TITLE_GENERATION_TIMEOUT_SECONDS)
 
-            if llm_thread.is_alive():
-                error_reason = "timeout"
-                logger.error(f"{log_prefix} Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds.", extra=log_extra)
-            elif 'error' in exception_container:
-                llm_operation_model.update_llm_operation_status(operation_id, 'error', error=str(exception_container['error']))
-                raise exception_container['error']
-            elif 'title' in result_container:
-                generated_title = result_container['title']
-                logger.debug(f"{log_prefix} Received title from LLM: '{generated_title}'", extra=log_extra)
-            else:
+                if llm_thread.is_alive():
+                    error_reason = "timeout"
+                    logger.error(f"{log_prefix} Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds.", extra=log_extra)
+                    break
+                if 'error' in exception_container:
+                    attempt_error = exception_container['error']
+                    has_next_attempt = attempt_index < len(attempts)
+                    if has_next_attempt and _should_try_next_title_model(attempt_error):
+                        logger.warning(
+                            f"{log_prefix} Title generation failed with provider '{attempt_provider}' model '{attempt_model}'. Trying fallback model.",
+                            extra={**log_extra, "error": str(attempt_error)}
+                        )
+                        continue
+                    llm_operation_model.update_llm_operation_status(operation_id, 'error', error=str(attempt_error))
+                    raise attempt_error
+                if 'title' in result_container:
+                    generated_title = result_container['title']
+                    logger.debug(f"{log_prefix} Received title from LLM: '{generated_title}'", extra=log_extra)
+                    break
+
                 error_reason = "unknown_llm_issue"
                 logger.error(f"{log_prefix} LLM thread finished but no result or exception captured.", extra=log_extra)
+                break
 
             if generated_title is not None:
                 duration = time.time() - start_time
@@ -302,6 +360,11 @@ Generated Title:"""
                     final_status = 'failed'
                     llm_operation_model.update_llm_operation_status(operation_id, 'error', error="Generated title failed validation")
                     transcription_model.update_title_generation_status(transcription_id, 'failed')
+            else:
+                final_status = 'failed'
+                error_message = f"Title generation did not return a title ({error_reason})."
+                llm_operation_model.update_llm_operation_status(operation_id, 'error', error=error_message)
+                transcription_model.update_title_generation_status(transcription_id, 'failed')
 
     except (LlmRateLimitError, LlmSafetyError, LlmConfigurationError, LlmGenerationError, LlmApiError) as llm_err:
         duration = time.time() - start_time
