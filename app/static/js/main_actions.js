@@ -201,7 +201,11 @@ async function handleTranscribeSubmit() {
     fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
-        headers: { 'X-CSRFToken': window.csrfToken, 'Accept': 'application/json' }
+        headers: {
+            'X-CSRFToken': window.csrfToken,
+            'Accept': 'application/json',
+            'X-Transcription-Provider': apiSelect.value
+        }
     })
     .then(async response => {
         if (response.status === 401) throw new Error('Authentication required (401)');

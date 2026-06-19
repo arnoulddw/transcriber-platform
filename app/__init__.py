@@ -11,6 +11,8 @@ from dateutil.parser import isoparse
 from typing import Optional, Mapping, Any
 from urllib.parse import urlparse
 from flask import Flask, render_template, g, request, jsonify, redirect, url_for, flash, current_app, session
+from flask_wtf.csrf import CSRFError
+from werkzeug.exceptions import BadRequest
 
 # Import Flask-Login current_user proxy
 from flask_login import current_user
@@ -555,6 +557,46 @@ def create_app(config_class=Config) -> Flask:
         _err_logger.warning(f"401 Unauthorized: {request.path}", extra={"reason": error.description, "user_id": current_user.id if current_user.is_authenticated else None})
         if request.path.startswith('/api/'): return jsonify({'error': _('Unauthorized'), 'message': error.description or _('Authentication required.')}), 401
         else: flash(error.description or _l("Authentication required to access this page."), "warning"); return redirect(url_for('auth.login', next=request.url))
+
+    @app.errorhandler(CSRFError)
+    def csrf_error(error):
+        _err_logger.warning(
+            "400 CSRF failure: %s",
+            request.path,
+            extra={
+                "reason": error.description,
+                "content_type": request.content_type,
+                "content_length": request.content_length,
+                "user_id": current_user.id if current_user.is_authenticated else None,
+            },
+        )
+        if request.path.startswith('/api/'):
+            return jsonify({
+                'error': _('Your session security token expired or was invalid. Please refresh the page and try again.'),
+                'code': 'CSRF_TOKEN_INVALID',
+            }), 400
+        flash(_l("Your session expired. Please refresh the page and try again."), "warning")
+        return redirect(url_for('main.index'))
+
+    @app.errorhandler(400)
+    def bad_request_error(error):
+        description = getattr(error, "description", None) or str(error)
+        _err_logger.warning(
+            "400 Bad Request: %s",
+            request.path,
+            extra={
+                "reason": description,
+                "content_type": request.content_type,
+                "content_length": request.content_length,
+                "user_id": current_user.id if current_user.is_authenticated else None,
+            },
+        )
+        if request.path.startswith('/api/'):
+            message = _('The request could not be understood. Please refresh the page and try again.')
+            if isinstance(error, BadRequest) and description:
+                message = f"{message} {_('Details')}: {description}"
+            return jsonify({'error': message, 'code': 'BAD_REQUEST'}), 400
+        return render_template('errors/500.html'), 400
 
     @app.errorhandler(429)
     def ratelimit_handler(e):

@@ -43,9 +43,7 @@ def transcribe_rate_limit_key() -> str:
     back to IP-based limits for anonymous users (should not happen here,
     but the fallback avoids crashes if a session expires mid-request).
     """
-    provider = None
-    if request.form:
-        provider = request.form.get('api_choice')
+    provider = request.headers.get('X-Transcription-Provider')
     if not provider and request.is_json:
         data = request.get_json(silent=True) or {}
         provider = data.get('api_choice')
