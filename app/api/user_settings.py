@@ -152,7 +152,8 @@ def generate_public_api_key():
         if not check_permission(current_user, 'allow_public_api_access'):
             logging.warning(f"{log_prefix} Permission denied for public API key generation.")
             return jsonify({'error': _('You do not have permission to use the public API.')}), 403
-        key_data = user_service.generate_public_api_key(user_id)
+        name = (request.form.get('name') or (request.get_json(silent=True) or {}).get('name') or '').strip()
+        key_data = user_service.generate_public_api_key(user_id, name=name)
         logging.info(f"{log_prefix} Public API key generated.")
         return jsonify(key_data), 201
     except UserNotFoundError as e:
@@ -181,6 +182,35 @@ def delete_public_api_key():
         user_service.revoke_public_api_key(user_id)
         logging.info(f"{log_prefix} Public API key revoked.")
         return jsonify({'message': _('Public API key revoked.')}), 200
+    except UserNotFoundError as e:
+        logging.warning(f"{log_prefix} User not found: {e}")
+        return jsonify({'error': str(e)}), 404
+    except ApiKeyManagementError as e:
+        logging.error(f"{log_prefix} Failed to revoke public API key: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logging.error(f"{log_prefix} Unexpected error revoking public API key: {e}", exc_info=True)
+        return jsonify({'error': _('An unexpected error occurred while revoking the API key.')}), 500
+
+
+@user_settings_bp.route('/public-api-key/<int:key_id>', methods=['DELETE'])
+@login_required
+def delete_named_public_api_key(key_id):
+    """
+    Revokes one stored public API key for the authenticated user.
+    """
+    user_id = current_user.id
+    log_prefix = f"[API:UserPublicKey:{user_id}:DELETE:{key_id}]"
+    try:
+        if not check_permission(current_user, 'allow_public_api_access'):
+            logging.warning(f"{log_prefix} Permission denied for public API key revoke.")
+            return jsonify({'error': _('You do not have permission to use the public API.')}), 403
+        user_service.revoke_public_api_key(user_id, key_id=key_id)
+        logging.info(f"{log_prefix} Public API key revoked.")
+        return jsonify({'message': _('Public API key revoked.')}), 200
+    except KeyNotFoundError as e:
+        logging.warning(f"{log_prefix} Public API key not found: {e}")
+        return jsonify({'error': str(e)}), 404
     except UserNotFoundError as e:
         logging.warning(f"{log_prefix} User not found: {e}")
         return jsonify({'error': str(e)}), 404

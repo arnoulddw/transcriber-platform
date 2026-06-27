@@ -15,6 +15,7 @@ from flask import current_app
 # Import model and User class
 from app.models import user as user_model 
 from app.models import user_api_key as user_api_key_model
+from app.models import public_api_key as public_api_key_model
 from app.models import user_prompt as user_prompt_model
 from app.models import template_prompt as template_prompt_model
 from app.models.user import User 
@@ -236,7 +237,8 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         'public_api': {
             'enabled': False,
             'last_four': None,
-            'created_at': None
+            'created_at': None,
+            'keys': []
         }
     }
     try:
@@ -277,18 +279,33 @@ def get_public_api_key_status(user_id: int) -> Dict[str, Optional[str]]:
         if not (user.role and user.role.has_permission('allow_public_api_access')):
             raise ApiKeyManagementError("Public API access is not permitted for this user.")
 
-        created_at_raw = getattr(user, 'public_api_key_created_at', None)
-        created_at_iso = None
-        if created_at_raw:
+        keys = []
+        for key in public_api_key_model.get_public_api_keys_by_user(user_id):
+            created_at_raw = key.get('created_at')
             if isinstance(created_at_raw, datetime):
-                created_at_iso = created_at_raw.replace(tzinfo=timezone.utc).isoformat()
+                created_at = created_at_raw.replace(tzinfo=timezone.utc).isoformat()
             else:
-                created_at_iso = str(created_at_raw)
+                created_at = str(created_at_raw) if created_at_raw else None
+            keys.append({
+                'id': key.get('id'),
+                'name': key.get('name'),
+                'last_four': key.get('last_four'),
+                'created_at': created_at
+            })
+
+        legacy_created_raw = getattr(user, 'public_api_key_created_at', None)
+        legacy_created = None
+        if legacy_created_raw:
+            if isinstance(legacy_created_raw, datetime):
+                legacy_created = legacy_created_raw.replace(tzinfo=timezone.utc).isoformat()
+            else:
+                legacy_created = str(legacy_created_raw)
 
         status = {
-            'enabled': bool(getattr(user, 'public_api_key_hash', None)),
-            'last_four': getattr(user, 'public_api_key_last_four', None),
-            'created_at': created_at_iso
+            'enabled': bool(keys) or bool(getattr(user, 'public_api_key_hash', None)),
+            'last_four': keys[0]['last_four'] if keys else getattr(user, 'public_api_key_last_four', None),
+            'created_at': keys[0]['created_at'] if keys else legacy_created,
+            'keys': keys
         }
         logger.debug(f"Public API key status for user {user_id}: {status}")
         return status
@@ -299,7 +316,7 @@ def get_public_api_key_status(user_id: int) -> Dict[str, Optional[str]]:
         raise ApiKeyManagementError("Failed to retrieve public API key status.") from e
 
 
-def generate_public_api_key(user_id: int) -> Dict[str, str]:
+def generate_public_api_key(user_id: int, name: Optional[str] = None) -> Dict[str, str]:
     """
     Generates a new public API key for the user, storing only a hashed version.
     Returns the plaintext key once so the caller can display it.
@@ -316,13 +333,18 @@ def generate_public_api_key(user_id: int) -> Dict[str, str]:
         key_hash = _hash_public_api_key(raw_key)
         last_four = raw_key[-4:]
         created_at = datetime.now(timezone.utc)
+        key_name = (name or "").strip() or "Public API key"
+        if len(key_name) > 120:
+            raise ValueError("Key name must be 120 characters or fewer.")
 
-        saved = user_model.update_public_api_key(user_id, key_hash, last_four, created_at)
-        if not saved:
+        key_id = public_api_key_model.create_public_api_key(user_id, key_name, key_hash, last_four, created_at)
+        if not key_id:
             raise ApiKeyManagementError("Failed to persist public API key.")
 
         logger.info(f"Generated new public API key for user {user_id}.")
         return {
+            'id': key_id,
+            'name': key_name,
             'api_key': raw_key,
             'last_four': last_four,
             'created_at': created_at.isoformat()
@@ -334,7 +356,7 @@ def generate_public_api_key(user_id: int) -> Dict[str, str]:
         raise ApiKeyManagementError("An unexpected error occurred while generating the public API key.") from e
 
 
-def revoke_public_api_key(user_id: int) -> None:
+def revoke_public_api_key(user_id: int, key_id: Optional[int] = None) -> None:
     """
     Removes the stored public API key hash/metadata for the user.
     """
@@ -345,10 +367,17 @@ def revoke_public_api_key(user_id: int) -> None:
             raise UserNotFoundError(f"User with ID {user_id} not found.")
         if not (user.role and user.role.has_permission('allow_public_api_access')):
             raise ApiKeyManagementError("Public API access is not permitted for this user.")
-        if not user_model.clear_public_api_key(user_id):
+        if key_id is not None:
+            if not public_api_key_model.revoke_public_api_key(user_id, key_id):
+                raise KeyNotFoundError("Public API key not found.")
+            logger.info(f"Revoked public API key {key_id} for user {user_id}.")
+            return
+
+        if not public_api_key_model.revoke_all_public_api_keys(user_id):
             raise ApiKeyManagementError("Failed to revoke the public API key.")
+        user_model.clear_public_api_key(user_id)
         logger.info(f"Revoked public API key for user {user_id}.")
-    except (UserNotFoundError, ApiKeyManagementError) as e:
+    except (UserNotFoundError, KeyNotFoundError, ApiKeyManagementError) as e:
         raise e
     except Exception as e:
         logger.error(f"Unexpected error revoking public API key for user {user_id}: {e}", exc_info=True)
@@ -364,7 +393,9 @@ def authenticate_public_api_key(raw_key: str) -> Optional[User]:
         return None
     try:
         key_hash = _hash_public_api_key(raw_key)
-        user = user_model.get_user_by_public_api_key_hash(key_hash)
+        user = public_api_key_model.get_user_by_public_api_key_hash(key_hash)
+        if not user:
+            user = user_model.get_user_by_public_api_key_hash(key_hash)
         if user and getattr(user, 'public_api_key_hash', None):
             if hmac.compare_digest(user.public_api_key_hash, key_hash):
                 return user

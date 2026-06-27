@@ -11,6 +11,7 @@ from typing import Mapping, Any
 from app.models import role as role_model
 from app.models import user as user_model
 from app.models import user_api_key as user_api_key_model
+from app.models import public_api_key as public_api_key_model
 from app.models import transcription as transcription_model
 from app.models import user_prompt as user_prompt_model
 from app.models import template_prompt as template_prompt_model
@@ -73,6 +74,8 @@ def initialize_database_schema(create_roles: bool = True) -> None:
         user_model.init_db_command()
         logger.debug(f"{log_prefix} Initializing 'user_api_keys' table...")
         user_api_key_model.init_db_command()
+        logger.debug(f"{log_prefix} Initializing 'public_api_keys' table...")
+        public_api_key_model.init_db_command()
         # monthly_usage deprecated; using user_usage aggregations instead
         logger.debug(f"{log_prefix} Initializing 'transcriptions' table...")
         transcription_model.init_db_command()

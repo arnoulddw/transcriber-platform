@@ -11,11 +11,12 @@ let apiKeyModalTriggers = [];
 let apiKeyModalCloseButtons = [];
 let previouslyFocusedElement = null;
 let publicApiKeyStatusEl = null;
+let publicApiKeyForm = null;
+let publicApiKeyNameInput = null;
+let publicApiKeyCreatedPanel = null;
 let publicApiKeyValueInput = null;
-let publicApiKeyMetaEl = null;
 let publicApiCopyBtn = null;
-let publicApiGenerateBtn = null;
-let publicApiRevokeBtn = null;
+let publicApiKeyListEl = null;
 let lastGeneratedPublicApiKey = null;
 
 function initializeApiKeyModalElements() {
@@ -27,11 +28,12 @@ function initializeApiKeyModalElements() {
         apiKeyModalCloseButtons = Array.from(apiKeyModal.querySelectorAll('#apiKeyModalCloseButtonHeader, #apiKeyModalCloseButtonFooter'));
     }
     publicApiKeyStatusEl = document.getElementById('publicApiKeyStatus');
+    publicApiKeyForm = document.getElementById('publicApiKeyForm');
+    publicApiKeyNameInput = document.getElementById('publicApiKeyName');
+    publicApiKeyCreatedPanel = document.getElementById('publicApiKeyCreatedPanel');
     publicApiKeyValueInput = document.getElementById('publicApiKeyValue');
-    publicApiKeyMetaEl = document.getElementById('publicApiKeyMeta');
     publicApiCopyBtn = document.getElementById('copyPublicApiKeyBtn');
-    publicApiGenerateBtn = document.getElementById('generatePublicApiKeyBtn');
-    publicApiRevokeBtn = document.getElementById('revokePublicApiKeyBtn');
+    publicApiKeyListEl = document.getElementById('publicApiKeyList');
 
     if (!apiKeyModal || !apiKeyModalOverlay || !apiKeyModalPanel) {
         window.logger.warn(userSettingsLogPrefix, "One or more API Key modal core elements not found.");
@@ -133,14 +135,20 @@ document.addEventListener('DOMContentLoaded', function() {
         apiKeyModalOverlay.addEventListener('click', closeApiKeyModalDialog);
     }
 
-    if (publicApiGenerateBtn) {
-        publicApiGenerateBtn.addEventListener('click', handleGeneratePublicApiKey);
+    if (publicApiKeyForm) {
+        publicApiKeyForm.addEventListener('submit', handleGeneratePublicApiKey);
     }
     if (publicApiCopyBtn) {
         publicApiCopyBtn.addEventListener('click', copyPublicApiKeyToClipboard);
     }
-    if (publicApiRevokeBtn) {
-        publicApiRevokeBtn.addEventListener('click', handleRevokePublicApiKey);
+    if (publicApiKeyListEl) {
+        publicApiKeyListEl.addEventListener('click', function(event) {
+            const revokeButton = event.target.closest('.revoke-public-key-btn');
+            if (revokeButton) {
+                event.preventDefault();
+                handleRevokePublicApiKey(revokeButton);
+            }
+        });
     }
 
     document.addEventListener('keydown', (event) => {
@@ -203,14 +211,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 function updatePublicApiKeySection(publicStatus) {
-    if (!publicApiKeyStatusEl || !publicApiKeyValueInput || !publicApiKeyMetaEl || !publicApiCopyBtn) return;
+    if (!publicApiKeyStatusEl || !publicApiKeyValueInput || !publicApiCopyBtn) return;
     const status = publicStatus || {};
+    const keys = Array.isArray(status.keys) ? status.keys : [];
     const enabled = Boolean(status && status.enabled);
-    const lastFour = status && status.last_four ? status.last_four : null;
-    const createdAt = status && status.created_at ? status.created_at : null;
 
     if (enabled) {
-        publicApiKeyStatusEl.textContent = lastFour ? `Active • ****${lastFour}` : 'Active';
+        publicApiKeyStatusEl.textContent = keys.length === 1 ? '1 Active' : `${keys.length} Active`;
         publicApiKeyStatusEl.className = 'text-sm text-green-600 font-medium';
     } else {
         publicApiKeyStatusEl.textContent = 'Not Configured';
@@ -218,28 +225,72 @@ function updatePublicApiKeySection(publicStatus) {
     }
 
     if (lastGeneratedPublicApiKey) {
+        if (publicApiKeyCreatedPanel) publicApiKeyCreatedPanel.classList.remove('hidden');
         publicApiKeyValueInput.value = lastGeneratedPublicApiKey;
         publicApiCopyBtn.disabled = false;
     } else {
+        if (publicApiKeyCreatedPanel) publicApiKeyCreatedPanel.classList.add('hidden');
         publicApiKeyValueInput.value = '';
         publicApiCopyBtn.disabled = true;
     }
 
-    if (createdAt) {
-        try {
-            const createdDate = new Date(createdAt);
-            publicApiKeyMetaEl.textContent = `Created ${createdDate.toLocaleString()}`;
-        } catch (e) {
-            publicApiKeyMetaEl.textContent = `Created ${createdAt}`;
-        }
-    } else {
-        publicApiKeyMetaEl.textContent = enabled
-            ? 'Key is active.'
-            : 'Generate a key to enable API access.';
-    }
+    if (publicApiKeyListEl) {
+        publicApiKeyListEl.innerHTML = '';
+        if (keys.length === 0) {
+            const emptyRow = document.createElement('li');
+            emptyRow.className = 'py-3 text-sm text-text-muted';
+            emptyRow.textContent = 'No public API keys configured.';
+            publicApiKeyListEl.appendChild(emptyRow);
+        } else {
+            keys.forEach(key => {
+                const row = document.createElement('li');
+                row.className = 'py-3 flex items-center justify-between gap-3';
 
-    if (publicApiRevokeBtn) {
-        publicApiRevokeBtn.disabled = !enabled;
+                const content = document.createElement('div');
+                content.className = 'min-w-0';
+
+                const name = document.createElement('p');
+                name.className = 'text-sm font-medium text-text-strong truncate';
+                name.textContent = key.name || 'Public API key';
+
+                const meta = document.createElement('p');
+                meta.className = 'text-xs text-text-muted';
+                const createdAt = key.created_at ? formatPublicApiCreatedAt(key.created_at) : null;
+                meta.textContent = createdAt ? `****${key.last_four || '----'} • Created ${createdAt}` : `****${key.last_four || '----'}`;
+
+                content.appendChild(name);
+                content.appendChild(meta);
+
+                const actions = document.createElement('div');
+                actions.className = 'flex items-center gap-2 flex-none';
+
+                const active = document.createElement('span');
+                active.className = 'text-sm text-green-600 mr-1';
+                active.textContent = 'Configured';
+
+                const revokeBtn = document.createElement('button');
+                revokeBtn.type = 'button';
+                revokeBtn.className = 'revoke-public-key-btn p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500';
+                revokeBtn.dataset.keyId = key.id;
+                revokeBtn.dataset.keyName = key.name || 'Public API key';
+                revokeBtn.setAttribute('aria-label', `Revoke ${key.name || 'public API key'}`);
+                revokeBtn.innerHTML = '<i class="material-icons text-base">delete</i>';
+
+                actions.appendChild(active);
+                actions.appendChild(revokeBtn);
+                row.appendChild(content);
+                row.appendChild(actions);
+                publicApiKeyListEl.appendChild(row);
+            });
+        }
+    }
+}
+
+function formatPublicApiCreatedAt(createdAt) {
+    try {
+        return new Date(createdAt).toLocaleString();
+    } catch (e) {
+        return createdAt;
     }
 }
 
@@ -260,14 +311,24 @@ function copyPublicApiKeyToClipboard(event) {
 
 function handleGeneratePublicApiKey(event) {
     event.preventDefault();
-    if (!publicApiGenerateBtn) return;
+    if (!publicApiKeyForm) return;
 
-    const originalHtml = publicApiGenerateBtn.innerHTML;
-    publicApiGenerateBtn.disabled = true;
-    publicApiGenerateBtn.innerHTML = 'Generating... <span class="spinner ml-2 inline-block" style="width: 1em; height: 1em; border-width: .15em;"></span>';
+    const submitButton = publicApiKeyForm.querySelector('button[type="submit"]');
+    const keyName = publicApiKeyNameInput ? publicApiKeyNameInput.value.trim() : '';
+    if (!keyName) {
+        window.showNotification('Please name this API key.', 'warning', 4000, false);
+        return;
+    }
+
+    const originalHtml = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = 'Creating... <span class="spinner ml-2 inline-block" style="width: 1em; height: 1em; border-width: .15em;"></span>';
+
+    const formData = new FormData(publicApiKeyForm);
 
     fetch('/api/user/public-api-key', {
         method: 'POST',
+        body: formData,
         headers: {
             'X-CSRFToken': window.csrfToken,
             'Accept': 'application/json'
@@ -283,7 +344,7 @@ function handleGeneratePublicApiKey(event) {
     })
     .then(data => {
         lastGeneratedPublicApiKey = data.api_key;
-        updatePublicApiKeySection({ enabled: true, last_four: data.last_four, created_at: data.created_at });
+        if (publicApiKeyNameInput) publicApiKeyNameInput.value = '';
         window.showNotification('New API key generated. Copy it now and keep it secure.', 'success', 5000, false);
         return fetchApiKeyStatus();
     })
@@ -292,22 +353,26 @@ function handleGeneratePublicApiKey(event) {
         window.showNotification(`Error generating API key: ${escapeHtml(error.message)}`, 'error', 6000, false);
     })
     .finally(() => {
-        publicApiGenerateBtn.disabled = false;
-        publicApiGenerateBtn.innerHTML = originalHtml;
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalHtml;
     });
 }
 
-function handleRevokePublicApiKey(event) {
-    event.preventDefault();
-    if (!confirm('Revoke the current public API key? Existing scripts will stop working.')) {
+function handleRevokePublicApiKey(button) {
+    const keyId = button.dataset.keyId;
+    const keyName = button.dataset.keyName || 'this public API key';
+    if (!keyId) {
+        window.showNotification('Could not determine which public API key to revoke.', 'error', 4000, false);
         return;
     }
-    if (!publicApiRevokeBtn) return;
-    const originalHtml = publicApiRevokeBtn.innerHTML;
-    publicApiRevokeBtn.disabled = true;
-    publicApiRevokeBtn.innerHTML = '<span class="spinner inline-block" style="width: 0.8em; height: 0.8em; border-width: .15em;"></span>';
+    if (!confirm(`Revoke ${keyName}? Existing scripts using this key will stop working.`)) {
+        return;
+    }
+    const originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner inline-block" style="width: 0.8em; height: 0.8em; border-width: .15em;"></span>';
 
-    fetch('/api/user/public-api-key', {
+    fetch(`/api/user/public-api-key/${encodeURIComponent(keyId)}`, {
         method: 'DELETE',
         headers: {
             'X-CSRFToken': window.csrfToken,
@@ -324,7 +389,6 @@ function handleRevokePublicApiKey(event) {
     })
     .then(data => {
         lastGeneratedPublicApiKey = null;
-        updatePublicApiKeySection({ enabled: false });
         window.showNotification(data.message || 'Public API key revoked.', 'success', 4000, false);
         return fetchApiKeyStatus();
     })
@@ -333,8 +397,8 @@ function handleRevokePublicApiKey(event) {
         window.showNotification(`Error revoking API key: ${escapeHtml(error.message)}`, 'error', 6000, false);
     })
     .finally(() => {
-        publicApiRevokeBtn.disabled = false;
-        publicApiRevokeBtn.innerHTML = originalHtml;
+        button.disabled = false;
+        button.innerHTML = originalHtml;
     });
 }
 

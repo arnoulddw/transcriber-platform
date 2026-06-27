@@ -17,6 +17,7 @@ def clean_db(app):
         cursor.execute("TRUNCATE TABLE llm_operations")
         cursor.execute("TRUNCATE TABLE transcriptions")
         cursor.execute("TRUNCATE TABLE user_usage")
+        cursor.execute("TRUNCATE TABLE public_api_keys")
         cursor.execute("TRUNCATE TABLE user_api_keys")
         cursor.execute("TRUNCATE TABLE users")
         cursor.execute("TRUNCATE TABLE roles")
@@ -26,6 +27,7 @@ def clean_db(app):
         # Explicitly reset auto-increment to ensure fresh IDs
         cursor.execute("ALTER TABLE roles AUTO_INCREMENT = 1")
         cursor.execute("ALTER TABLE users AUTO_INCREMENT = 1")
+        cursor.execute("ALTER TABLE public_api_keys AUTO_INCREMENT = 1")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         conn.commit()
         cursor.close()
@@ -188,7 +190,7 @@ def app():
         # Drop all tables first to ensure clean state
         cursor = get_db().cursor()
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcriptions, user_usage, users, roles;")
+        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         get_db().commit()
         
@@ -206,7 +208,7 @@ def app():
         from app.services.admin_metrics_service import invalidate_metrics_cache
         cursor = get_db().cursor()
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcriptions, user_usage, users, roles;")
+        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         get_db().commit()
         # Clear in-memory caches to prevent bleed into the next test's app instance.

@@ -64,6 +64,47 @@ def test_public_transcribe_creates_job(app, logged_in_client_with_permissions, m
         assert job.get("public_api_invocation") is True
 
 
+def test_public_api_keys_can_be_named_and_revoked_individually(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+
+    first = logged_in_client_with_permissions.post(
+        "/api/user/public-api-key",
+        data={"name": "Production uploads"},
+    )
+    second = logged_in_client_with_permissions.post(
+        "/api/user/public-api-key",
+        data={"name": "Local testing"},
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    first_payload = first.get_json()
+    second_payload = second.get_json()
+    assert first_payload["name"] == "Production uploads"
+    assert second_payload["name"] == "Local testing"
+
+    status_response = logged_in_client_with_permissions.get("/api/user/keys")
+    assert status_response.status_code == 200
+    keys = status_response.get_json()["public_api"]["keys"]
+    assert {key["name"] for key in keys} == {"Production uploads", "Local testing"}
+
+    revoke_response = logged_in_client_with_permissions.delete(
+        f"/api/user/public-api-key/{first_payload['id']}"
+    )
+    assert revoke_response.status_code == 200
+
+    with app.app_context():
+        assert user_service.authenticate_public_api_key(first_payload["api_key"]) is None
+        authenticated_user = user_service.authenticate_public_api_key(second_payload["api_key"])
+        assert authenticated_user is not None
+        assert authenticated_user.id == user.id
+
+    status_response = logged_in_client_with_permissions.get("/api/user/keys")
+    keys = status_response.get_json()["public_api"]["keys"]
+    assert [key["name"] for key in keys] == ["Local testing"]
+
+
 def test_public_transcribe_requires_permission(app, logged_in_client_with_permissions, monkeypatch):
     user, key_data = _generate_user_api_key(app)
     with app.app_context():

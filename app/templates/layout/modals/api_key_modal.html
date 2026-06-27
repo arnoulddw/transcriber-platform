@@ -81,21 +81,28 @@
                             <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">Authorization: Bearer &lt;{{ _('YOUR_KEY') }}&gt;</code>
                         </p>
                     </div>
-                    <span id="publicApiKeyStatus" class="text-sm text-orange-600 font-medium">{{ _('Not Configured') }}</span>
+                    <span id="publicApiKeyStatus" class="text-sm text-orange-600 font-medium ml-4 whitespace-nowrap">{{ _('Not Configured') }}</span>
                 </div>
-                <div class="space-y-2">
+                <form id="publicApiKeyForm" class="space-y-3">
+                    <div>
+                        <label for="publicApiKeyName" class="form-label">{{ _('Key Name') }}</label>
+                        <input id="publicApiKeyName" name="name" type="text" maxlength="120" class="input-control" placeholder="{{ _('Production upload script') }}" autocomplete="off">
+                    </div>
+                    {{ ui.button(_('Create Key'), variant='primary', type='submit', icon='add', extra_classes='w-full justify-center') }}
+                </form>
+                <div id="publicApiKeyCreatedPanel" class="space-y-2 hidden">
+                    <p class="text-sm font-medium text-text-strong">{{ _('New key created') }}</p>
                     <div class="flex gap-2">
                         <input id="publicApiKeyValue" type="text" readonly class="input-control flex-1" placeholder="{{ _('Generate a key to view it') }}">
-                        <button id="copyPublicApiKeyBtn" type="button" class="ui-btn ui-btn--ghost" disabled>
+                        <button id="copyPublicApiKeyBtn" type="button" class="ui-btn ui-btn--muted" disabled>
                             <i class="material-icons text-base mr-1">content_copy</i>{{ _('Copy') }}
                         </button>
                     </div>
-                    <p id="publicApiKeyMeta" class="text-xs text-text-muted"></p>
                     <p class="text-xs text-text-muted">{{ _('For security, the full key is shown only immediately after generation.') }}</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    {{ ui.button(_('Generate / Rotate Key'), variant='primary', id='generatePublicApiKeyBtn', icon='autorenew', extra_classes='flex-1 justify-center') }}
-                    {{ ui.button(_('Revoke'), variant='muted', id='revokePublicApiKeyBtn', icon='delete', extra_classes='flex-none') }}
+                <div>
+                    <h6 class="text-sm font-medium text-text-strong mb-1">{{ _('Configured Public API Keys') }}</h6>
+                    <ul id="publicApiKeyList" class="divide-y divide-border-default border-y border-border-default"></ul>
                 </div>
             </div>
         {% endif %}
