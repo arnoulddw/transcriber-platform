@@ -332,7 +332,7 @@ function updateUserRole(userId, newRoleId, roleSelect, roleSpan, originalRoleId)
 function initializeTabs(tabGroupId) {
     const tabGroup = document.getElementById(tabGroupId);
     if (!tabGroup) {
-        window.logger.warn(`Tab group with ID '${tabGroupId}' not found.`);
+        window.logger.debug(`Tab group with ID '${tabGroupId}' not found; skipping initialization.`);
         return;
     }
 

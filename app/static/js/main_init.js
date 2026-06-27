@@ -206,8 +206,17 @@ async function checkTranscribeButtonState() {
     const statusSpan = document.getElementById('transcribeBtnStatus');
     const toggleContextPromptBtn = document.getElementById('toggleContextPromptBtn');
 
-    if (!transcribeBtn || !apiSelect || !fileInput) { 
-        initLogger.warn("Required elements for transcribe button check not found (transcribeBtn, apiSelect, or fileInput).");
+    const requiredElements = { transcribeBtn, apiSelect, fileInput };
+    const presentRequiredCount = Object.values(requiredElements).filter(Boolean).length;
+    if (presentRequiredCount === 0) {
+        return false;
+    }
+    if (presentRequiredCount !== Object.keys(requiredElements).length) {
+        const missingElements = Object.entries(requiredElements)
+            .filter(([, element]) => !element)
+            .map(([name]) => name)
+            .join(', ');
+        initLogger.warn(`Required elements for transcribe button check not found: ${missingElements}.`);
         return false;
     }
 
