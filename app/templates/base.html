@@ -194,6 +194,9 @@
         <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div class="text-center">
                 {{ _('Compass Platform App') }} - © {{ now.year }}
+                {% if build_timestamp %}
+                    - Built {{ build_timestamp }}
+                {% endif %}
             </div>
         </div>
     </footer>

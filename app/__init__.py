@@ -361,10 +361,10 @@ def create_app(config_class=Config) -> Flask:
                 request.endpoint and
                 not request.endpoint.startswith('static') and
                 request.endpoint not in allowed_endpoints):
-            if request.path.startswith('/api/v1/transcribe'):
+            if request.path.startswith(('/api/v1/transcribe', '/api/v1/transcriptions')):
                 auth_header = request.headers.get('Authorization', '')
                 if auth_header and auth_header.lower().startswith('bearer '):
-                    _req_logger.debug("Allowing public API token flow for /api/v1/transcribe.")
+                    _req_logger.debug("Allowing public API token flow for public transcription endpoint.")
                     return None
             is_api_request = request.path.startswith('/api/') or \
                              ('Accept' in request.headers and 'application/json' in request.headers['Accept'])
@@ -517,8 +517,9 @@ def create_app(config_class=Config) -> Flask:
             app_debug=app.debug,
             # --- MODIFIED: Provide both UI language and formatting locale ---
             current_language=ui_locale.language,
-            formatting_locale=formatting_locale_str
+            formatting_locale=formatting_locale_str,
             # --- END MODIFIED ---
+            build_timestamp=app.config.get('BUILD_TIMESTAMP')
         )
 
     # Register Error Handlers

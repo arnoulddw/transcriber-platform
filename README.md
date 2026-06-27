@@ -247,6 +247,15 @@ curl -X POST https://your-domain.example.com/api/v1/transcribe \
 
 Use your deployment's base URL (or `http://localhost:5004` in local dev). The API responds with a `job_id` and `audio_length_minutes`. Signed-in users can poll `/api/progress/<job_id>` for status and results. Keep your API key secret; rotate or revoke it from the same modal.
 
+Public API clients can poll the job without browser cookies:
+
+```bash
+curl https://your-domain.example.com/api/v1/transcribe/<job_id> \
+  -H "Authorization: Bearer <YOUR_USER_API_KEY>"
+```
+
+The polling endpoint returns a machine-readable status while the job is running, `result.transcription_text` when it finishes, or `error_message` if it fails. The plural form `/api/v1/transcriptions/<job_id>` is also supported.
+
 ## 🛠️ For Developers
 
 Database schema setup, migrations, default roles, catalog seeding and initial admin creation are handled automatically on startup behind a runtime initialization marker. The CLI also exposes manual commands:

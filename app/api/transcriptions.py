@@ -6,6 +6,7 @@ import uuid
 import logging
 import json
 import math
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from flask_babel import gettext as _
 from werkzeug.utils import secure_filename
@@ -77,6 +78,75 @@ def public_transcribe_rate_limit_key() -> str:
     return request.remote_addr or "public-api"
 
 
+def _authenticate_public_api_user():
+    """Authenticate a public API bearer token and return the matching user or a JSON error response."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header or not auth_header.lower().startswith('bearer '):
+        return None, (jsonify({'error': _('A valid API key is required. Provide it in the Authorization header.')}), 401)
+    token = auth_header.split(' ', 1)[1].strip()
+    if not token:
+        return None, (jsonify({'error': _('A valid API key is required.')}), 401)
+
+    user = user_service.authenticate_public_api_key(token)
+    if not user:
+        return None, (jsonify({'error': _('Authentication failed. Please check your API key.')}), 401)
+    if not check_permission(user, 'allow_public_api_access'):
+        return None, (jsonify({'error': _('You do not have permission to use the public API.')}), 403)
+
+    return user, None
+
+
+def _get_progress_log(job_data):
+    progress_log = []
+    raw_log = job_data.get('progress_log')
+    if isinstance(raw_log, list):
+        progress_log = raw_log
+    elif raw_log:
+        progress_log = [str(raw_log)]
+    return progress_log
+
+
+def _format_public_datetime(value):
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+    return value
+
+
+def _public_transcription_status_response(job_id, job_data):
+    status = job_data.get('status', 'unknown')
+    is_finished = status in ('finished', 'error', 'cancelled')
+    is_error = status == 'error'
+    is_cancelled = status == 'cancelled'
+
+    response_data = {
+        'job_id': job_id,
+        'status': status,
+        'finished': is_finished,
+        'progress': _get_progress_log(job_data),
+        'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
+        'filename': job_data.get('filename', 'unknown'),
+        'api_used': job_data.get('api_used', 'unknown'),
+    }
+
+    if is_error:
+        response_data['error_message'] = job_data.get('error_message')
+    elif is_cancelled:
+        response_data['error_message'] = job_data.get('error_message') or _('Transcription was cancelled.')
+    elif is_finished:
+        response_data['result'] = {
+            'transcription_text': job_data.get('transcription_text'),
+            'detected_language': job_data.get('detected_language'),
+            'filename': job_data.get('filename'),
+            'api_used': job_data.get('api_used'),
+            'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
+            'created_at': _format_public_datetime(job_data.get('created_at')),
+        }
+
+    return response_data
+
+
 @transcriptions_bp.route('/v1/transcribe', methods=['POST'])
 @csrf.exempt
 @limiter.limit("10 per hour", key_func=public_transcribe_rate_limit_key)
@@ -86,18 +156,9 @@ def transcribe_audio_public():
     authenticated user's default settings. Authentication is provided via a
     Bearer token (user-generated API key).
     """
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header or not auth_header.lower().startswith('bearer '):
-        return jsonify({'error': _('A valid API key is required. Provide it in the Authorization header.')}), 401
-    token = auth_header.split(' ', 1)[1].strip()
-    if not token:
-        return jsonify({'error': _('A valid API key is required.')}), 401
-
-    user = user_service.authenticate_public_api_key(token)
-    if not user:
-        return jsonify({'error': _('Authentication failed. Please check your API key.')}), 401
-    if not check_permission(user, 'allow_public_api_access'):
-        return jsonify({'error': _('You do not have permission to use the public API.')}), 403
+    user, auth_error = _authenticate_public_api_user()
+    if auth_error:
+        return auth_error
 
     user_id = user.id
     log_prefix = f"[API:PublicTranscribe:User:{user_id}]"
@@ -273,21 +334,39 @@ def transcribe_audio_public():
         return jsonify({'error': _('We could not start the transcription job due to an internal error. Please try again.')}), 500
 
 
+@transcriptions_bp.route('/v1/transcribe/<job_id>', methods=['GET'])
+@transcriptions_bp.route('/v1/transcriptions/<job_id>', methods=['GET'])
+@csrf.exempt
+@limiter.limit("120 per hour", key_func=public_transcribe_rate_limit_key)
+def get_public_transcription_status(job_id):
+    """
+    Public API endpoint to poll transcription job status and retrieve completed
+    results using the same bearer API key used for public uploads.
+    """
+    user, auth_error = _authenticate_public_api_user()
+    if auth_error:
+        return auth_error
 
-def public_transcribe_rate_limit_key() -> str:
-    """
-    Rate limit key for public API requests. Uses the hashed API token when present,
-    otherwise falls back to the requestor IP.
-    """
-    auth_header = request.headers.get('Authorization', '')
-    token = None
-    if auth_header and auth_header.lower().startswith('bearer '):
-        token = auth_header.split(' ', 1)[1].strip()
-    if token:
-        hashed = user_service.hash_public_api_key_for_rate_limit(token)
-        if hashed:
-            return build_user_limit_key(f"public-transcribe:{hashed}")
-    return request.remote_addr or "public-api"
+    user_id = user.id
+    short_job_id = job_id[:8] if job_id else 'invalid'
+    log_prefix = f"[API:PublicProgress:JOB:{short_job_id}:User:{user_id}]"
+
+    try:
+        job_data = transcription_model.get_transcription_by_id(job_id, user_id)
+
+        if not job_data:
+            unowned_job = transcription_model.get_transcription_by_id(job_id)
+            if unowned_job:
+                logging.warning(f"{log_prefix} Access denied: Job exists but is not owned by API key user.")
+                return jsonify({'error': _('You do not have access to this transcription job.')}), 403
+            logging.warning(f"{log_prefix} Job not found.")
+            return jsonify({'error': _('We could not find that transcription job.')}), 404
+
+        return jsonify(_public_transcription_status_response(job_id, job_data)), 200
+
+    except Exception:
+        logging.exception(f"{log_prefix} Unexpected error fetching public job status:")
+        return jsonify({'error': _('We encountered an internal error while fetching job progress. Please try again.')}), 500
 
 # --- Transcription Job Endpoints ---
 

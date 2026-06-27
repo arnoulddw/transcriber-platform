@@ -12,6 +12,20 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 dotenv_path = os.path.join(BASE_DIR, '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
+
+def _load_build_timestamp():
+    env_value = os.environ.get('BUILD_TIMESTAMP')
+    if env_value:
+        return env_value
+
+    timestamp_path = os.path.join(BASE_DIR, 'build_timestamp')
+    try:
+        with open(timestamp_path, encoding='utf-8') as timestamp_file:
+            return timestamp_file.read().strip() or None
+    except OSError:
+        return None
+
+
 class Config:
     """Base configuration class. Loads settings from environment variables."""
 
@@ -29,6 +43,7 @@ class Config:
 
     # --- Timezone Setting ---
     TZ = os.environ.get('TZ', 'UTC')
+    BUILD_TIMESTAMP = _load_build_timestamp()
 
     # --- API Keys (Used ONLY in Single-User mode for global access, or by services) ---
     ASSEMBLYAI_API_KEY = os.environ.get('ASSEMBLYAI_API_KEY')

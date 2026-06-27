@@ -8,6 +8,8 @@ FROM python:3.11-slim-bullseye
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV TZ=UTC
+ARG BUILD_TIMESTAMP
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 # Specify Node.js LTS version major
 ENV NODE_VERSION=18
 
@@ -65,6 +67,13 @@ RUN npm run build:css:prod
 
 # Compile translation files
 RUN /app/.local/bin/pybabel compile -d app/translations
+
+# Persist the image build time for the footer/version banner.
+RUN if [ -n "${BUILD_TIMESTAMP}" ]; then \
+        printf '%s\n' "${BUILD_TIMESTAMP}" > /app/build_timestamp; \
+    else \
+        date -u '+%Y-%m-%d %H:%M:%S UTC' > /app/build_timestamp; \
+    fi
 
 # Set default Flask app for CLI commands
 ENV FLASK_APP=app
