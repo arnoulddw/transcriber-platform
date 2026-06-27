@@ -16,6 +16,7 @@ let publicApiKeyNameInput = null;
 let publicApiKeyCreatedPanel = null;
 let publicApiKeyValueInput = null;
 let publicApiCopyBtn = null;
+let publicApiCreateBtn = null;
 let publicApiKeyListEl = null;
 let lastGeneratedPublicApiKey = null;
 
@@ -33,6 +34,7 @@ function initializeApiKeyModalElements() {
     publicApiKeyCreatedPanel = document.getElementById('publicApiKeyCreatedPanel');
     publicApiKeyValueInput = document.getElementById('publicApiKeyValue');
     publicApiCopyBtn = document.getElementById('copyPublicApiKeyBtn');
+    publicApiCreateBtn = document.getElementById('createPublicApiKeyBtn');
     publicApiKeyListEl = document.getElementById('publicApiKeyList');
 
     if (!apiKeyModal || !apiKeyModalOverlay || !apiKeyModalPanel) {
@@ -137,6 +139,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (publicApiKeyForm) {
         publicApiKeyForm.addEventListener('submit', handleGeneratePublicApiKey);
+    }
+    if (publicApiCreateBtn) {
+        publicApiCreateBtn.addEventListener('click', handleGeneratePublicApiKey);
     }
     if (publicApiCopyBtn) {
         publicApiCopyBtn.addEventListener('click', copyPublicApiKeyToClipboard);
@@ -313,7 +318,7 @@ function handleGeneratePublicApiKey(event) {
     event.preventDefault();
     if (!publicApiKeyForm) return;
 
-    const submitButton = publicApiKeyForm.querySelector('button[type="submit"]');
+    const submitButton = publicApiCreateBtn || publicApiKeyForm.querySelector('button[type="submit"], button');
     const keyName = publicApiKeyNameInput ? publicApiKeyNameInput.value.trim() : '';
     if (!keyName) {
         window.showNotification('Please name this API key.', 'warning', 4000, false);

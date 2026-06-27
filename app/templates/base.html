@@ -226,7 +226,7 @@
         
         {% if is_multi_user %}
             {% if current_user.is_authenticated and current_user.role and current_user.role.allow_api_key_management %}
-                <script src="{{ url_for('static', filename='js/user_settings.js') }}"></script>
+                <script src="{{ url_for('static', filename='js/user_settings.js', v='public-api-keys-2') }}"></script>
             {% endif %}
             {% if current_user.is_authenticated %}
                 <script src="{{ url_for('static', filename='js/profile.js') }}"></script>

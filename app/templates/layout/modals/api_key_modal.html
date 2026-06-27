@@ -88,7 +88,7 @@
                         <label for="publicApiKeyName" class="form-label">{{ _('Key Name') }}</label>
                         <input id="publicApiKeyName" name="name" type="text" maxlength="120" class="input-control" placeholder="{{ _('Production upload script') }}" autocomplete="off">
                     </div>
-                    {{ ui.button(_('Create Key'), variant='primary', type='submit', icon='add', extra_classes='w-full justify-center') }}
+                    {{ ui.button(_('Create Key'), variant='primary', type='button', id='createPublicApiKeyBtn', icon='add', extra_classes='w-full justify-center') }}
                 </form>
                 <div id="publicApiKeyCreatedPanel" class="space-y-2 hidden">
                     <p class="text-sm font-medium text-text-strong">{{ _('New key created') }}</p>
