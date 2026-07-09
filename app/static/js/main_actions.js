@@ -93,6 +93,80 @@ function calculateExpectedProgressData(apiChoice, fileSizeMB, audioLengthMin, sc
     });
 }
 
+async function refreshCsrfToken() {
+    const response = await fetch('/api/csrf-token', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+    });
+
+    if (response.status === 401) {
+        throw new Error('Authentication required (401)');
+    }
+    if (!response.ok) {
+        throw new Error(`Unable to refresh session security token (${response.status})`, {
+            cause: { code: 'CSRF_REFRESH_FAILED' }
+        });
+    }
+
+    const data = await response.json();
+    if (!data.csrf_token) {
+        throw new Error('Unable to refresh session security token', {
+            cause: { code: 'CSRF_REFRESH_FAILED' }
+        });
+    }
+
+    window.csrfToken = data.csrf_token;
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    if (csrfMeta) {
+        csrfMeta.setAttribute('content', data.csrf_token);
+    }
+    return data.csrf_token;
+}
+
+async function submitTranscriptionRequest(formData, apiChoice, retryOnCsrfFailure = true) {
+    const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': window.csrfToken,
+            'Accept': 'application/json',
+            'X-Transcription-Provider': apiChoice
+        }
+    });
+
+    if (response.status === 401) throw new Error('Authentication required (401)');
+
+    const parseErrorData = async (fallback) => response.json().catch(() => fallback);
+
+    if (response.status === 400) {
+        const errData = await parseErrorData({ error: 'Request failed with status 400' });
+        if (errData.code === 'CSRF_TOKEN_INVALID' && retryOnCsrfFailure) {
+            actionsLogger.info("Refreshing expired CSRF token before retrying transcription request.");
+            await refreshCsrfToken();
+            return submitTranscriptionRequest(formData, apiChoice, false);
+        }
+        throw new Error(errData.error || 'Request failed with status 400', { cause: errData });
+    }
+
+    if (response.status === 403 || response.status === 413) {
+        const errData = await parseErrorData({ error: `Request failed with status ${response.status}` });
+        errData.code = errData.code || (response.status === 413 ? 'SIZE_LIMIT_EXCEEDED' : 'PERMISSION_DENIED');
+        throw new Error(errData.error || `Request forbidden (${response.status})`, { cause: errData });
+    }
+
+    if (response.status === 429) {
+        const errData = await parseErrorData({ error: 'You have submitted too many transcription jobs recently. Please try again in an hour.' });
+        throw new Error(errData.error || 'Rate limit exceeded', { cause: { code: 'RATE_LIMIT_EXCEEDED' } });
+    }
+
+    if (!response.ok) {
+        const errData = await parseErrorData({ error: `HTTP error! Status: ${response.status}` });
+        throw new Error(errData.error || `HTTP error! Status: ${response.status}`, { cause: errData });
+    }
+
+    return response.json();
+}
+
 async function handleTranscribeSubmit() {
     const apiSelect = document.getElementById('apiSelect');
     const fileInput = document.getElementById('audioFile');
@@ -198,32 +272,7 @@ async function handleTranscribeSubmit() {
         filename: file.name,
         hasWorkflow: Boolean(pendingWorkflowPromptTextElem && pendingWorkflowPromptTextElem.value)
     });
-    fetch('/api/transcribe', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-CSRFToken': window.csrfToken,
-            'Accept': 'application/json',
-            'X-Transcription-Provider': apiSelect.value
-        }
-    })
-    .then(async response => {
-        if (response.status === 401) throw new Error('Authentication required (401)');
-        if (response.status === 403 || response.status === 413) {
-             const errData = await response.json().catch(() => ({ error: `Request failed with status ${response.status}` }));
-             errData.code = errData.code || (response.status === 413 ? 'SIZE_LIMIT_EXCEEDED' : 'PERMISSION_DENIED');
-             throw new Error(errData.error || `Request forbidden (${response.status})`, { cause: errData });
-        }
-        if (response.status === 429) {
-            const errData = await response.json().catch(() => ({ error: 'You have submitted too many transcription jobs recently. Please try again in an hour.' }));
-            throw new Error(errData.error || 'Rate limit exceeded', { cause: { code: 'RATE_LIMIT_EXCEEDED' } });
-        }
-        if (!response.ok) {
-             const errData = await response.json().catch(() => ({ error: `HTTP error! Status: ${response.status}` }));
-             throw new Error(errData.error || `HTTP error! Status: ${response.status}`, { cause: errData });
-        }
-        return response.json();
-    })
+    submitTranscriptionRequest(formData, apiSelect.value)
     .then(data => {
         if (data.job_id) {
             actionsLogger.info("Transcription job started successfully.", { jobId: data.job_id });

@@ -9,6 +9,7 @@ from flask import (
     current_app, session
 )
 from flask_login import login_user, logout_user, login_required, current_user
+from flask_wtf.csrf import generate_csrf
 # Removed: from werkzeug.urls import url_parse
 # Add this if needed later for redirect validation within this blueprint:
 from urllib.parse import urlparse
@@ -48,6 +49,14 @@ limit_reset_attempts = "5 per hour" # Limit password reset requests
 limit_oauth_attempts = "20 per minute;200 per hour" # Limit OAuth callbacks
 
 # --- HTML Routes for Login/Register Pages ---
+
+@auth_bp.route('/api/csrf-token', methods=['GET'])
+def csrf_token():
+    """Return a fresh CSRF token for long-lived pages before retrying AJAX requests."""
+    if not current_user.is_authenticated:
+        return jsonify({'error': _('Authentication required.')}), 401
+    return jsonify({'csrf_token': generate_csrf()})
+
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit(limit_auth_attempts, key_func=auth_limit_key)

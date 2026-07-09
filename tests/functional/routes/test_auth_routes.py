@@ -89,6 +89,38 @@ def test_login_successfully(client, clean_db):
         assert b'Logged in successfully' in response.data
 
 
+def test_csrf_token_endpoint_returns_fresh_token_for_authenticated_user(client, clean_db):
+    """
+    Tests that authenticated AJAX clients can refresh a stale CSRF token.
+    """
+    with client.application.app_context():
+        role_model.create_role('test-role', 'A role for testing')
+        auth_service.create_user('testuser', 'password123', 'test@example.com', 'test-role')
+
+    login_response = client.post('/login', json={
+        'username': 'testuser',
+        'password': 'password123'
+    }, headers={'Accept': 'application/json'})
+    assert login_response.status_code == 302
+
+    client.application.config['WTF_CSRF_ENABLED'] = True
+    try:
+        response = client.get('/api/csrf-token', headers={'Accept': 'application/json'})
+    finally:
+        client.application.config['WTF_CSRF_ENABLED'] = False
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['csrf_token']
+
+
+def test_csrf_token_endpoint_returns_unauthorized_for_anonymous_user(client):
+    response = client.get('/api/csrf-token', headers={'Accept': 'application/json'})
+
+    assert response.status_code == 401
+    assert response.get_json()['error']
+
+
 def test_login_incorrect_password(client, clean_db):
     """
     Tests that logging in with an incorrect password fails.
