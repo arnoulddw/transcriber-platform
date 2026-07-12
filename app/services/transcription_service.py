@@ -35,7 +35,7 @@ from app.services.api_clients.exceptions import (
 )
 
 # Import permission checking helpers
-from app.core.decorators import check_permission, check_usage_limits
+from app.core.decorators import check_permission
 
 # Import MySQL error class
 from mysql.connector import Error as MySQLError
@@ -232,21 +232,17 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             if price is not None:
                 cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
 
-            allowed, reason = check_usage_limits(user, cost_to_add=cost_to_add, minutes_to_add=audio_length_minutes)
+            allowed, reason = role_model.reserve_usage_if_allowed(
+                user_id,
+                role_obj,
+                cost_to_add=cost_to_add,
+                minutes_to_add=audio_length_minutes,
+            )
             if not allowed:
                 raise PermissionError(f"Usage limit exceeded: {reason}")
 
-            logger.debug("Permission and usage limit checks passed.")
+            logger.debug("Permission checks passed and usage was reserved transactionally.")
             _update_progress(app, job_id, "Permissions validated.", user_id=user_id)
-
-            # --- MODIFIED: Calculate cost and increment usage stats at the beginning ---
-            try:
-                role_model.increment_usage(user_id, cost_to_add, audio_length_minutes)
-                logger.debug(f"Usage stats incremented successfully ({cost_to_add:.4f} cost, {audio_length_minutes:.2f} minutes).")
-                _update_progress(app, job_id, "Usage statistics updated.", user_id=user_id)
-            except Exception as usage_err:
-                logger.error(f"Failed to increment usage stats: {usage_err}", exc_info=True)
-                _update_progress(app, job_id, "Warning: Failed to update usage statistics.", is_error=False, user_id=user_id)
 
             transcription_model.update_transcription_cost(job_id, cost_to_add)
             logger.debug(f"Successfully calculated and saved cost: {cost_to_add}")

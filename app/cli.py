@@ -14,6 +14,7 @@ from app.initialization import (
     create_initialization_marker,
 )
 from migrations.runner import run_migrations
+from app.tasks.transcription_queue import recover_abandoned_jobs
 
 
 @click.command("init-db")
@@ -94,6 +95,9 @@ def bootstrap_command_cli():
     try:
         initialize_database_schema()
         run_migrations()
+        interrupted_count = recover_abandoned_jobs(current_app._get_current_object())
+        if interrupted_count:
+            click.echo(f"Marked {interrupted_count} abandoned transcription job(s) as interrupted.")
         create_initialization_marker(current_app.config)
     except Exception as exc:
         click.echo(click.style(f"Bootstrap error: {exc}", fg="red"), err=True)

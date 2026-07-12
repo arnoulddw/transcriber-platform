@@ -195,6 +195,7 @@ class Config:
     # --- Workflow Configuration ---
     WORKFLOW_MAX_OUTPUT_TOKENS = int(os.environ.get('WORKFLOW_MAX_OUTPUT_TOKENS', 1024))
     WORKFLOW_RATE_LIMIT = os.environ.get('WORKFLOW_RATE_LIMIT', '10 per hour')
+    DIRECT_LLM_RATE_LIMIT = os.environ.get('DIRECT_LLM_RATE_LIMIT', '5 per hour')
 
     # --- NEW: Centralized API Limits ---
     API_LIMITS = {
@@ -218,13 +219,17 @@ class Config:
     }
 
     # --- Transcription Workers ---
-    TRANSCRIPTION_QUEUE_WORKERS = int(os.environ.get('TRANSCRIPTION_QUEUE_WORKERS', 1))
-    if TRANSCRIPTION_QUEUE_WORKERS <= 0:
-        raise ValueError("TRANSCRIPTION_QUEUE_WORKERS must be a positive integer.")
-    TRANSCRIPTION_GLOBAL_LOCK_FILE = os.environ.get(
-        'TRANSCRIPTION_GLOBAL_LOCK_FILE',
-        os.path.join(RUNTIME_DIR, 'transcription_job.lock')
-    )
+    # Total transcription jobs allowed to run concurrently across all Gunicorn
+    # workers. MySQL advisory locks enforce this process-safe limit.
+    TRANSCRIPTION_MAX_CONCURRENT_JOBS = int(os.environ.get('TRANSCRIPTION_MAX_CONCURRENT_JOBS', 2))
+    if TRANSCRIPTION_MAX_CONCURRENT_JOBS <= 0:
+        raise ValueError("TRANSCRIPTION_MAX_CONCURRENT_JOBS must be a positive integer.")
+    TRANSCRIPTION_SLOT_POLL_SECONDS = float(os.environ.get('TRANSCRIPTION_SLOT_POLL_SECONDS', 2))
+    if TRANSCRIPTION_SLOT_POLL_SECONDS <= 0:
+        raise ValueError("TRANSCRIPTION_SLOT_POLL_SECONDS must be positive.")
+    TRANSCRIPTION_ABANDONED_JOB_SECONDS = int(os.environ.get('TRANSCRIPTION_ABANDONED_JOB_SECONDS', 300))
+    if TRANSCRIPTION_ABANDONED_JOB_SECONDS <= 0:
+        raise ValueError("TRANSCRIPTION_ABANDONED_JOB_SECONDS must be positive.")
     TRANSCRIPTION_WORKERS = int(os.environ.get('TRANSCRIPTION_WORKERS', 4))
     if TRANSCRIPTION_WORKERS <= 0:
         raise ValueError("TRANSCRIPTION_WORKERS must be a positive integer.")

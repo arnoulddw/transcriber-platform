@@ -333,6 +333,9 @@ async function checkTranscribeButtonState() {
 
     if (!disableReason && isFileSelected) {
         const file = fileInput.files[0];
+        if (fileInput.dataset.valid === 'false') {
+            disableReason = validateSelectedAudioFile(file) || 'Choose a valid audio file.';
+        }
         const fileSizeMB = file.size / (1024 * 1024);
         if (fileSizeMB > LARGE_FILE_THRESHOLD_MB && !permissions.allow_large_files) {
             disableReason = `File exceeds ${LARGE_FILE_THRESHOLD_MB}MB limit. Permission denied.`;
@@ -432,8 +435,11 @@ function updateApiKeyNotificationVisibility(keyStatus, permissions) {
     if (shouldShow) {
         if (!notificationElement) {
             initLogger.info("Showing API key needed notification.");
+            const guidance = normalizedPermissions.allow_api_key_management === true
+                ? 'Please go to <a href="#" data-transcription-error-action="manage-key" class="underline text-blue-600 hover:text-blue-800">Manage API Keys</a> to use all features.'
+                : 'Contact your administrator to configure the required API key.';
             window.showNotification(
-                'API Key needed. Please go to  <a href="#" onclick="openApiKeyModal(event)" class="underline text-blue-600 hover:text-blue-800">Manage API Keys</a>  to use all features.',
+                `API key needed. ${guidance}`,
                 'warning', 0, true, 'api-key-notification'
             );
         } else {
@@ -496,6 +502,53 @@ function updateSpeakerDiarizationVisibility(selectedApi, permissions = {}) {
 }
 window.updateSpeakerDiarizationVisibility = updateSpeakerDiarizationVisibility;
 
+const ALLOWED_AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'wav', 'ogg', 'webm', 'mpga', 'mpeg']);
+const MAX_AUDIO_FILE_BYTES = 200 * 1024 * 1024;
+
+function validateSelectedAudioFile(file) {
+    if (!file) return '';
+    const extension = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+    if (!ALLOWED_AUDIO_EXTENSIONS.has(extension)) {
+        return 'Unsupported file type. Choose an MP3, M4A, WAV, OGG, WEBM, MPGA, or MPEG file.';
+    }
+    if (file.size <= 0) {
+        return 'This file is empty. Choose an audio file that contains data.';
+    }
+    if (file.size > MAX_AUDIO_FILE_BYTES) {
+        return 'This file is larger than 200 MB. Choose a smaller file.';
+    }
+    return '';
+}
+
+function updateSelectedFileState(fileInput) {
+    const filePathSpan = document.getElementById('audioFilePath');
+    const errorElement = document.getElementById('audioFileError');
+    const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+    const error = validateSelectedAudioFile(file);
+
+    if (filePathSpan) {
+        filePathSpan.textContent = file
+            ? file.name
+            : (filePathSpan.dataset.placeholderLong || 'Select an audio file (mp3, wav, m4a...)');
+    }
+    if (fileInput) fileInput.dataset.valid = error ? 'false' : 'true';
+    if (errorElement) {
+        errorElement.textContent = error;
+        errorElement.classList.toggle('hidden', !error);
+    }
+    checkTranscribeButtonState();
+    return !error;
+}
+
+function updateModelDescription(apiSelect) {
+    const description = document.getElementById('modelDescription');
+    const selected = apiSelect ? apiSelect.selectedOptions[0] : null;
+    if (description) description.textContent = selected?.dataset.description || '';
+}
+
+window.validateSelectedAudioFile = validateSelectedAudioFile;
+
+
 document.addEventListener('DOMContentLoaded', function() {
     const apiSelect = document.getElementById('apiSelect');
     const contextPromptInput = document.getElementById('contextPrompt');
@@ -507,25 +560,59 @@ document.addEventListener('DOMContentLoaded', function() {
     const applyWorkflowBtn = document.getElementById('applyWorkflowBtn');
     const workflowModal = document.getElementById('workflowModal'); 
     const removeWorkflowBtn = document.getElementById('removeWorkflowBtn');
+    const audioDropZone = document.getElementById('audioDropZone');
     speakerDiarizationBtnRef = document.getElementById('speakerDiarizationBtn');
     speakerDiarizationInputRef = document.getElementById('speakerDiarizationInput');
 
 
     if (apiSelect) {
-        apiSelect.addEventListener('change', checkTranscribeButtonState);
+        updateModelDescription(apiSelect);
+        apiSelect.addEventListener('change', function() {
+            updateModelDescription(apiSelect);
+            checkTranscribeButtonState();
+        });
     }
     if (contextPromptInput) {
         contextPromptInput.addEventListener('input', validateContextPrompt);
     }
     if (fileInput) {
         fileInput.addEventListener('change', function() {
-            const filePathSpan = document.getElementById('audioFilePath');
-            if (this.files && this.files.length > 0) {
-                filePathSpan.textContent = this.files[0].name;
-            } else {
-                filePathSpan.textContent = filePathSpan.dataset.placeholderLong || 'Select an audio file (mp3, wav, m4a...)';
+            updateSelectedFileState(fileInput);
+        });
+    }
+    if (audioDropZone && fileInput) {
+        ['dragenter', 'dragover'].forEach(eventName => audioDropZone.addEventListener(eventName, event => {
+            event.preventDefault();
+            audioDropZone.classList.add('border-primary', 'bg-blue-50');
+        }));
+        ['dragleave', 'drop'].forEach(eventName => audioDropZone.addEventListener(eventName, event => {
+            event.preventDefault();
+            audioDropZone.classList.remove('border-primary', 'bg-blue-50');
+        }));
+        audioDropZone.addEventListener('drop', event => {
+            const files = event.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+            if (files.length > 1) {
+                window.showNotification('Please drop one audio file at a time.', 'warning', 4000, false);
+                return;
             }
-            checkTranscribeButtonState();
+            if (typeof window.DataTransfer !== 'function') {
+                window.showNotification('Drag and drop is not supported by this browser. Please use Choose File.', 'warning', 5000, false);
+                return;
+            }
+            const transfer = new DataTransfer();
+            transfer.items.add(files[0]);
+            fileInput.files = transfer.files;
+            updateSelectedFileState(fileInput);
+        });
+        audioDropZone.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                fileInput.click();
+            }
+        });
+        audioDropZone.addEventListener('click', event => {
+            if (!event.target.closest('label, input')) fileInput.click();
         });
     }
     if (transcribeBtn) {

@@ -13,7 +13,9 @@
             {# File Input #}
             <div>
                 <label for="audioFile" class="form-label mb-1">{{ _('Audio File') }}</label>
-                <div class="mt-1 flex items-center">
+                <div id="audioDropZone" role="button" tabindex="0"
+                     class="mt-1 flex items-center rounded-md border-2 border-dashed border-gray-300 p-4 transition hover:border-primary hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                     aria-describedby="audioFileHint audioFileError">
                     <label for="audioFile"
                            class="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary inline-flex items-center">
                         <i class="material-icons tiny -ml-1 mr-2 align-middle">audiotrack</i>
@@ -26,7 +28,8 @@
                           data-placeholder-long="{{ _('Select an audio file (mp3, wav, m4a...)') }}"
                           data-placeholder-short="{{ _('Select audio file…') }}">{{ _('Select an audio file (mp3, wav, m4a...)') }}</span>
                 </div>
-                <p class="form-hint">{{ _('Max file size: 200 MB. Supported formats: MP3, M4A, WAV, OGG, WEBM, MPGA, MPEG.') }}</p>
+                <p id="audioFileHint" class="form-hint">{{ _('Choose a file or drag and drop it here. Max file size: 200 MB. Supported formats: MP3, M4A, WAV, OGG, WEBM, MPGA, MPEG.') }}</p>
+                <p id="audioFileError" class="form-error hidden" aria-live="polite"></p>
             </div>
 
             {# API Select #}
@@ -35,13 +38,19 @@
                 <div class="mt-1">
                     <select id="apiSelect" name="api_choice"
                             class="input-select">
+                        {% set model_descriptions = {
+                            'gpt-4o-transcribe': _('Best accuracy for clear speech and a good default for most recordings.'),
+                            'whisper': _('Best for long recordings and broad language support.'),
+                            'assemblyai': _('Supports speaker identification and works well for meetings and interviews.')
+                        } %}
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
                             {% if not required_perm or user_permissions.get(required_perm) %}
-                                <option value="{{ model.code }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
                             {% endif %}
                         {% endfor %}
                     </select>
+                    <p id="modelDescription" class="form-hint" aria-live="polite"></p>
                 </div>
             </div>
 
@@ -162,7 +171,9 @@
                         <li class="py-4{% if transcription.is_pinned %} border-l-2 border-amber-400 pl-2{% endif %}"
                             data-transcription-id="{{ transcription.id }}"
                             data-is-pinned="{{ 'true' if transcription.is_pinned else 'false' }}"
-                            data-full-text="{{ transcription.transcription_text | default('[Transcription text not available]', true) }}"
+                            data-full-text="{{ transcription.transcription_preview | default('', true) }}"
+                            data-content-loaded="false"
+                            data-has-more="{{ 'true' if transcription.transcription_has_more else 'false' }}"
                             data-poll-title="{{ 'true' if transcription.should_poll_title else 'false' }}"
                             {# REMOVED: data-language attribute is no longer needed here #}
                             {% if transcription.pending_workflow_prompt_text %}
@@ -355,7 +366,7 @@
 {% block scripts %}
 {{ super() }}
 <script src="{{ url_for('static', filename='js/history/search.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
     // Helper function to update placeholders based on screen size
     function updatePlaceholders() {
         const isSmallScreen = window.innerWidth < 600;

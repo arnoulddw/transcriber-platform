@@ -157,8 +157,12 @@ The application is configured using environment variables in a `.env` file. The 
 | `MAIL_DEBUG` | Enable verbose mail logging. | `false` |
 | **Advanced Configuration** | | |
 | `TRANSCRIPTION_WORKERS` | Number of parallel workers for chunked transcription. | `4` |
+| `TRANSCRIPTION_MAX_CONCURRENT_JOBS` | Total transcription jobs allowed to run at once across all web workers. | `2` |
+| `TRANSCRIPTION_SLOT_POLL_SECONDS` | How often a waiting job checks for available capacity. | `2` |
+| `TRANSCRIPTION_ABANDONED_JOB_SECONDS` | Time before an unowned waiting job is considered interrupted. | `300` |
 | `WORKFLOW_MAX_OUTPUT_TOKENS` | Maximum generated tokens for workflow responses. | `1024` |
 | `WORKFLOW_RATE_LIMIT` | Rate limit for workflow API calls per user (ex. `10 per hour`). | `10 per hour` |
+| `DIRECT_LLM_RATE_LIMIT` | Extra process-local limit for direct LLM generation; MySQL workflow quotas remain authoritative. | `5 per hour` |
 | `DELETE_THRESHOLD` | Seconds before temporary uploaded files are deleted. | `86400` |
 | `PHYSICAL_DELETION_DAYS` | Days after soft-deletion before a transcription is permanently removed. | `120` |
 | `BCRYPT_LOG_ROUNDS` | Password hashing cost factor. | `12` |

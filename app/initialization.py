@@ -13,6 +13,7 @@ from app.models import user as user_model
 from app.models import user_api_key as user_api_key_model
 from app.models import public_api_key as public_api_key_model
 from app.models import transcription as transcription_model
+from app.models import transcription_job_lease as transcription_job_lease_model
 from app.models import user_prompt as user_prompt_model
 from app.models import template_prompt as template_prompt_model
 # --- ADDED: Import llm_operation model ---
@@ -79,6 +80,8 @@ def initialize_database_schema(create_roles: bool = True) -> None:
         # monthly_usage deprecated; using user_usage aggregations instead
         logger.debug(f"{log_prefix} Initializing 'transcriptions' table...")
         transcription_model.init_db_command()
+        logger.debug(f"{log_prefix} Initializing transcription job leases...")
+        transcription_job_lease_model.init_db_command()
         logger.debug(f"{log_prefix} Initializing 'template_prompts' table...")
         template_prompt_model.init_db_command()
         logger.debug(f"{log_prefix} Initializing 'user_prompts' table...")

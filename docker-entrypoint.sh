@@ -17,8 +17,8 @@ exec /app/.local/bin/gunicorn \
   --workers "${GUNICORN_WORKERS:-4}" \
   --timeout "${GUNICORN_TIMEOUT:-120}" \
   --graceful-timeout "${GUNICORN_GRACEFUL_TIMEOUT:-1800}" \
-  --max-requests "${GUNICORN_MAX_REQUESTS:-50}" \
-  --max-requests-jitter "${GUNICORN_MAX_REQUESTS_JITTER:-10}" \
+  --max-requests "${GUNICORN_MAX_REQUESTS:-0}" \
+  --max-requests-jitter "${GUNICORN_MAX_REQUESTS_JITTER:-0}" \
   --forwarded-allow-ips "${GUNICORN_FORWARDED_ALLOW_IPS:-*}" \
   --log-level "${GUNICORN_LOG_LEVEL:-info}" \
   "app:create_app()"

@@ -443,7 +443,12 @@ class BaseTranscriptionClient(ABC):
 
         try:
             self._report_progress("PHASE_MARKER:PROCESSING_START", False)
-            chunk_files = file_service.split_audio_file(audio_file_path, temp_dir, self._report_progress)
+            chunk_files = file_service.split_audio_file(
+                audio_file_path,
+                temp_dir,
+                self._report_progress,
+                cancellation_check=lambda: bool(self.cancel_event and self.cancel_event.is_set()),
+            )
             if not chunk_files:
                 # Check if cancellation happened during splitting
                 if self.cancel_event and self.cancel_event.is_set():

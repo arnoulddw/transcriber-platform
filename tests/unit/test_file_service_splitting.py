@@ -1,45 +1,100 @@
-
 import pytest
-from unittest.mock import patch
-from app.services.file_service import DEFAULT_CHUNK_LENGTH_MS, split_audio_file
+from unittest.mock import MagicMock, patch
+
+from app.services.file_service import (
+    DEFAULT_CHUNK_LENGTH_MS,
+    _segment_audio_ffmpeg,
+    split_audio_file,
+)
+
 
 def test_default_chunk_length_constant():
-    """Verify that the DEFAULT_CHUNK_LENGTH_MS constant is set to 7 minutes."""
-    expected_ms = 7 * 60 * 1000
-    assert DEFAULT_CHUNK_LENGTH_MS == expected_ms, f"Expected {expected_ms}ms (7 min), but got {DEFAULT_CHUNK_LENGTH_MS}ms"
+    assert DEFAULT_CHUNK_LENGTH_MS == 7 * 60 * 1000
 
-@patch('app.services.file_service.os.path.exists')
-@patch('app.services.file_service.validate_file_path')
-@patch('app.services.file_service.os.path.getsize')
-@patch('app.services.file_service.get_audio_duration')
-@patch('app.services.file_service.subprocess.run')
-def test_split_audio_file_uses_default_chunk_length(mock_subprocess_run, mock_get_duration, mock_getsize, mock_validate, mock_exists):
-    """
-    Verify that split_audio_file uses the default chunk length when not specified.
-    We'll mock a 15-minute audio file and expect 3 chunks (7+7+1).
-    """
-    # Setup mocks
-    mock_exists.return_value = True
-    mock_validate.return_value = True
-    mock_get_duration.return_value = (15 * 60, 15)
-    mock_getsize.return_value = 1000 # Small chunk size to avoid API-limit warnings
-    
-    # Call function without specifying chunk_length_ms
-    chunks = split_audio_file("/fake/path/audio.mp3", "/fake/temp/dir")
-    
-    # Verification
-    # 15 minutes / 7 minutes = 2.14 -> ceil -> 3 chunks
+
+@patch('app.services.file_service.validate_file_path', return_value=True)
+@patch('app.services.file_service.os.path.getsize', return_value=1000)
+@patch('app.services.file_service.get_audio_duration', return_value=(15 * 60, 15))
+@patch('app.services.file_service._segment_audio_ffmpeg')
+def test_split_audio_file_segments_source_in_one_ffmpeg_pass(
+    mock_segment,
+    _mock_get_duration,
+    _mock_getsize,
+    _mock_validate,
+    tmp_path,
+):
+    """A 15-minute source is segmented once into three sorted chunk files."""
+    source = tmp_path / 'audio.mp3'
+    source.write_bytes(b'source')
+
+    def create_mock_segments(_source, output_pattern, _seconds, _check):
+        for index in range(1, 4):
+            output_path = output_pattern.replace('%03d', f'{index:03d}')
+            with open(output_path, 'wb') as segment:
+                segment.write(b'chunk')
+
+    mock_segment.side_effect = create_mock_segments
+
+    chunks = split_audio_file(str(source), str(tmp_path))
+
     assert len(chunks) == 3
-    assert mock_subprocess_run.call_count == 3
+    assert chunks == sorted(chunks)
+    mock_segment.assert_called_once()
+    args = mock_segment.call_args.args
+    assert args[0] == str(source)
+    assert args[2] == 420.0
+    assert args[1].endswith('_chunk_%03d.mp3')
+    assert all(chunk.endswith('.mp3') for chunk in chunks)
 
-    first_command = mock_subprocess_run.call_args_list[0].args[0]
-    second_command = mock_subprocess_run.call_args_list[1].args[0]
-    third_command = mock_subprocess_run.call_args_list[2].args[0]
 
-    assert first_command[first_command.index("-ss") + 1] == "0.000"
-    assert first_command[first_command.index("-t") + 1] == "420.000"
-    assert second_command[second_command.index("-ss") + 1] == "420.000"
-    assert second_command[second_command.index("-t") + 1] == "420.000"
-    assert third_command[third_command.index("-ss") + 1] == "840.000"
-    assert third_command[third_command.index("-t") + 1] == "60.000"
-    assert all(chunk.endswith(".mp3") for chunk in chunks)
+@patch('app.services.file_service.validate_file_path', return_value=True)
+@patch('app.services.file_service.os.path.getsize', return_value=1000)
+@patch('app.services.file_service.get_audio_duration', return_value=(15 * 60, 15))
+@patch('app.services.file_service._segment_audio_ffmpeg', return_value=None)
+def test_split_audio_file_rejects_missing_ffmpeg_outputs(
+    _mock_segment,
+    _mock_get_duration,
+    _mock_getsize,
+    _mock_validate,
+    tmp_path,
+):
+    source = tmp_path / 'audio.mp3'
+    source.write_bytes(b'source')
+    assert split_audio_file(str(source), str(tmp_path)) == []
+
+
+def test_segment_audio_uses_ffmpeg_segment_muxer():
+    process = MagicMock()
+    process.poll.return_value = 0
+    process.returncode = 0
+    process.communicate.return_value = ('', '')
+
+    with patch('app.services.file_service.subprocess.Popen', return_value=process) as popen:
+        _segment_audio_ffmpeg('/input.wav', '/tmp/chunk_%03d.mp3', 420.0)
+
+    command = popen.call_args.args[0]
+    assert command[command.index('-f') + 1] == 'segment'
+    assert command[command.index('-segment_time') + 1] == '420.000'
+    assert command[command.index('-segment_start_number') + 1] == '1'
+    assert command[-1] == '/tmp/chunk_%03d.mp3'
+
+
+def test_segment_audio_terminates_when_cancelled():
+    process = MagicMock()
+    process.returncode = None
+    process.poll.return_value = None
+
+    def terminate():
+        process.returncode = -15
+        process.poll.return_value = -15
+
+    process.terminate.side_effect = terminate
+
+    with patch('app.services.file_service.subprocess.Popen', return_value=process):
+        with pytest.raises(InterruptedError):
+            _segment_audio_ffmpeg(
+                '/input.wav', '/tmp/chunk_%03d.mp3', 420.0,
+                cancellation_check=lambda: True,
+            )
+
+    process.terminate.assert_called_once()

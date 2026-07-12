@@ -82,7 +82,7 @@ def update_job_progress(job_id: str, message: str) -> None:
 def update_job_status(job_id: str, status: str) -> None:
     """Updates the status field of a specific job record."""
     logger = get_logger(__name__, job_id=job_id, component="DB:Job")
-    valid_statuses = ['pending', 'processing', 'finished', 'error', 'cancelling', 'cancelled']
+    valid_statuses = ['pending', 'processing', 'finished', 'error', 'cancelling', 'cancelled', 'interrupted']
     if status not in valid_statuses:
         logger.error(f"Attempted to set invalid status: '{status}'")
         return
@@ -131,6 +131,42 @@ def set_job_error(job_id: str, error_message: str) -> None:
     finally:
         # The cursor is managed by the application context, so we don't close it here.
         pass
+
+
+def mark_active_jobs_interrupted(job_ids) -> int:
+    """Mark only jobs proven abandoned by lease/lock recovery as interrupted."""
+    job_ids = [job_id for job_id in job_ids if job_id]
+    if not job_ids:
+        return 0
+    cursor = get_cursor()
+    message = "WORKER_INTERRUPTED: The application restarted before this transcription completed."
+    placeholders = ", ".join(["%s"] * len(job_ids))
+    try:
+        cursor.execute(
+            f"""
+            UPDATE transcriptions
+            SET status = 'interrupted', error_message = %s,
+                progress_log = JSON_ARRAY_APPEND(
+                    COALESCE(progress_log, JSON_ARRAY()), '$', %s
+                )
+            WHERE id IN ({placeholders})
+              AND status IN ('pending', 'processing', 'cancelling')
+            """,
+            (message, message, *job_ids),
+        )
+        interrupted_count = cursor.rowcount
+        get_db().commit()
+        if interrupted_count:
+            get_logger(__name__, component="DB:Recovery").warning(
+                "Marked %s abandoned transcription job(s) as interrupted.", interrupted_count
+            )
+        return interrupted_count
+    except MySQLError:
+        get_db().rollback()
+        get_logger(__name__, component="DB:Recovery").exception(
+            "Failed to mark abandoned transcription jobs as interrupted."
+        )
+        raise
 
 
 def finalize_job_success(job_id: str, transcription_text: str, detected_language: str) -> None:

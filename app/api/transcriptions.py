@@ -6,6 +6,7 @@ import uuid
 import logging
 import json
 import math
+import re
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app
 from flask_babel import gettext as _
@@ -26,7 +27,7 @@ from app.services.user_service import MissingApiKeyError
 from app.services.api_clients.exceptions import TranscriptionApiError
 from app.core.decorators import check_permission, check_usage_limits
 from app.extensions import limiter, build_user_limit_key, csrf
-from app.tasks.transcription_queue import submit_transcription_job
+from app.tasks.transcription_queue import maybe_recover_abandoned_jobs, submit_transcription_job
 from mysql.connector import Error as MySQLError
 # --- ADDED: Import Optional ---
 from typing import Optional
@@ -56,10 +57,31 @@ def transcribe_rate_limit_key() -> str:
 
 def _compose_error_message(base_message: str, details: Optional[str] = None) -> str:
     """Return a translated error message with optional diagnostic details."""
-    details_text = str(details or "").strip()
+    details_text = _client_safe_error_message(details)
     if details_text:
         return f"{base_message} {_('Details')}: {details_text}"
     return base_message
+
+
+def _client_safe_error_message(message: Optional[str]) -> str:
+    """Keep useful provider/error codes while removing credentials and tracebacks."""
+    text = str(message or "").strip()
+    if not text:
+        return ""
+    text = text.split("Traceback (most recent call last):", 1)[0].strip()
+    text = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", text)
+    text = re.sub(
+        r"(?i)\bapi[_ -]?key\b(\s*[:=]\s*)[^\s,;]+",
+        r"api_key\1[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\bauthorization\b(\s*[:=]\s*)[^\n,;]+",
+        r"Authorization\1[REDACTED]",
+        text,
+    )
+    text = re.sub(r"(?i)\bbearer\s+[^\s,;]+", "Bearer [REDACTED]", text)
+    return text[:1000]
 
 
 def public_transcribe_rate_limit_key() -> str:
@@ -116,8 +138,8 @@ def _format_public_datetime(value):
 
 def _public_transcription_status_response(job_id, job_data):
     status = job_data.get('status', 'unknown')
-    is_finished = status in ('finished', 'error', 'cancelled')
-    is_error = status == 'error'
+    is_finished = status in ('finished', 'error', 'cancelled', 'interrupted')
+    is_error = status in ('error', 'interrupted')
     is_cancelled = status == 'cancelled'
 
     response_data = {
@@ -131,7 +153,7 @@ def _public_transcription_status_response(job_id, job_data):
     }
 
     if is_error:
-        response_data['error_message'] = job_data.get('error_message')
+        response_data['error_message'] = _client_safe_error_message(job_data.get('error_message'))
     elif is_cancelled:
         response_data['error_message'] = job_data.get('error_message') or _('Transcription was cancelled.')
     elif is_finished:
@@ -352,6 +374,7 @@ def get_public_transcription_status(job_id):
     log_prefix = f"[API:PublicProgress:JOB:{short_job_id}:User:{user_id}]"
 
     try:
+        maybe_recover_abandoned_jobs(current_app._get_current_object())
         job_data = transcription_model.get_transcription_by_id(job_id, user_id)
 
         if not job_data:
@@ -616,6 +639,7 @@ def get_progress(job_id):
     log_prefix = f"[API:Progress:JOB:{short_job_id}:User:{user_id}]"
 
     try:
+        maybe_recover_abandoned_jobs(current_app._get_current_object())
         job_data = transcription_model.get_transcription_by_id(job_id, user_id)
 
         if not job_data:
@@ -628,8 +652,8 @@ def get_progress(job_id):
                 return jsonify({'error': _('We could not find that transcription job.')}), 404
 
         status = job_data.get('status', 'unknown')
-        is_finished = status in ('finished', 'error', 'cancelled')
-        is_error = status == 'error'
+        is_finished = status in ('finished', 'error', 'cancelled', 'interrupted')
+        is_error = status in ('error', 'interrupted')
         is_cancelled = status == 'cancelled'
 
         progress_log = []
@@ -653,7 +677,7 @@ def get_progress(job_id):
             'status': status,
             'progress': progress_log,
             'finished': is_finished,
-            'error_message': job_data.get('error_message') if is_error else None,
+            'error_message': _client_safe_error_message(job_data.get('error_message')) if is_error else None,
             'result': None, # This will be populated below if finished successfully
             'file_size_mb': job_data.get('file_size_mb', 0.0),
             'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
@@ -693,6 +717,32 @@ def get_progress(job_id):
     except Exception as e:
         logging.exception(f"{log_prefix} Unexpected error fetching progress:")
         return jsonify({'error': _('We encountered an internal error while fetching job progress. Please try again.')}), 500
+
+
+@transcriptions_bp.route('/transcriptions/active', methods=['GET'])
+@login_required
+@limiter.exempt
+def get_active_transcriptions():
+    """Return unfinished/recently failed jobs so progress reconnects after refresh."""
+    try:
+        maybe_recover_abandoned_jobs(current_app._get_current_object())
+        jobs = transcription_model.get_active_transcriptions(current_user.id)
+        return jsonify([
+            {
+                'job_id': job['id'],
+                'status': job.get('status'),
+                'filename': job.get('filename'),
+                'api_used': job.get('api_used'),
+                'file_size_mb': job.get('file_size_mb', 0.0),
+                'audio_length_minutes': job.get('audio_length_minutes', 0.0),
+                'created_at': job.get('created_at'),
+            }
+            for job in jobs
+        ]), 200
+    except Exception:
+        logging.exception("Failed to retrieve active transcription jobs for user %s.", current_user.id)
+        return jsonify({'error': _('We could not retrieve active transcription jobs.')}), 500
+
 
 @transcriptions_bp.route('/transcribe/<job_id>', methods=['DELETE'])
 @login_required
@@ -747,10 +797,11 @@ def get_transcriptions():
     logging.debug(f"{log_prefix} /transcriptions GET request received.")
 
     try:
-        limit = user.get_limit('max_history_items') if user.role else 0
-        logging.debug(f"{log_prefix} Applying history limit: {'Unlimited' if limit <= 0 else limit}")
+        configured_limit = user.get_limit('max_history_items') if user.role else 0
+        page_size = min(configured_limit, 50) if configured_limit > 0 else 20
+        logging.debug(f"{log_prefix} Returning at most {page_size} lightweight history records.")
 
-        transcriptions = transcription_model.get_all_transcriptions(user_id, limit=limit)
+        transcriptions = transcription_utils.get_paginated_transcriptions(user_id, 1, page_size)
 
         logging.info(f"{log_prefix} Retrieved {len(transcriptions)} transcription records.")
         return jsonify(transcriptions), 200
@@ -794,6 +845,22 @@ def search_transcriptions():
     except Exception:
         logging.exception("%s Error searching transcriptions:", log_prefix)
         return jsonify({'error': _('Search failed. Please try again.')}), 500
+
+
+@transcriptions_bp.route('/transcriptions/<transcription_id>/content', methods=['GET'])
+@login_required
+@limiter.limit("60 per minute", key_func=lambda: build_user_limit_key('history-content'))
+def get_transcription_content(transcription_id):
+    """Return full transcript text only when a history item is opened or acted on."""
+    transcription = transcription_model.get_transcription_by_id(transcription_id, current_user.id)
+    if not transcription or transcription.get('is_hidden_from_user'):
+        return jsonify({'error': _('We could not find that transcription.')}), 404
+    if transcription.get('status') != 'finished':
+        return jsonify({'error': _('The transcript is not available yet.')}), 409
+    return jsonify({
+        'id': transcription_id,
+        'transcription_text': transcription.get('transcription_text') or '',
+    }), 200
 
 
 @transcriptions_bp.route('/transcriptions/<transcription_id>', methods=['DELETE'])

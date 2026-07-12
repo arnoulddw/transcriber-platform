@@ -20,7 +20,7 @@ from app.models.user import User
 from app.models import user, user_utils, user_prompt as user_prompt_model
 from app.models.user_prompt import UserPrompt
 from app.models import transcription as transcription_model 
-from app.core.decorators import check_permission
+from app.core.decorators import check_permission, permission_required
 from app.extensions import limiter
 
 # Define the Blueprint
@@ -99,6 +99,7 @@ def get_user_readiness():
 # --- API Key Management Endpoints ---
 @user_settings_bp.route('/keys', methods=['GET'])
 @login_required
+@permission_required('allow_api_key_management')
 def get_api_key_status():
     """
     API endpoint to return the configuration status (set/not set) of the user's API keys.
@@ -223,6 +224,7 @@ def delete_named_public_api_key(key_id):
 
 @user_settings_bp.route('/keys', methods=['POST'])
 @login_required
+@permission_required('allow_api_key_management')
 def save_api_key():
     """
     API endpoint to save or update an API key for a specific service for the logged-in user.
@@ -254,6 +256,7 @@ def save_api_key():
 
 @user_settings_bp.route('/keys/<service>', methods=['DELETE'])
 @login_required
+@permission_required('allow_api_key_management')
 def delete_api_key(service):
     """
     API endpoint to delete a specific API key for the logged-in user.

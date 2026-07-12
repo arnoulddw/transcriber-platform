@@ -26,9 +26,9 @@ class TestConfig:
     RATELIMIT_DEFAULT = "1000 per minute"
     
     # Use a dedicated test database
-    MYSQL_USER = 'test'
-    MYSQL_PASSWORD = 'test'
-    MYSQL_DB = 'test_db'
+    MYSQL_USER = os.environ.get('MYSQL_TEST_USER', 'test')
+    MYSQL_PASSWORD = os.environ.get('MYSQL_TEST_PASSWORD', 'test')
+    MYSQL_DB = os.environ.get('MYSQL_TEST_DB', 'test_db')
     # When running in Docker, connect to the mysql-test service
     # When running locally, connect to the published port
     MYSQL_HOST = os.environ.get('MYSQL_TEST_HOST', 'mysql-test')

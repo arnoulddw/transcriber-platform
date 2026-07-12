@@ -93,20 +93,23 @@ function translateBackendErrorMessage(backendMessage) {
     let message = backendMessage || "An unknown error occurred."; // Default message
     let icon = 'error'; // Default error icon
     let iconColorClass = 'text-red-600'; // Default error color (Tailwind)
+    const keyAction = window.USER_PERMISSIONS?.allow_api_key_management
+        ? '<a href="#!" data-transcription-error-action="manage-key" class="text-primary hover:text-primary-dark underline">Manage API Keys</a>'
+        : 'contact your administrator';
 
     if (lowerMessage.startsWith('error:')) {
         const errorContent = backendMessage.substring(6).trim();
         const lowerErrorContent = errorContent.toLowerCase();
 
         if (lowerErrorContent.includes('no api keys configured')) {
-            message = `No API Keys configured. Please <a href="#!" onclick="openApiKeyModal(event)" class="text-primary hover:text-primary-dark underline">add your keys</a>.`;
+            message = `No API Keys configured. Please ${keyAction}.`;
             icon = 'vpn_key_off';
         } else if (lowerErrorContent.includes('api key not configured')) {
             let serviceNameGuess = 'The required';
             if (lowerErrorContent.includes('openai')) serviceNameGuess = 'OpenAI';
             else if (lowerErrorContent.includes('assemblyai')) serviceNameGuess = 'AssemblyAI';
             else if (lowerErrorContent.includes('gemini')) serviceNameGuess = 'Gemini';
-            message = `${serviceNameGuess} API key not configured. Please add it via <a href="#!" onclick="openApiKeyModal(event)" class="text-primary hover:text-primary-dark underline">Manage API Keys</a>.`;
+            message = `${serviceNameGuess} API key is not configured. Please ${keyAction}.`;
             icon = 'vpn_key_off';
         } else if (lowerErrorContent.includes('permission denied')) {
             const permissionMatch = errorContent.match(/Permission denied(?::\s*(.*))?/i);
@@ -123,7 +126,7 @@ function translateBackendErrorMessage(backendMessage) {
             icon = 'account_balance_wallet';
             iconColorClass = 'text-orange-500'; // Tailwind orange
         } else if (lowerErrorContent.includes('authentication failed') || lowerErrorContent.includes('invalid api key') || lowerErrorContent.includes('incorrect api key')) {
-            message = `API authentication failed. Please verify your API key in <a href="#!" onclick="openApiKeyModal(event)" class="text-primary hover:text-primary-dark underline">Manage API Keys</a>.`;
+            message = `The provider rejected your API key. Please ${keyAction}.`;
             icon = 'error';
         } else if (lowerErrorContent.includes('rate limit exceeded') || lowerErrorContent.includes('rate limit hit')) {
              message = "API rate limit hit. Please wait and try again later.";
@@ -179,6 +182,97 @@ function translateBackendErrorMessage(backendMessage) {
 }
 window.translateBackendErrorMessage = translateBackendErrorMessage;
 
+function deriveDiagnosticCode(errorMessage) {
+    const text = String(errorMessage || '').toUpperCase();
+    if (text.includes('WORKER_INTERRUPTED')) return 'WORKER_INTERRUPTED';
+    if (text.includes('AUTHENTICATION') || text.includes('INVALID API KEY') || text.includes('INCORRECT API KEY')) return 'PROVIDER_AUTH';
+    if (text.includes('QUOTA')) return 'PROVIDER_QUOTA';
+    if (text.includes('RATE LIMIT')) return 'PROVIDER_RATE_LIMIT';
+    if (text.includes('DECODE') || text.includes('AUDIO FORMAT')) return 'INVALID_AUDIO';
+    if (text.includes('CONNECTION') || text.includes('NETWORK')) return 'PROVIDER_CONNECTION';
+    return 'TRANSCRIPTION_FAILED';
+}
+
+function downloadTranscriptionDiagnostics() {
+    const diagnostics = window.lastTranscriptionDiagnostics;
+    if (!diagnostics) return;
+    const blob = new Blob([JSON.stringify(diagnostics, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transcription-diagnostic-${diagnostics.reference || 'unknown'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function focusModelPicker() {
+    const picker = document.getElementById('apiSelect');
+    if (picker) {
+        picker.focus();
+        picker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+function retrySelectedFile() {
+    const fileInput = document.getElementById('audioFile');
+    if (!fileInput?.files?.length || typeof window.handleTranscribeSubmit !== 'function') return;
+    resetPollingState();
+    window.handleTranscribeSubmit();
+}
+
+function renderActionableError(errorMessage, jobData = {}) {
+    const translated = translateBackendErrorMessage(`ERROR: ${errorMessage || 'An unknown error occurred.'}`);
+    const reference = String(jobData.job_id || '').slice(0, 8) || 'not-created';
+    const diagnosticCode = deriveDiagnosticCode(errorMessage);
+    window.lastTranscriptionDiagnostics = {
+        code: diagnosticCode,
+        reference,
+        job_id: jobData.job_id || null,
+        status: jobData.status || 'error',
+        provider: jobData.api_used || null,
+        filename: jobData.filename || null,
+        technical_message: String(errorMessage || 'Unknown error'),
+        captured_at: new Date().toISOString(),
+    };
+
+    const actions = [];
+    if (document.getElementById('audioFile')?.files?.length) {
+        actions.push('<button type="button" data-transcription-error-action="retry" class="underline font-medium">Retry</button>');
+    }
+    actions.push('<button type="button" data-transcription-error-action="provider" class="underline font-medium">Change provider</button>');
+    if (window.USER_PERMISSIONS?.allow_api_key_management && typeof window.openApiKeyModal === 'function') {
+        actions.push('<button type="button" data-transcription-error-action="manage-key" class="underline font-medium">Update API key</button>');
+    }
+    actions.push('<button type="button" data-transcription-error-action="diagnostics" class="underline font-medium">Download diagnostics</button>');
+
+    return {
+        icon: translated.icon,
+        iconColorClass: translated.iconColorClass,
+        message: `<div><div>${translated.message}</div><div class="mt-2 text-xs">Code: ${escapeHtml(diagnosticCode)} · Reference: ${escapeHtml(reference)}</div><div class="mt-2 flex flex-wrap justify-center gap-3">${actions.join('')}</div><details class="mt-2 text-left text-xs"><summary class="cursor-pointer">Technical details</summary><code class="block mt-1 break-words">${escapeHtml(errorMessage || 'Unknown error')}</code></details></div>`,
+    };
+}
+
+window.downloadTranscriptionDiagnostics = downloadTranscriptionDiagnostics;
+window.focusModelPicker = focusModelPicker;
+window.retrySelectedFile = retrySelectedFile;
+window.renderActionableError = renderActionableError;
+
+if (!window.transcriptionErrorActionsBound) {
+    window.transcriptionErrorActionsBound = true;
+    document.addEventListener('click', event => {
+        const actionElement = event.target.closest('[data-transcription-error-action]');
+        if (!actionElement) return;
+        event.preventDefault();
+        const action = actionElement.dataset.transcriptionErrorAction;
+        if (action === 'retry') retrySelectedFile();
+        else if (action === 'provider') focusModelPicker();
+        else if (action === 'manage-key') openApiKeyModal(event);
+        else if (action === 'diagnostics') downloadTranscriptionDiagnostics();
+    });
+}
+
 
 /**
 * Polls the backend for transcription job progress and updates the UI accordingly.
@@ -190,7 +284,7 @@ function pollProgress(jobId) {
     let errorCount = 0;
     const maxErrors = 5;
 
-    if (currentPollIntervalId) clearInterval(currentPollIntervalId);
+    if (currentPollIntervalId) clearTimeout(currentPollIntervalId);
 
     if (currentJobId !== jobId || !jobStartTime) {
         resetPollingState(); 
@@ -205,9 +299,20 @@ function pollProgress(jobId) {
         window.logger.info(mainPollLogPrefix, `Polling started for Transcription Job ID: ${jobId} at ${new Date(jobStartTime).toLocaleTimeString()}`);
     }
 
-    currentPollIntervalId = setInterval(async () => {
+    const scheduleNextPoll = delayMs => {
+        if (!jobIsFinishedOrErrored && currentJobId === jobId) {
+            currentPollIntervalId = setTimeout(pollOnce, delayMs);
+        }
+    };
+
+    const pollOnce = async () => {
+        currentPollIntervalId = null;
+        if (document.hidden) {
+            scheduleNextPoll(5000);
+            return;
+        }
         if (jobIsFinishedOrErrored) {
-             clearInterval(currentPollIntervalId);
+             clearTimeout(currentPollIntervalId);
              currentPollIntervalId = null;
              window.logger.info(mainPollLogPrefix, `Polling stopped for Job ID: ${jobId}. Reason: Transcription finished/errored/cancelled.`);
              setTimeout(() => {
@@ -220,7 +325,7 @@ function pollProgress(jobId) {
         }
 
         if (currentJobId !== jobId) {
-            clearInterval(currentPollIntervalId);
+            clearTimeout(currentPollIntervalId);
             currentPollIntervalId = null;
             window.logger.info(mainPollLogPrefix, `Polling stopped for Job ID: ${jobId}. Reason: New Job Started.`);
             return;
@@ -231,14 +336,13 @@ function pollProgress(jobId) {
                  headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken }
             });
 
-            errorCount = 0;
-
             if (response.status === 401) throw new Error('Authentication required (401)');
             if (response.status === 403) throw new Error('Access denied to job (403)');
             if (response.status === 404) throw new Error('Job not found (404)');
             if (!response.ok) throw new Error(`Polling failed: ${response.statusText} (${response.status})`);
 
             const jobData = await response.json();
+            errorCount = 0;
 
             if (!jobData || jobData.job_id !== currentJobId) {
                 window.logger.warn(mainPollLogPrefix, `Received invalid or mismatched progress data for job ID ${currentJobId}. Stopping poll.`);
@@ -256,7 +360,15 @@ function pollProgress(jobId) {
             const progressLog = jobData.progress || [];
             const now = Date.now();
             const elapsedTimeTotal = (now - jobStartTime) / 1000;
-            const isCancellationPending = window.cancellationRequestedForJobId === jobId;
+            const isTerminalStatus = ['finished', 'error', 'cancelled', 'interrupted'].includes(transcriptionStatus);
+            const isCancellationPending = !isTerminalStatus && (
+                window.cancellationRequestedForJobId === jobId || transcriptionStatus === 'cancelling'
+            );
+
+            if (currentPhase === 'waiting' && transcriptionStatus === 'processing') {
+                currentPhase = 'upload';
+                phaseStartTime = now;
+            }
 
             if (!jobIsFinishedOrErrored && !isCancellationPending && progressLog.length > lastMessageIndex + 1) {
                 const newMessages = progressLog.slice(lastMessageIndex + 1);
@@ -287,9 +399,11 @@ function pollProgress(jobId) {
             const transStartBoundary = progressBoundaries.transcriptionStart;
             if (isCancellationPending) {
                 progress = lastProgressValue; currentPhase = 'cancelling';
+            } else if (transcriptionStatus === 'pending') {
+                progress = 0; currentPhase = 'waiting';
             } else if (transcriptionStatus === 'finished') {
                 progress = 100; currentPhase = 'finished';
-            } else if (transcriptionStatus === 'error' || transcriptionStatus === 'cancelled') {
+            } else if (transcriptionStatus === 'error' || transcriptionStatus === 'cancelled' || transcriptionStatus === 'interrupted') {
                 progress = lastProgressValue; currentPhase = transcriptionStatus;
             } else {
                 const elapsedTimeInPhase = (now - phaseStartTime) / 1000;
@@ -312,7 +426,7 @@ function pollProgress(jobId) {
                 }
             }
             progress = Math.max(0, Math.min(100, Math.round(progress)));
-            jobIsFinishedOrErrored = !isCancellationPending && (transcriptionStatus === 'finished' || transcriptionStatus === 'error' || transcriptionStatus === 'cancelled');
+            jobIsFinishedOrErrored = isTerminalStatus;
             if (!jobIsFinishedOrErrored && !isCancellationPending) {
                 progress = Math.max(progress, lastProgressValue);
             }
@@ -328,6 +442,8 @@ function pollProgress(jobId) {
             let activityColor = ''; // Tailwind color class
             if (isCancellationPending) {
                 activityIcon = 'cancel'; activityMessage = 'Cancellation requested. Waiting for process to stop...'; activityColor = 'text-orange-500';
+            } else if (currentPhase === 'waiting') {
+                activityIcon = 'hourglass_empty'; activityMessage = 'Waiting for an available transcription slot...'; activityColor = 'text-blue-600';
             } else if (currentPhase === 'upload') {
                 activityIcon = 'cloud_upload'; activityMessage = `Uploading audio for ${escapeHtml(currentJobApiName)}...`;
             } else if (currentPhase === 'processing') {
@@ -336,10 +452,10 @@ function pollProgress(jobId) {
                 activityIcon = 'record_voice_over'; activityMessage = `Transcribing with ${escapeHtml(currentJobApiName)}...`;
             } else if (currentPhase === 'finished') {
                 activityIcon = 'check_circle'; activityMessage = 'Transcription completed successfully!'; activityColor = 'text-green-600';
-            } else if (currentPhase === 'error') {
+            } else if (currentPhase === 'error' || currentPhase === 'interrupted') {
                 const backendError = jobData.error_message || "An unknown error occurred.";
-                const translatedError = translateBackendErrorMessage(`ERROR: ${backendError}`);
-                activityIcon = translatedError.icon; activityMessage = `Error: ${translatedError.message}`; activityColor = translatedError.iconColorClass;
+                const actionableError = renderActionableError(backendError, jobData);
+                activityIcon = actionableError.icon; activityMessage = actionableError.message; activityColor = actionableError.iconColorClass;
             } else if (currentPhase === 'cancelled') {
                 activityIcon = 'cancel'; activityMessage = 'Transcription cancelled by user.'; activityColor = 'text-orange-500';
             }
@@ -347,7 +463,7 @@ function pollProgress(jobId) {
 
             if (transcriptionStatus === 'finished') {
                 if (currentPollIntervalId) {
-                    clearInterval(currentPollIntervalId);
+                    clearTimeout(currentPollIntervalId);
                     currentPollIntervalId = null;
                     window.logger.info(mainPollLogPrefix, `Polling stopped for Job ID: ${jobId}. Reason: Transcription finished.`);
                 }
@@ -392,9 +508,9 @@ function pollProgress(jobId) {
                 }
                 scheduleFinalUiReset(jobId);
 
-            } else if (transcriptionStatus === 'error') {
+            } else if (transcriptionStatus === 'error' || transcriptionStatus === 'interrupted') {
                 if (currentPollIntervalId) {
-                    clearInterval(currentPollIntervalId);
+                    clearTimeout(currentPollIntervalId);
                     currentPollIntervalId = null;
                 }
                 // M.toast({ html: 'Transcription failed. See status for details.', classes: 'red', displayLength: 8000 }); // Replaced
@@ -403,7 +519,7 @@ function pollProgress(jobId) {
 
             } else if (transcriptionStatus === 'cancelled') {
                 if (currentPollIntervalId) {
-                    clearInterval(currentPollIntervalId);
+                    clearTimeout(currentPollIntervalId);
                     currentPollIntervalId = null;
                 }
                 if (window.cancellationRequestedForJobId === jobId) {
@@ -451,9 +567,72 @@ function pollProgress(jobId) {
                 }
             }
         }
-    }, pollIntervalMs);
+
+        if (!jobIsFinishedOrErrored && currentJobId === jobId) {
+            if (errorCount === 0) {
+                const elapsedSeconds = (Date.now() - jobStartTime) / 1000;
+                pollIntervalMs = elapsedSeconds < 10 ? 1000 : (elapsedSeconds < 60 ? 2500 : 5000);
+            }
+            scheduleNextPoll(pollIntervalMs);
+        }
+    };
+
+    scheduleNextPoll(0);
 }
 window.pollProgress = pollProgress;
+
+async function resumeActiveTranscription() {
+    if (currentJobId || jobIsFinishedOrErrored) return;
+    try {
+        const response = await fetch('/api/transcriptions/active', {
+            headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken }
+        });
+        if (!response.ok) return;
+        const jobs = await response.json();
+        if (!Array.isArray(jobs) || jobs.length === 0) return;
+
+        const job = jobs[0];
+        const progressContainer = document.getElementById('progressContainer');
+        const transcribeBtn = document.getElementById('transcribeBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        if (progressContainer) progressContainer.style.display = 'block';
+        if (transcribeBtn) {
+            transcribeBtn.disabled = true;
+            transcribeBtn.textContent = 'PROCESSING...';
+        }
+        if (stopBtn) {
+            stopBtn.classList.remove('hidden');
+            stopBtn.disabled = job.status === 'cancelling';
+            if (job.status === 'cancelling') {
+                stopBtn.innerHTML = 'CANCELLING... <i class="material-icons right">hourglass_empty</i>';
+                window.cancellationRequestedForJobId = job.job_id;
+            }
+        }
+
+        jobFilename = job.filename || 'unknown';
+        jobApiName = window.API_NAME_MAP_FRONTEND?.[job.api_used] || job.api_used || 'unknown';
+        if (typeof calculateExpectedProgressData === 'function') {
+            const scenario = (job.file_size_mb || 0) > 25 ? 'parallel' : 'no_split';
+            calculateExpectedProgressData(job.api_used, job.file_size_mb || 0, job.audio_length_minutes || 0, scenario);
+        }
+        pollProgress(job.job_id);
+        currentJobIdForStop = job.job_id;
+        updateProgressActivity(
+            job.status === 'cancelling' ? 'cancel' : (job.status === 'pending' ? 'hourglass_empty' : 'record_voice_over'),
+            job.status === 'cancelling'
+                ? 'Cancellation requested. Waiting for process to stop...'
+                : job.status === 'pending'
+                ? 'Waiting for an available transcription slot...'
+                : `Reconnected to transcription of ${escapeHtml(job.filename || 'audio')}...`,
+            job.status === 'cancelling' ? 'text-orange-500' : 'text-blue-600'
+        );
+        window.logger.info(mainPollLogPrefix, `Reconnected to active transcription ${job.job_id}.`);
+    } catch (error) {
+        window.logger.warn(mainPollLogPrefix, 'Could not reconnect to an active transcription.', error);
+    }
+}
+window.resumeActiveTranscription = resumeActiveTranscription;
+document.addEventListener('DOMContentLoaded', resumeActiveTranscription);
 
 
 /**
@@ -524,7 +703,7 @@ window.resetTranscribeUI = resetTranscribeUI;
  */
 function resetPollingState() {
     if (currentPollIntervalId) {
-        clearInterval(currentPollIntervalId);
+        clearTimeout(currentPollIntervalId);
         currentPollIntervalId = null;
     }
     currentJobId = null;

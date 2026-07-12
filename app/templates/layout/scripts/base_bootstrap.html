@@ -1,6 +1,6 @@
 <!-- app/templates/layout/scripts/base_bootstrap.html -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         // Global variables available to other JS files
         window.csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');

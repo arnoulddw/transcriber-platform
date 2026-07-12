@@ -72,7 +72,7 @@
     {{ super() }}
     {# MODIFIED: Explicitly load admin.js #}
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
-    <script>
+    <script nonce="{{ csp_nonce }}">
         const templatePastelColors = [
             "#ffffff", "#ffd1dc", "#aec6cf", "#cfffd1", "#fffacd", "#e6e6fa", "#ffb347"
         ];

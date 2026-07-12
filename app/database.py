@@ -12,6 +12,18 @@ from typing import Optional # <<< ADDED THIS IMPORT
 # Requires app context during initialization to get config, so we delay actual pool creation.
 db_pool: Optional[pooling.MySQLConnectionPool] = None
 
+
+def create_standalone_connection(mysql_config: dict):
+    """Create a non-pooled connection for connection-scoped MySQL locks."""
+    return mysql.connector.connect(
+        host=mysql_config['host'],
+        port=mysql_config['port'],
+        user=mysql_config['user'],
+        password=mysql_config['password'],
+        database=mysql_config['database'],
+        auth_plugin='mysql_native_password',
+    )
+
 def init_pool(app: Flask) -> None:
     """Initializes the MySQL connection pool."""
     global db_pool

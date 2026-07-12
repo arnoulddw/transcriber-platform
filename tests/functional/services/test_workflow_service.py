@@ -76,7 +76,7 @@ def test_start_workflow_success(app, workflow_user):
     ) as mock_create, patch(
         "app.services.workflow_service.threading.Thread"
     ) as mock_thread, patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
@@ -117,7 +117,7 @@ def test_start_workflow_uses_saved_prompt(app, workflow_user):
     ) as mock_create, patch(
         "app.services.workflow_service.threading.Thread"
     ) as mock_thread, patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
@@ -141,7 +141,7 @@ def test_start_workflow_uses_saved_prompt(app, workflow_user):
 def test_start_workflow_invalid_prompt_id(app, workflow_user):
     transcription_id = _create_finished_transcription(app, workflow_user.id)
     with patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
@@ -159,7 +159,7 @@ def test_start_workflow_invalid_prompt_id(app, workflow_user):
 def test_start_workflow_rejects_empty_prompt(app, workflow_user):
     transcription_id = _create_finished_transcription(app, workflow_user.id)
     with patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
@@ -188,7 +188,7 @@ def test_start_workflow_detects_pending_operation(app, workflow_user):
         )
 
     with patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
@@ -216,7 +216,7 @@ def test_start_workflow_requires_finished_transcription(app, workflow_user):
         )
 
     with patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
@@ -232,7 +232,7 @@ def test_start_workflow_requires_finished_transcription(app, workflow_user):
 
 def test_start_workflow_transcription_not_found(app, workflow_user):
     with patch(
-        "app.services.workflow_service.check_usage_limits",
+        "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",

@@ -2,6 +2,7 @@ import uuid
 from unittest.mock import patch
 
 from app.models import transcription as transcription_model
+from app.models import transcription_utils
 from app.models.user import get_user_by_username
 
 
@@ -61,6 +62,64 @@ def test_get_progress_not_found(logged_in_client_with_permissions):
     assert response.status_code == 404
 
 
+def test_get_active_transcriptions_returns_unfinished_jobs(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    assert user is not None
+    pending_job_id = _create_transcription(app, user.id, status="pending")
+    processing_job_id = _create_transcription(app, user.id, status="processing")
+    _create_transcription(app, user.id, status="finished")
+
+    response = logged_in_client_with_permissions.get("/api/transcriptions/active")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert [job["job_id"] for job in payload] == [processing_job_id, pending_job_id]
+    assert all(job["status"] in {"pending", "processing", "cancelling"} for job in payload)
+
+
+def test_interrupted_job_is_a_finished_error_state(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    assert user is not None
+    job_id = _create_transcription(app, user.id, status="interrupted")
+    with app.app_context():
+        cursor = transcription_model.get_cursor()
+        cursor.execute(
+            "UPDATE transcriptions SET error_message=%s WHERE id=%s",
+            ("WORKER_INTERRUPTED: restart", job_id),
+        )
+        transcription_model.get_db().commit()
+
+    response = logged_in_client_with_permissions.get(f"/api/progress/{job_id}")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["finished"] is True
+    assert payload["status"] == "interrupted"
+    assert payload["error_message"].startswith("WORKER_INTERRUPTED")
+
+    active_response = logged_in_client_with_permissions.get("/api/transcriptions/active")
+    assert active_response.status_code == 200
+    assert job_id in [job["job_id"] for job in active_response.get_json()]
+
+
+def test_marks_abandoned_jobs_interrupted(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    assert user is not None
+    job_id = _create_transcription(app, user.id, status="processing")
+
+    with app.app_context():
+        count = transcription_model.mark_active_jobs_interrupted([job_id])
+        job = transcription_model.get_transcription_by_id(job_id, user.id)
+
+    assert count >= 1
+    assert job is not None
+    assert job["status"] == "interrupted"
+    assert "WORKER_INTERRUPTED" in job["error_message"]
+
+
 def test_cancel_transcription_success(app, logged_in_client_with_permissions):
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
@@ -100,6 +159,35 @@ def test_get_transcriptions_list(app, logged_in_client_with_permissions):
     data = response.get_json()
     assert isinstance(data, list)
     assert len(data) >= 2
+    assert all("transcription_text" not in item for item in data)
+    assert all("transcription_preview" in item for item in data)
+
+
+def test_get_transcription_content_loads_full_text_on_demand(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    job_id = _create_transcription(app, user.id)
+
+    response = logged_in_client_with_permissions.get(
+        f"/api/transcriptions/{job_id}/content"
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["transcription_text"] == "Transcript text"
+
+
+def test_get_transcription_content_hides_deleted_items(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    job_id = _create_transcription(app, user.id)
+    assert logged_in_client_with_permissions.delete(
+        f"/api/transcriptions/{job_id}"
+    ).status_code == 200
+
+    response = logged_in_client_with_permissions.get(
+        f"/api/transcriptions/{job_id}/content"
+    )
+    assert response.status_code == 404
 
 
 def test_delete_transcription_success(app, logged_in_client_with_permissions):
@@ -277,3 +365,32 @@ def test_get_workflow_details(app, logged_in_client_with_permissions):
 def _get_permissions_user_id(client):
     with client.application.app_context():
         return get_user_by_username("testuser_permissions").id
+
+
+def test_history_body_search_uses_fulltext_and_returns_preview(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+        assert user is not None
+        matching_id = _create_transcription(app, user.id)
+        other_id = _create_transcription(app, user.id)
+        cursor = transcription_model.get_cursor()
+        cursor.execute(
+            "UPDATE transcriptions SET transcription_text=%s WHERE id=%s",
+            ("A quasarvelocity marker appears in this transcript.", matching_id),
+        )
+        cursor.execute(
+            "UPDATE transcriptions SET transcription_text=%s WHERE id=%s",
+            ("Completely unrelated content.", other_id),
+        )
+        transcription_model.get_db().commit()
+
+        assert transcription_utils.count_visible_user_transcriptions(
+            user.id, search_query="quasarvelocity"
+        ) == 1
+        results = transcription_utils.get_paginated_transcriptions(
+            user.id, 1, 10, search_query="quasarvelocity"
+        )
+
+    assert [item["id"] for item in results] == [matching_id]
+    assert results[0]["transcription_preview"].startswith("A quasarvelocity")
+    assert "transcription_text" not in results[0]

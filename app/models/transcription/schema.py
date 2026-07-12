@@ -67,7 +67,8 @@ def init_db_command() -> None:
                 INDEX idx_transcription_language (detected_language),
                 INDEX idx_transcription_user_hidden_created (user_id, is_hidden_from_user, created_at),
                 INDEX idx_transcription_hidden_date (is_hidden_from_user, hidden_date),
-                INDEX idx_title_generation_status (title_generation_status)
+                INDEX idx_title_generation_status (title_generation_status),
+                FULLTEXT INDEX ftx_transcription_history (filename, generated_title, transcription_text)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         '''
         # --- END MODIFIED ---
@@ -229,6 +230,16 @@ def init_db_command() -> None:
             if not idx_exists:
                 logger.info(f"Adding index '{idx_name}' to 'transcriptions' table.")
                 cursor.execute(f"ALTER TABLE transcriptions ADD INDEX {idx_name} ({col_def})")
+
+        cursor.execute("SHOW INDEX FROM transcriptions WHERE Key_name = 'ftx_transcription_history'")
+        fulltext_exists = cursor.fetchone()
+        cursor.fetchall()
+        if not fulltext_exists:
+            logger.info("Adding full-text history search index.")
+            cursor.execute(
+                "ALTER TABLE transcriptions ADD FULLTEXT INDEX "
+                "ftx_transcription_history (filename, generated_title, transcription_text)"
+            )
 
         # Normalize timestamp columns
         cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'created_at'")

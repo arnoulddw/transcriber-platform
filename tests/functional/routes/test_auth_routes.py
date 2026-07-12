@@ -163,7 +163,10 @@ def test_logout_successfully(client, clean_db):
             'password': 'password123'
         }, follow_redirects=True)
 
-        response = client.get(url_for('auth.logout'), follow_redirects=True)
+        get_response = client.get(url_for('auth.logout'), follow_redirects=False)
+        assert get_response.status_code == 405
+
+        response = client.post(url_for('auth.logout'), follow_redirects=True)
     
         assert response.status_code == 200
         assert b'You have been logged out' in response.data

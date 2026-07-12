@@ -282,8 +282,11 @@ def count_visible_user_transcriptions(user_id: int, search_query: Optional[str] 
     params: list = [user_id, 'finished']
     if search_query and search_query.strip():
         pattern = f"%{search_query.strip()}%"
-        sql += ' AND (filename LIKE %s OR generated_title LIKE %s OR transcription_text LIKE %s)'
-        params.extend([pattern, pattern, pattern])
+        sql += (
+            ' AND (filename LIKE %s OR generated_title LIKE %s '
+            'OR MATCH(filename, generated_title, transcription_text) AGAINST (%s IN NATURAL LANGUAGE MODE))'
+        )
+        params.extend([pattern, pattern, search_query.strip()])
     cursor = get_cursor()
     count = 0
     try:
@@ -324,8 +327,12 @@ def get_paginated_transcriptions(
     search_params: tuple = ()
     if search_query and search_query.strip():
         pattern = f"%{search_query.strip()}%"
-        search_clause = " AND (t.filename LIKE %s OR t.generated_title LIKE %s OR t.transcription_text LIKE %s)"
-        search_params = (pattern, pattern, pattern)
+        search_clause = (
+            " AND (t.filename LIKE %s OR t.generated_title LIKE %s "
+            "OR MATCH(t.filename, t.generated_title, t.transcription_text) "
+            "AGAINST (%s IN NATURAL LANGUAGE MODE))"
+        )
+        search_params = (pattern, pattern, search_query.strip())
 
     sql = f"""
         WITH RankedOperations AS (
@@ -339,7 +346,16 @@ def get_paginated_transcriptions(
               AND lo.status IN ('finished', 'error')
         )
         SELECT
-            t.*,
+            t.id, t.user_id, t.filename, t.generated_title, t.title_generation_status,
+            t.file_size_mb, t.audio_length_minutes, t.detected_language, t.api_used,
+            t.created_at, t.status, t.context_prompt_used, t.downloaded,
+            t.is_hidden_from_user, t.hidden_date, t.hidden_reason,
+            t.llm_operation_status, t.pending_workflow_prompt_text,
+            t.pending_workflow_prompt_title, t.pending_workflow_prompt_color,
+            t.pending_workflow_origin_prompt_id, t.public_api_invocation,
+            t.cost, t.is_pinned,
+            LEFT(COALESCE(t.transcription_text, ''), 4000) AS transcription_preview,
+            (CHAR_LENGTH(COALESCE(t.transcription_text, '')) > 4000) AS transcription_has_more,
             ro.llm_operation_id
         FROM transcriptions t
         LEFT JOIN RankedOperations ro ON t.id = ro.transcription_id AND ro.rn = 1

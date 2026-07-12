@@ -99,7 +99,7 @@
 
 {% block admin_scripts %}
     {{ super() }}
-    <script>
+    <script nonce="{{ csp_nonce }}">
         document.addEventListener('DOMContentLoaded', function() {
             const deleteForms = document.querySelectorAll('.delete-role-form');
             deleteForms.forEach(form => {

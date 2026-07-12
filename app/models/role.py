@@ -6,11 +6,16 @@ import os
 import threading
 import time
 from flask import current_app
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 
 from mysql.connector import Error as MySQLError
 from app.database import get_db, get_cursor
+
+
+class UsageReservationError(RuntimeError):
+    """Raised when durable quota state cannot be checked or reserved."""
+
 
 # --- Simple in-process TTL cache for roles (they change very rarely) ---
 _ROLE_CACHE_TTL = 300  # seconds
@@ -555,6 +560,84 @@ def increment_workflow_usage(user_id: int) -> None:
         # The cursor is managed by the application context, so we don't close it here.
         pass
 
+def reserve_usage_if_allowed(
+    user_id: int,
+    role: Role,
+    cost_to_add: float = 0.0,
+    minutes_to_add: float = 0.0,
+    workflows_to_add: int = 0,
+) -> Tuple[bool, str]:
+    """Atomically check role quotas and reserve usage under a per-user row lock."""
+    now = datetime.now(timezone.utc)
+    day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    week_start = day_start - timedelta(days=day_start.weekday())
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+        if not cursor.fetchone():
+            connection.rollback()
+            return False, "User not found."
+
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN date >= %s THEN cost ELSE 0 END), 0) AS daily_cost,
+                COALESCE(SUM(CASE WHEN date >= %s THEN cost ELSE 0 END), 0) AS weekly_cost,
+                COALESCE(SUM(CASE WHEN date >= %s THEN cost ELSE 0 END), 0) AS monthly_cost,
+                COALESCE(SUM(CASE WHEN date >= %s THEN minutes ELSE 0 END), 0) AS daily_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN minutes ELSE 0 END), 0) AS weekly_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN minutes ELSE 0 END), 0) AS monthly_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS daily_workflows,
+                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS weekly_workflows,
+                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS monthly_workflows
+            FROM user_usage WHERE user_id = %s
+            """,
+            (
+                day_start, week_start, month_start,
+                day_start, week_start, month_start,
+                day_start, week_start, month_start,
+                user_id,
+            ),
+        )
+        usage = cursor.fetchone() or {}
+        checks = (
+            (role.limit_daily_cost, float(usage.get("daily_cost") or 0) + cost_to_add),
+            (role.limit_weekly_cost, float(usage.get("weekly_cost") or 0) + cost_to_add),
+            (role.limit_monthly_cost, float(usage.get("monthly_cost") or 0) + cost_to_add),
+            (role.limit_daily_minutes, float(usage.get("daily_minutes") or 0) + minutes_to_add),
+            (role.limit_weekly_minutes, float(usage.get("weekly_minutes") or 0) + minutes_to_add),
+            (role.limit_monthly_minutes, float(usage.get("monthly_minutes") or 0) + minutes_to_add),
+            (role.limit_daily_workflows, int(usage.get("daily_workflows") or 0) + workflows_to_add),
+            (role.limit_weekly_workflows, int(usage.get("weekly_workflows") or 0) + workflows_to_add),
+            (role.limit_monthly_workflows, int(usage.get("monthly_workflows") or 0) + workflows_to_add),
+        )
+        if any(limit > 0 and projected > limit for limit, projected in checks):
+            connection.rollback()
+            return False, "You have reached your fair use limit."
+
+        cursor.execute(
+            """
+            INSERT INTO user_usage (user_id, date, cost, minutes, workflows)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                cost = cost + VALUES(cost),
+                minutes = minutes + VALUES(minutes),
+                workflows = workflows + VALUES(workflows)
+            """,
+            (user_id, day_start, cost_to_add, minutes_to_add, workflows_to_add),
+        )
+        connection.commit()
+        return True, "Usage reserved."
+    except Exception as exc:
+        connection.rollback()
+        logging.exception("[DB:Usage:Reserve:User:%s] Atomic usage reservation failed.", user_id)
+        raise UsageReservationError("Unable to verify usage limits right now.") from exc
+    finally:
+        cursor.close()
+
+
 def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
     """
     Updates an existing role in the database.
@@ -676,7 +759,7 @@ def init_user_usage_table() -> None:
                 user_id INT NOT NULL,
                 date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 cost DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
-                minutes INT NOT NULL DEFAULT 0,
+                minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                 workflows INT NOT NULL DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 UNIQUE KEY uk_user_date (user_id, date)
@@ -690,6 +773,14 @@ def init_user_usage_table() -> None:
         if date_col and 'timestamp' not in date_type:
             logging.info(f"{log_prefix} Converting 'date' column on 'user_usage' table to TIMESTAMP.")
             cursor.execute("ALTER TABLE user_usage MODIFY COLUMN date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+        cursor.execute("SHOW COLUMNS FROM user_usage LIKE 'minutes'")
+        minutes_col = cursor.fetchone()
+        cursor.fetchall()
+        minutes_raw_type = minutes_col.get('Type') if isinstance(minutes_col, dict) else (minutes_col[1] if minutes_col else "")
+        minutes_type = str(minutes_raw_type or "").lower()
+        if minutes_col and 'decimal' not in minutes_type:
+            logging.info(f"{log_prefix} Converting user_usage.minutes to DECIMAL for accurate quota accounting.")
+            cursor.execute("ALTER TABLE user_usage MODIFY COLUMN minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00")
         get_db().commit()
         logging.info(f"{log_prefix} 'user_usage' table schema verified/initialized.")
     except MySQLError as err:

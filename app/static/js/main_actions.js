@@ -314,11 +314,17 @@ async function handleTranscribeSubmit() {
             window.showNotification(`Error: ${window.escapeHtml(errorMessage)}`, 'error', 8000, false);
         }
 
-        let translatedError = { message: `Error: ${window.escapeHtml(errorMessage)}`, icon: 'error', iconColorClass: 'red-text' };
-        if (typeof window.translateBackendErrorMessage === 'function') {
+        let translatedError = { message: `Error: ${window.escapeHtml(errorMessage)}`, icon: 'error', iconColorClass: 'text-red-600' };
+        if (typeof window.renderActionableError === 'function') {
+            translatedError = window.renderActionableError(errorMessage, {
+                status: 'error',
+                api_used: apiSelect?.value,
+                filename: file?.name,
+            });
+        } else if (typeof window.translateBackendErrorMessage === 'function') {
             translatedError = window.translateBackendErrorMessage(`ERROR: ${errorMessage}`);
         } else {
-            actionsLogger.warn("translateBackendErrorMessage function not found.");
+            actionsLogger.warn("Error presentation helpers not found.");
         }
         if (typeof window.updateProgressActivity === 'function') {
              window.updateProgressActivity(translatedError.icon, translatedError.message, translatedError.iconColorClass);

@@ -8,6 +8,8 @@ import logging
 import math
 import subprocess
 import json
+import glob
+import time
 from typing import List, Callable, Optional, Tuple
 
 # --- Configuration Constants ---
@@ -131,30 +133,58 @@ def _parse_audio_bitrate_bytes_per_second(bitrate: str) -> int:
     return max(1, bits_per_second // 8)
 
 
-def _export_audio_chunk_ffmpeg(source_path: str, output_path: str, start_ms: int, duration_ms: int) -> None:
-    """Export a single compressed audio chunk without loading the source into Python memory."""
+def _segment_audio_ffmpeg(
+    source_path: str,
+    output_pattern: str,
+    segment_seconds: float,
+    cancellation_check: Optional[Callable[[], bool]] = None,
+) -> None:
+    """Create every compressed audio chunk in one controlled FFmpeg pass."""
     command = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel", "error",
         "-y",
-        "-ss", f"{start_ms / 1000:.3f}",
-        "-t", f"{duration_ms / 1000:.3f}",
         "-i", source_path,
         "-vn",
         "-ac", "1",
         "-ar", str(CHUNK_AUDIO_SAMPLE_RATE),
         "-b:a", CHUNK_AUDIO_BITRATE,
-        "-f", "mp3",
-        output_path,
+        "-f", "segment",
+        "-segment_time", f"{segment_seconds:.3f}",
+        "-segment_start_number", "1",
+        "-reset_timestamps", "1",
+        output_pattern,
     ]
-    subprocess.run(command, capture_output=True, text=True, check=True)
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        while process.poll() is None:
+            if cancellation_check and cancellation_check():
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                raise InterruptedError("Audio splitting cancelled.")
+            time.sleep(0.25)
+        stdout, stderr = process.communicate()
+        if process.returncode:
+            raise subprocess.CalledProcessError(
+                process.returncode, command, output=stdout, stderr=stderr
+            )
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        raise
 
 
 # --- Core File Operations ---
 
 def split_audio_file(file_path: str, temp_dir: str,
                      progress_callback: Optional[Callable[[str, bool], None]] = None,
+                     cancellation_check: Optional[Callable[[], bool]] = None,
                      chunk_length_ms: int = DEFAULT_CHUNK_LENGTH_MS,
                      target_chunk_size_bytes: int = TARGET_CHUNK_SIZE_BYTES
                      ) -> List[str]:
@@ -176,7 +206,6 @@ def split_audio_file(file_path: str, temp_dir: str,
     """
     base_name_orig = os.path.basename(file_path)
     log_prefix = f"[SERVICE:File:Split:{base_name_orig}]"
-    was_cancelled = False # Flag to track cancellation
 
     def report_progress(message: str, is_error: bool = False):
         # This helper now only logs and calls the external callback.
@@ -257,53 +286,54 @@ def split_audio_file(file_path: str, temp_dir: str,
          logging.error(f"{log_prefix} Error reporting split progress: {e}", exc_info=True)
          # Continue processing, but log the error
 
-    chunk_index = 1
-    for i in range(0, total_length_ms, effective_chunk_length_ms):
-        try:
-            # <<< MODIFICATION: Check cancellation before processing each chunk >>>
-            if progress_callback: progress_callback("Checking cancellation before chunk export...", False) # Implicit check
+    output_pattern = os.path.join(temp_dir, f"{base_name_no_ext}_chunk_%03d.mp3")
+    try:
+        # The callback performs the existing cancellation check before FFmpeg starts.
+        if progress_callback:
+            progress_callback("Checking cancellation before audio splitting...", False)
+        logging.debug(
+            f"{log_prefix} Segmenting source into approximately {num_chunks} chunks in one FFmpeg pass."
+        )
+        _segment_audio_ffmpeg(
+            file_path,
+            output_pattern,
+            effective_chunk_length_ms / 1000,
+            cancellation_check,
+        )
+        chunk_files = sorted(glob.glob(os.path.join(temp_dir, f"{base_name_no_ext}_chunk_*.mp3")))
+        if not chunk_files:
+            raise RuntimeError("FFmpeg completed without creating audio chunks.")
 
-            start_ms = i
-            end_ms = min(i + effective_chunk_length_ms, total_length_ms)
-            if start_ms >= end_ms: continue
-
-            chunk_duration_ms = end_ms - start_ms
-            chunk_filename_base = f"{base_name_no_ext}_chunk_{chunk_index}.mp3"
-            chunk_filename_full = os.path.join(temp_dir, chunk_filename_base)
-
-            logging.debug(f"{log_prefix} Exporting chunk {chunk_index}/{num_chunks} to '{chunk_filename_base}'...")
-            _export_audio_chunk_ffmpeg(file_path, chunk_filename_full, start_ms, chunk_duration_ms)
-            chunk_files.append(chunk_filename_full)
-
+        for chunk_index, chunk_filename_full in enumerate(chunk_files, start=1):
             actual_size = os.path.getsize(chunk_filename_full)
-            logging.debug(f"{log_prefix} Actual size of chunk {chunk_index}: {actual_size / (1024*1024):.2f}MB")
+            logging.debug(
+                f"{log_prefix} Actual size of chunk {chunk_index}: "
+                f"{actual_size / (1024*1024):.2f}MB"
+            )
             if actual_size > OPENAI_MAX_FILE_SIZE_BYTES:
-                logging.warning(f"{log_prefix} Chunk {chunk_index} size ({actual_size / (1024*1024):.2f}MB) EXCEEDS API limit ({OPENAI_MAX_FILE_SIZE_BYTES / (1024*1024):.1f}MB)! API call may fail.")
+                logging.warning(
+                    f"{log_prefix} Chunk {chunk_index} size "
+                    f"({actual_size / (1024*1024):.2f}MB) exceeds the API limit."
+                )
                 report_progress(f"Warning: Chunk {chunk_index} size may exceed API limit.", False)
-
-            report_progress(f"Created {ordinal(chunk_index)} audio chunk of {num_chunks}", False)
-            chunk_index += 1
-
+            report_progress(f"Created {ordinal(chunk_index)} audio chunk of {len(chunk_files)}", False)
+    except InterruptedError:
+        logging.info(f"{log_prefix} Cancellation detected during audio splitting.")
+        remove_files(chunk_files)
+        remove_files(glob.glob(os.path.join(temp_dir, f"{base_name_no_ext}_chunk_*.mp3")))
+        return []
+    except Exception as e:
+        msg = f"ERROR: Failed splitting audio: {e}"
+        try:
+            report_progress(msg, True)
         except InterruptedError:
-            # <<< MODIFICATION: Catch InterruptedError from export or report_progress >>>
-            logging.info(f"{log_prefix} Cancellation detected during chunk {chunk_index} processing. Stopping split.")
-            was_cancelled = True
-            break # Exit the loop immediately
-        except Exception as e:
-            # <<< MODIFICATION: Catch other errors during export/report >>>
-            msg = f"ERROR: Failed processing audio chunk {chunk_index}: {e}"
-            try: report_progress(msg, True)
-            except InterruptedError: logging.info(f"{log_prefix} Cancellation detected while reporting chunk error."); was_cancelled = True; break
-            except Exception: pass
-            logging.exception(f"{log_prefix} Error processing chunk {chunk_index}:")
-            remove_files(chunk_files) # Clean up already created chunks
-            return [] # Return empty list on error
-
-    # --- After the loop ---
-    if was_cancelled:
-        logging.info(f"{log_prefix} Splitting process cancelled after processing {chunk_index-1} chunks.")
-        remove_files(chunk_files) # Clean up any chunks created before cancellation
-        return [] # Return empty list to signal cancellation
+            pass
+        except Exception:
+            pass
+        logging.exception(f"{log_prefix} Error splitting audio:")
+        remove_files(chunk_files)
+        remove_files(glob.glob(os.path.join(temp_dir, f"{base_name_no_ext}_chunk_*.mp3")))
+        return []
 
     try:
         report_progress(f"Finished splitting into {len(chunk_files)} chunks.", False)

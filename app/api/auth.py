@@ -168,7 +168,7 @@ def register():
     return render_template('login.html', title='Register', form=form)
 
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 @login_required # User must be logged in to log out
 def logout():
     """Logs the current user out."""

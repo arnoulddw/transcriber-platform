@@ -70,7 +70,10 @@
                                                 {% if current_user.role and (current_user.role.allow_api_key_management or is_admin_user or user_permissions.allow_workflows) %}
                                                 <div class="border-t border-border-default my-1" role="separator"></div>
                                                 {% endif %}
-                                                <a href="{{ url_for('auth.logout') }}" class="flex items-center px-4 py-2 text-sm text-text-muted hover:bg-surface-muted hover:text-text-strong" role="menuitem" tabindex="-1"><i class="material-icons tiny text-text-muted mr-2">exit_to_app</i>{{ _('Logout') }}</a>
+                                                <form action="{{ url_for('auth.logout') }}" method="post">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <button type="submit" class="w-full flex items-center px-4 py-2 text-sm text-text-muted hover:bg-surface-muted hover:text-text-strong" role="menuitem" tabindex="-1"><i class="material-icons tiny text-text-muted mr-2">exit_to_app</i>{{ _('Logout') }}</button>
+                                                </form>
                                             </div>
                                         </div>
                                     </div>
@@ -152,9 +155,12 @@
                         </a>
                         {% endif %}
                         <div class="border-t border-border-default my-2"></div>
-                        <a href="{{ url_for('auth.logout') }}" class="flex items-center px-3 py-2 text-text-muted hover:bg-surface-muted hover:text-text-strong rounded-md text-sm font-medium">
-                            <i class="material-icons mr-3 text-text-muted">exit_to_app</i>{{ _('Logout') }}
-                        </a>
+                        <form action="{{ url_for('auth.logout') }}" method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="w-full flex items-center px-3 py-2 text-text-muted hover:bg-surface-muted hover:text-text-strong rounded-md text-sm font-medium">
+                                <i class="material-icons mr-3 text-text-muted">exit_to_app</i>{{ _('Logout') }}
+                            </button>
+                        </form>
                     </nav>
                 {% else %}
                     <nav class="mt-2 space-y-1">

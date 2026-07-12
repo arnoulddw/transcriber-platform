@@ -190,7 +190,7 @@ def app():
         # Drop all tables first to ensure clean state
         cursor = get_db().cursor()
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
+        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcription_job_leases, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         get_db().commit()
         
@@ -208,7 +208,7 @@ def app():
         from app.services.admin_metrics_service import invalidate_metrics_cache
         cursor = get_db().cursor()
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
+        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcription_job_leases, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         get_db().commit()
         # Clear in-memory caches to prevent bleed into the next test's app instance.

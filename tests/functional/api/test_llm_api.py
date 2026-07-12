@@ -32,7 +32,7 @@ def mock_llm_dependencies(monkeypatch):
 
 # --- Tests for /generate endpoint ---
 
-def test_generate_llm_text_success(logged_in_client, mock_llm_dependencies, app):
+def test_generate_llm_text_success(logged_in_client_with_permissions, mock_llm_dependencies, app):
     """
     GIVEN a logged-in user and a valid prompt
     WHEN the /api/llm/generate endpoint is called
@@ -42,7 +42,7 @@ def test_generate_llm_text_success(logged_in_client, mock_llm_dependencies, app)
         # The API route checks config directly, so we must set it
         app.config['OPENAI_API_KEY'] = 'test_key'
 
-    response = logged_in_client.post('/api/llm/generate', json={'prompt': 'Hello, world!', 'provider': 'openai'})
+    response = logged_in_client_with_permissions.post('/api/llm/generate', json={'prompt': 'Hello, world!', 'provider': 'openai'})
 
     assert response.status_code == 200
     json_data = response.get_json()
@@ -50,13 +50,13 @@ def test_generate_llm_text_success(logged_in_client, mock_llm_dependencies, app)
     # The API route calls the service, so this mock should be called
     mock_llm_dependencies['llm_service'].generate_text_via_llm.assert_called_once()
 
-def test_generate_llm_text_no_prompt(logged_in_client):
+def test_generate_llm_text_no_prompt(logged_in_client_with_permissions):
     """
     GIVEN a logged-in user
     WHEN the /api/llm/generate endpoint is called with no prompt
     THEN it should return a 400 Bad Request.
     """
-    response = logged_in_client.post('/api/llm/generate', json={})
+    response = logged_in_client_with_permissions.post('/api/llm/generate', json={})
     assert response.status_code == 400
     json_data = response.get_json()
     assert 'error' in json_data
@@ -71,7 +71,12 @@ def test_generate_llm_text_requires_login(client):
     response = client.post('/api/llm/generate', json={'prompt': 'test'})
     assert response.status_code == 401
 
-def test_generate_llm_text_configuration_error(logged_in_client, mock_llm_dependencies, app):
+def test_generate_llm_text_requires_workflow_permission(logged_in_client):
+    response = logged_in_client.post('/api/llm/generate', json={'prompt': 'test', 'provider': 'openai'})
+    assert response.status_code == 403
+
+
+def test_generate_llm_text_configuration_error(logged_in_client_with_permissions, mock_llm_dependencies, app):
     """
     GIVEN the required API key is not in the config
     WHEN the /api/llm/generate endpoint is called
@@ -82,14 +87,14 @@ def test_generate_llm_text_configuration_error(logged_in_client, mock_llm_depend
     with app.app_context():
         app.config['OPENAI_API_KEY'] = None
 
-    response = logged_in_client.post('/api/llm/generate', json={'prompt': 'test', 'provider': 'openai'})
+    response = logged_in_client_with_permissions.post('/api/llm/generate', json={'prompt': 'test', 'provider': 'openai'})
 
     assert response.status_code == 400
     json_data = response.get_json()
     assert 'error' in json_data
     assert "API key for LLM provider 'openai' is not configured" in json_data['error']
 
-def test_generate_llm_text_api_error(logged_in_client, mock_llm_dependencies, app):
+def test_generate_llm_text_api_error(logged_in_client_with_permissions, mock_llm_dependencies, app):
     """
     GIVEN the llm_service raises an LlmApiError
     WHEN the /api/llm/generate endpoint is called
@@ -102,7 +107,7 @@ def test_generate_llm_text_api_error(logged_in_client, mock_llm_dependencies, ap
         
     mock_llm_dependencies['llm_service'].generate_text_via_llm.side_effect = LlmApiError("API failed")
 
-    response = logged_in_client.post('/api/llm/generate', json={'prompt': 'test', 'provider': 'openai'})
+    response = logged_in_client_with_permissions.post('/api/llm/generate', json={'prompt': 'test', 'provider': 'openai'})
 
     assert response.status_code == 500
     json_data = response.get_json()

@@ -101,19 +101,30 @@ def test_change_password_invalid_current_password(logged_in_client_with_permissi
 
 # --- Test API Key Management Endpoints ---
 
-def test_get_api_key_status(logged_in_client):
+def test_get_api_key_status_requires_management_permission(logged_in_client):
     """
     GIVEN a logged-in user
     WHEN the '/api/user/keys' endpoint is requested (GET)
     THEN check that the response is valid and contains the API key status.
     """
     response = logged_in_client.get(url_for('user_settings.get_api_key_status'))
+    assert response.status_code == 403
+
+
+def test_get_api_key_status(logged_in_client_with_permissions):
+    response = logged_in_client_with_permissions.get(url_for('user_settings.get_api_key_status'))
     assert response.status_code == 200
     json_data = response.get_json()
-    assert 'openai' in json_data
-    assert 'assemblyai' in json_data
-    assert 'gemini' in json_data
-    assert json_data['openai'] is False  # Initially not set
+    assert {'openai', 'assemblyai', 'gemini'} <= set(json_data)
+    assert json_data['openai'] is False
+
+
+def test_api_key_mutations_require_management_permission(logged_in_client):
+    key_data = {'service': 'openai', 'api_key': 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
+    save_response = logged_in_client.post(url_for('user_settings.save_api_key'), json=key_data)
+    delete_response = logged_in_client.delete(url_for('user_settings.delete_api_key', service='openai'))
+    assert save_response.status_code == 403
+    assert delete_response.status_code == 403
 
 def test_save_and_delete_api_key(logged_in_client_with_permissions):
     """

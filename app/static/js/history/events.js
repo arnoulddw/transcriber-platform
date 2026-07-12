@@ -8,6 +8,31 @@
     const titlePollAttempts = History.state.titlePollAttempts;
     const { updateHistoryEmptyState } = History.ui;
 
+async function getFullTranscript(transcriptionItem) {
+    if (!transcriptionItem) return '';
+    if (transcriptionItem.dataset.contentLoaded === 'true') {
+        return transcriptionItem.dataset.fullText || '';
+    }
+    if (!transcriptionItem._contentPromise) {
+        const transcriptionId = transcriptionItem.dataset.transcriptionId;
+        transcriptionItem._contentPromise = fetch(`/api/transcriptions/${transcriptionId}/content`, {
+            headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken || '' }
+        }).then(async response => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Unable to load transcript.');
+            const text = data.transcription_text || '';
+            transcriptionItem.dataset.fullText = text;
+            transcriptionItem.dataset.contentLoaded = 'true';
+            transcriptionItem.dataset.hasMore = 'false';
+            return text;
+        }).finally(() => {
+            transcriptionItem._contentPromise = null;
+        });
+    }
+    return transcriptionItem._contentPromise;
+}
+History.getFullTranscript = getFullTranscript;
+
 document.addEventListener('DOMContentLoaded', function() {
     const clearAllBtn = document.getElementById('clearAllBtn');
     if (clearAllBtn) { clearAllBtn.addEventListener('click', window.handleClearAll); window.logger.debug(historyLogPrefix, "Clear All button listener attached."); }
@@ -16,28 +41,29 @@ document.addEventListener('DOMContentLoaded', function() {
     const historyList = document.getElementById('transcriptionHistory');
     updateHistoryEmptyState();
     if (historyList) {
-        historyList.addEventListener('click', function(event) {
+        historyList.addEventListener('click', async function(event) {
             const copyBtn = event.target.closest('.transcript-panel .copy-btn');
             const downloadBtn = event.target.closest('.transcript-panel .download-btn');
             const pinBtn = event.target.closest('.transcript-panel .pin-btn');
             const deleteBtn = event.target.closest('.transcript-panel .delete-btn');
-            const transcriptionItem = event.target.closest('li[data-transcription-id]'); 
+            const transcriptionItem = event.target.closest('li[data-transcription-id]');
 
             if (!transcriptionItem) return;
 
             const transcriptionId = transcriptionItem.dataset.transcriptionId;
-            const fullText = transcriptionItem.dataset.fullText;
-            const filenameElement = transcriptionItem.querySelector('.transcript-panel b'); 
+            const filenameElement = transcriptionItem.querySelector('.transcript-panel b');
             const filename = filenameElement ? filenameElement.textContent.trim() : 'transcription';
             const baseFilename = filename.replace(/\.[^/.]+$/, "");
 
-            if (copyBtn && transcriptionId && fullText) {
-                window.copyToClipboard(fullText); 
-                return; 
-            }
-            if (downloadBtn && transcriptionId && fullText) {
-                window.downloadTranscription(transcriptionId, fullText, `${baseFilename}_transcription`); 
-                return; 
+            if ((copyBtn || downloadBtn) && transcriptionId) {
+                try {
+                    const fullText = await getFullTranscript(transcriptionItem);
+                    if (copyBtn) window.copyToClipboard(fullText);
+                    else window.downloadTranscription(transcriptionId, fullText, `${baseFilename}_transcription`);
+                } catch (error) {
+                    window.showNotification(error.message || 'Unable to load transcript.', 'error', 4000, false);
+                }
+                return;
             }
             if (pinBtn && transcriptionId) {
                 window.togglePin(transcriptionId, transcriptionItem);
@@ -50,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         window.logger.debug(historyLogPrefix, "Transcription action listeners attached via delegation.");
 
-        historyList.addEventListener('click', function(event) {
+        historyList.addEventListener('click', async function(event) {
             const readMoreWorkflow = event.target.closest('.read-more-workflow');
             if (readMoreWorkflow) {
                 event.preventDefault();
@@ -78,9 +104,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 event.preventDefault();
                 const transcriptElement = readMoreTranscript.previousElementSibling;
                 if (transcriptElement && transcriptElement.classList.contains('transcription-text')) {
-                    const transcriptionItem = transcriptElement.closest('li[data-transcription-id]'); 
-                    const fullText = transcriptionItem?.dataset.fullText;
-                    if (fullText) {
+                    const transcriptionItem = transcriptElement.closest('li[data-transcription-id]');
+                    try {
+                        const fullText = await getFullTranscript(transcriptionItem);
+                        if (!fullText) return;
                         const currentState = transcriptElement.dataset.readMoreState;
                         if (currentState === 'truncated') {
                             transcriptElement.textContent = fullText;
@@ -88,12 +115,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             readMoreTranscript.textContent = window.i18n.readLess || ' Read Less';
                         } else {
                             const words = fullText.split(/\s+/).filter(Boolean);
-                            const previewLength = 140; 
+                            const previewLength = 140;
                             const truncatedText = words.slice(0, previewLength).join(' ') + (words.length > previewLength ? '...' : '');
                             transcriptElement.textContent = truncatedText;
                             transcriptElement.dataset.readMoreState = 'truncated';
                             readMoreTranscript.textContent = window.i18n.readMore || ' Read More';
                         }
+                    } catch (error) {
+                        window.showNotification(error.message || 'Unable to load transcript.', 'error', 4000, false);
                     }
                 }
                 return; 
@@ -107,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (fullText) {
                 const words = fullText.split(/\s+/).filter(Boolean);
                 const previewLength = 140;
-                if (words.length > previewLength) {
+                if (words.length > previewLength || transcriptionItem?.dataset.hasMore === 'true') {
                     const truncatedText = words.slice(0, previewLength).join(' ') + '...';
                     el.textContent = truncatedText;
                     el.dataset.readMoreState = 'truncated'; 

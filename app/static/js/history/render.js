@@ -49,7 +49,13 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
     listItem.className = 'py-4' + (isPinned ? ' border-l-2 border-amber-400 pl-2' : '');
     listItem.dataset.transcriptionId = transcription.id;
     listItem.dataset.isPinned = isPinned ? 'true' : 'false';
-    listItem.dataset.fullText = transcription.transcription_text || '[Transcription text not available]';
+    const hasFullTranscript = typeof transcription.transcription_text === 'string';
+    const initialTranscriptText = hasFullTranscript
+        ? transcription.transcription_text
+        : (transcription.transcription_preview || '');
+    listItem.dataset.fullText = initialTranscriptText;
+    listItem.dataset.contentLoaded = hasFullTranscript ? 'true' : 'false';
+    listItem.dataset.hasMore = transcription.transcription_has_more ? 'true' : 'false';
     listItem.dataset.initialPollTitle = shouldPollTitle ? 'true' : 'false';
 
 
@@ -166,10 +172,10 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
 
     const transcriptElement = listItem.querySelector('.transcription-text');
     if (transcriptElement) {
-        const fullText = transcription.transcription_text || '';
+        const fullText = initialTranscriptText;
         const words = fullText.split(/\s+/).filter(Boolean);
-        const previewLength = 140; 
-        if (words.length > previewLength) {
+        const previewLength = 140;
+        if (words.length > previewLength || transcription.transcription_has_more) {
             const truncatedText = words.slice(0, previewLength).join(' ') + '...';
             transcriptElement.textContent = truncatedText;
             transcriptElement.dataset.readMoreState = 'truncated'; 

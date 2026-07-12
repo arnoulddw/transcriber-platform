@@ -51,7 +51,7 @@ def clean_db(app):
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
         # List of all tables to be truncated
         tables = [
-            "user_prompts", "template_prompts", "llm_operations",
+            "user_prompts", "template_prompts", "llm_operations", "transcription_job_leases",
             "transcriptions", "user_usage", "user_api_keys", "users", "roles"
         ]
         for table in tables:

@@ -43,7 +43,7 @@ def test_process_transcription_success(
     # Mock external dependencies
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)) as mock_get_duration, \
-         patch('app.services.transcription_service.role_model.increment_usage') as mock_increment_usage, \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')) as mock_reserve_usage, \
          patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
          patch('app.services.transcription_service.generate_title_task') as mock_title_task, \
          patch('app.services.transcription_service.file_service.remove_files', return_value=1) as mock_remove_files, \
@@ -77,8 +77,8 @@ def test_process_transcription_success(
                 job_id, expected_text, expected_lang
             )
 
-            # 3. Check usage increment
-            mock_increment_usage.assert_called_once()
+            # 3. Check durable usage reservation
+            mock_reserve_usage.assert_called_once()
 
             # 4. Check that the transcription client was called correctly
             mock_client.transcribe.assert_called_once_with(
@@ -109,7 +109,7 @@ def test_process_transcription_with_speaker_diarization(
 
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(45.0, 0.75)), \
-         patch('app.services.transcription_service.role_model.increment_usage'), \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')), \
          patch('app.services.transcription_service.transcription_model'), \
          patch('app.services.transcription_service.generate_title_task'), \
          patch('app.services.transcription_service.file_service.remove_files', return_value=1), \
@@ -151,7 +151,7 @@ def test_process_transcription_api_error(
 
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
-         patch('app.services.transcription_service.role_model.increment_usage'), \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')), \
          patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
          patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'):
 
@@ -190,7 +190,7 @@ def test_process_transcription_cancellation(
 
     with patch('app.services.transcription_service.get_transcription_client'), \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
-         patch('app.services.transcription_service.role_model.increment_usage'), \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')), \
          patch('app.services.transcription_service.transcription_model') as mock_transcription_model:
 
         # Simulate that the job is marked for cancellation in the DB
@@ -257,7 +257,7 @@ def test_process_transcription_with_pending_workflow(
 
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
-         patch('app.services.transcription_service.role_model.increment_usage'), \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')), \
          patch('app.services.transcription_service.transcription_model'), \
          patch('app.services.transcription_service.generate_title_task'), \
          patch('app.services.transcription_service.workflow_service.start_workflow') as mock_start_workflow, \

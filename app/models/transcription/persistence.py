@@ -118,6 +118,34 @@ def get_transcription_by_id(transcription_id: str, user_id: Optional[int] = None
     return transcription_dict
 
 
+def get_active_transcriptions(user_id: int) -> List[Dict[str, Any]]:
+    """Return unfinished or recently failed jobs for progress-panel reconnection."""
+    cursor = get_cursor()
+    cursor.execute(
+        """
+        SELECT * FROM transcriptions
+        WHERE user_id = %s
+          AND (
+              status IN ('pending', 'processing', 'cancelling')
+              OR (
+                  status IN ('error', 'interrupted')
+                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL 15 MINUTE
+              )
+          )
+          AND is_hidden_from_user = FALSE
+        ORDER BY FIELD(status, 'processing', 'cancelling', 'pending', 'interrupted', 'error'), created_at ASC
+        """,
+        (user_id,),
+    )
+    rows = cursor.fetchall()
+    active_jobs = []
+    for row in rows:
+        mapped = _map_row_to_transcription_dict(row)
+        if mapped is not None:
+            active_jobs.append(mapped)
+    return active_jobs
+
+
 def get_all_transcriptions(user_id: int, limit: Optional[int] = None) -> List[Dict[str, Any]]:
     """
     Retrieves transcription records for a specific user, ordered by creation date DESC.

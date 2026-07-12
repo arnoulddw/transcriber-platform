@@ -6,6 +6,7 @@ import threading
 import time
 import fcntl # For file locking
 import decimal
+import secrets
 from datetime import datetime, timezone
 from dateutil.parser import isoparse
 from typing import Optional, Mapping, Any
@@ -328,6 +329,7 @@ def create_app(config_class=Config) -> Flask:
     # Register Request Hooks
     @app.before_request
     def before_request_func():
+        g.csp_nonce = secrets.token_urlsafe(24)
         g.user = current_user if current_user.is_authenticated else None
         g.role = g.user.role if g.user else None
         _req_logger = get_logger(__name__, component="Request")
@@ -382,9 +384,10 @@ def create_app(config_class=Config) -> Flask:
         get_logger(__name__, component="Request").debug(f"Request finished: {request.method} {request.path} - {response.status_code} ({user_info})")
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        csp_nonce = getattr(g, 'csp_nonce', '')
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com https://cdn.jsdelivr.net; "
+            f"script-src 'self' 'nonce-{csp_nonce}' https://accounts.google.com https://apis.google.com https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
@@ -498,6 +501,7 @@ def create_app(config_class=Config) -> Flask:
         # --- END MODIFIED ---
 
         return dict(
+            csp_nonce=getattr(g, 'csp_nonce', ''),
             deployment_mode=app.config['DEPLOYMENT_MODE'],
             is_multi_user=is_multi,
             current_user=user,

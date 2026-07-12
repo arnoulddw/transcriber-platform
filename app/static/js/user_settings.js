@@ -86,6 +86,7 @@ function openApiKeyModalDialog() {
     }
     window.logger.info(userSettingsLogPrefix, "API Key modal opened.");
 }
+window.openApiKeyModalDialog = openApiKeyModalDialog;
 
 function closeApiKeyModalDialog() {
     if (!apiKeyModal || !apiKeyModalOverlay || !apiKeyModalPanel) {
