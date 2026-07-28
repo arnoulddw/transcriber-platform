@@ -1937,3 +1937,7 @@ msgstr "Workflow intégré - "
 
 #~ msgid "English picker"
 #~ msgstr "Anglais"
+
+#: app/templates/live.html
+msgid "Back to live"
+msgstr "Revenir au direct"

@@ -77,6 +77,7 @@
             copy: document.getElementById('liveCopyButton'),
             copyText: document.getElementById('liveCopyText'),
             history: document.getElementById('liveHistoryLink'),
+            follow: document.getElementById('liveFollowButton'),
         };
         const labels = {
             start: root.dataset.i18nStart,
@@ -103,6 +104,7 @@
         };
 
         const reducer = new LiveTranscriptReducer();
+        const turnElements = new Map();
         let state = 'idle';
         let stream = null;
         let peerConnection = null;
@@ -115,6 +117,8 @@
         let sessionToken = null;
         let unsavedTranscript = false;
         let stopping = false;
+        let followingLive = true;
+        let returningToLive = false;
 
         function setError(message) {
             elements.error.textContent = message || '';
@@ -163,37 +167,56 @@
             timerInterval = null;
         }
 
-        function shouldStickToBottom() {
-            return elements.scroll.scrollHeight - elements.scroll.scrollTop - elements.scroll.clientHeight < 160;
+        function isAtBottom() {
+            return elements.scroll.scrollHeight - elements.scroll.scrollTop - elements.scroll.clientHeight < 8;
+        }
+
+        function updateFollowButton() {
+            const hasTranscript = Boolean(reducer.text());
+            elements.follow.classList.toggle('hidden', !hasTranscript || followingLive);
         }
 
         function renderTranscript() {
-            const stickToBottom = shouldStickToBottom();
             const entries = reducer.entries();
-            elements.transcript.replaceChildren();
             if (!entries.some((turn) => turn.text.trim())) {
                 const empty = document.createElement('p');
                 empty.id = 'liveEmptyState';
                 empty.className = 'live-transcript__empty';
                 empty.textContent = labels.empty;
+                elements.transcript.replaceChildren();
                 elements.transcript.appendChild(empty);
+                turnElements.clear();
                 elements.copy.disabled = true;
+                elements.follow.classList.add('hidden');
+                followingLive = true;
                 return;
             }
+            const empty = document.getElementById('liveEmptyState');
+            if (empty) empty.remove();
             entries.forEach((turn) => {
                 if (!turn.text) return;
-                const span = document.createElement('span');
+                let span = turnElements.get(turn.itemId);
+                if (!span) {
+                    span = document.createElement('span');
+                    span.dataset.itemId = turn.itemId;
+                    turnElements.set(turn.itemId, span);
+                    elements.transcript.appendChild(span);
+                }
                 span.className = `live-transcript__turn${turn.complete ? '' : ' is-partial'}`;
-                span.dataset.itemId = turn.itemId;
                 span.textContent = turn.text;
-                elements.transcript.appendChild(span);
             });
             unsavedTranscript = true;
             elements.copy.disabled = false;
-            if (stickToBottom) {
+            if (followingLive) {
                 global.requestAnimationFrame(() => {
-                    elements.scroll.scrollTop = elements.scroll.scrollHeight;
+                    elements.scroll.scrollTo({
+                        top: elements.scroll.scrollHeight,
+                        behavior: 'auto',
+                    });
+                    updateFollowButton();
                 });
+            } else {
+                updateFollowButton();
             }
         }
 
@@ -477,6 +500,26 @@
             } catch (error) {
                 setError(labels.copyError);
             }
+        });
+
+        elements.scroll.addEventListener('scroll', () => {
+            if (returningToLive) return;
+            followingLive = isAtBottom();
+            updateFollowButton();
+        }, { passive: true });
+        elements.follow.addEventListener('click', () => {
+            followingLive = true;
+            returningToLive = true;
+            elements.follow.classList.add('hidden');
+            elements.scroll.scrollTo({
+                top: elements.scroll.scrollHeight,
+                behavior: 'smooth',
+            });
+            global.setTimeout(() => {
+                returningToLive = false;
+                followingLive = isAtBottom();
+                updateFollowButton();
+            }, 450);
         });
 
         global.addEventListener('beforeunload', (event) => {

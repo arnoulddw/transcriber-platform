@@ -27,6 +27,8 @@ def test_live_page_renders_for_permitted_user(logged_in_client_with_permissions)
     assert response.status_code == 200
     assert b'id="liveWorkspace"' in response.data
     assert b'id="liveMicrophone"' in response.data
+    assert b'id="liveFollowButton"' in response.data
+    assert b"Back to live" in response.data
     assert b'href="/live"' in response.data
 
 

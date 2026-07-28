@@ -10,8 +10,16 @@ These are processed by PostCSS with the Tailwind plugin.
 @tailwind utilities;
 
 @layer components {
+    .live-page {
+        @apply overflow-hidden;
+        height: 100dvh;
+        min-height: 0 !important;
+    }
+    .live-page > header {
+        @apply flex-shrink-0;
+    }
     .live-workspace {
-        @apply min-h-0 flex flex-1 flex-col bg-slate-50 text-slate-950;
+        @apply relative min-h-0 flex flex-1 flex-col bg-slate-50 text-slate-950;
     }
     .live-toolbar {
         @apply flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm lg:flex-row lg:items-end lg:justify-between lg:px-8;
@@ -84,15 +92,16 @@ These are processed by PostCSS with the Tailwind plugin.
     }
     .live-transcript-scroll {
         @apply min-h-0 flex-1 overflow-y-auto px-5 pb-16 pt-4 sm:px-8 lg:px-14;
-        scroll-behavior: smooth;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
     }
     .live-transcript-header {
         @apply sticky top-0 z-10 mb-5 flex items-center justify-between border-b border-slate-300/80 bg-slate-50/95 pb-3 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-500 backdrop-blur;
     }
     .live-transcript {
-        @apply mx-auto max-w-[92rem] pb-[30vh] font-sans font-medium tracking-[-0.035em] text-slate-950;
-        font-size: clamp(2.15rem, 4.6vw, 5.5rem);
-        line-height: 1.08;
+        @apply mx-auto max-w-[92rem] pb-[30vh] font-sans font-medium tracking-[-0.025em] text-black;
+        font-size: clamp(1.1rem, 2.3vw, 2.75rem);
+        line-height: 1.18;
     }
     .live-transcript__turn {
         @apply inline;
@@ -101,10 +110,13 @@ These are processed by PostCSS with the Tailwind plugin.
         content: " ";
     }
     .live-transcript__turn.is-partial {
-        @apply text-slate-400;
+        @apply text-black;
     }
     .live-transcript__empty {
         @apply max-w-4xl font-normal tracking-[-0.025em] text-slate-300;
+    }
+    .live-follow-button {
+        @apply absolute bottom-5 right-5 z-20 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-700 focus:ring-offset-2 sm:bottom-7 sm:right-7;
     }
 
     @keyframes live-pulse {

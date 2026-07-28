@@ -1923,3 +1923,7 @@ msgstr "Systeemgedefinieerd - "
 
 #~ msgid "English picker"
 #~ msgstr "Engels"
+
+#: app/templates/live.html
+msgid "Back to live"
+msgstr "Terug naar live"

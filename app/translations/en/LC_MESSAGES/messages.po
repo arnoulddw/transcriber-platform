@@ -1906,3 +1906,7 @@ msgstr "System defined - "
 
 #~ msgid "English picker"
 #~ msgstr "English"
+
+#: app/templates/live.html
+msgid "Back to live"
+msgstr "Back to live"

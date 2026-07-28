@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ _('Live transcription') }}{% endblock %}
-{% block body_class %}overflow-hidden{% endblock %}
+{% block body_class %}live-page{% endblock %}
 {% block main_class %}flex min-h-0 flex-1 overflow-hidden{% endblock %}
 {% block content_container_class %}flex min-h-0 flex-1{% endblock %}
 {% block flash_messages %}{% endblock %}
@@ -128,6 +128,12 @@
             </p>
         </div>
     </div>
+    <button id="liveFollowButton"
+            type="button"
+            class="live-follow-button hidden">
+        <i class="material-icons text-lg" aria-hidden="true">south</i>
+        <span>{{ _('Back to live') }}</span>
+    </button>
 </section>
 {% endblock %}
 
