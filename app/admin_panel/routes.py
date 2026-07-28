@@ -215,6 +215,7 @@ def create_role():
                 'use_api_assemblyai': form.use_api_assemblyai.data,
                 'use_api_openai_whisper': form.use_api_openai_whisper.data,
                 'use_api_openai_gpt_4o_transcribe': form.use_api_openai_gpt_4o_transcribe.data,
+                'use_api_openai_live_transcribe': form.use_api_openai_live_transcribe.data,
                 'use_api_google_gemini': form.use_api_google_gemini.data, # Added
                 'access_admin_panel': form.access_admin_panel.data,
                 'allow_large_files': form.allow_large_files.data,
@@ -287,6 +288,7 @@ def edit_role(role_id):
                 'use_api_assemblyai': temp_form.use_api_assemblyai.data,
                 'use_api_openai_whisper': temp_form.use_api_openai_whisper.data,
                 'use_api_openai_gpt_4o_transcribe': temp_form.use_api_openai_gpt_4o_transcribe.data,
+                'use_api_openai_live_transcribe': temp_form.use_api_openai_live_transcribe.data,
                 'use_api_google_gemini': temp_form.use_api_google_gemini.data,
                 'access_admin_panel': temp_form.access_admin_panel.data,
                 'allow_large_files': temp_form.allow_large_files.data,
@@ -337,6 +339,7 @@ def edit_role(role_id):
                 'use_api_assemblyai': form.use_api_assemblyai.data,
                 'use_api_openai_whisper': form.use_api_openai_whisper.data,
                 'use_api_openai_gpt_4o_transcribe': form.use_api_openai_gpt_4o_transcribe.data,
+                'use_api_openai_live_transcribe': form.use_api_openai_live_transcribe.data,
                 'use_api_google_gemini': form.use_api_google_gemini.data, # Added
                 'access_admin_panel': form.access_admin_panel.data,
                 'allow_large_files': form.allow_large_files.data,

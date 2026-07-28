@@ -102,30 +102,28 @@ def test_get_performance_error_metrics_success(app, mock_db_utils):
     # Specific setup for this test
     mock_user_utils, mock_transcription_utils = mock_db_utils
     
-    # Define a more controlled side_effect
-    side_effect_values = []
-    for _ in range(4): # 4 time periods
-        # Transcription errors
-        side_effect_values.extend([
-            100, # total_transcription_jobs_for_error_rate
-            10,  # total_transcription_errors
-        ])
-        # API-specific errors
-        side_effect_values.extend([
-            50,  # jobs_for_api (gpt-4o-transcribe)
-            2,   # errors_for_api (gpt-4o-transcribe)
-            30,  # jobs_for_api (whisper)
-            3,   # errors_for_api (whisper)
-            20,  # jobs_for_api (assemblyai)
-            5,   # errors_for_api (assemblyai)
-        ])
-        # Workflow errors
-        side_effect_values.extend([
-            20,  # total_workflows_attempted
-            4,   # total_workflow_errors
-        ])
+    api_counts = {
+        'gpt-transcribe': (40, 4),
+        'gpt-4o-transcribe': (50, 2),
+        'whisper': (30, 3),
+        'assemblyai': (20, 5),
+        'gpt-live-transcribe': (10, 1),
+    }
 
-    mock_transcription_utils.count_jobs_in_range.side_effect = side_effect_values
+    def count_jobs(_start, _end, **filters):
+        api = filters.get('api_used')
+        if api:
+            jobs, errors = api_counts[api]
+            return errors if filters.get('status') == 'error' else jobs
+        if filters.get('llm_operation_status__ne') == 'idle':
+            return 20
+        if filters.get('llm_operation_status') == 'error':
+            return 4
+        if filters.get('status') == 'error':
+            return 10
+        return 100
+
+    mock_transcription_utils.count_jobs_in_range.side_effect = count_jobs
 
     with app.app_context():
         metrics = admin_metrics_service.get_performance_error_metrics()
@@ -134,6 +132,10 @@ def test_get_performance_error_metrics_success(app, mock_db_utils):
         assert not metrics['error']
         assert metrics['overall_transcription_error_rate']['24h'] == 10.0
         assert metrics['api_transcription_error_rates']['7d']['whisper'] == 10.0
+        assert (
+            metrics['api_transcription_error_rates']['7d']['gpt-live-transcribe']
+            == 10.0
+        )
         assert metrics['common_transcription_errors']['30d'][0][0] == 'Error A'
         assert metrics['overall_workflow_error_rate']['all'] == 20.0
 

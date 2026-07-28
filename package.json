@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build:css:dev": "tailwindcss -i ./app/static/css/tailwind_input.css -o ./app/static/css/tailwind_output.css --watch",
-    "build:css:prod": "tailwindcss -i ./app/static/css/tailwind_input.css -o ./app/static/css/tailwind_output.css --minify"
+    "build:css:prod": "tailwindcss -i ./app/static/css/tailwind_input.css -o ./app/static/css/tailwind_output.css --minify",
+    "test:js": "node --test tests/js/*.test.js"
   },
   "keywords": [
     "transcription",

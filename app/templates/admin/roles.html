@@ -56,7 +56,7 @@
                             {{ (role.description | e) if role.description else '-' }}
                         </td>
                         <td data-label="Permissions Summary" class="px-6 py-4 text-sm text-text-muted block sm:table-cell text-right sm:text-left relative border-b sm:border-none">
-                            {% set perm_count = [role.use_api_assemblyai, role.use_api_openai_whisper, role.use_api_openai_gpt_4o_transcribe, role.use_api_google_gemini, role.access_admin_panel, role.allow_large_files, role.allow_context_prompt, role.allow_api_key_management, role.allow_public_api_access, role.allow_download_transcript, role.allow_workflows, role.allow_speaker_diarization, role.manage_workflow_templates, role.allow_auto_title_generation] | select | list | length %}
+                            {% set perm_count = [role.use_api_assemblyai, role.use_api_openai_whisper, role.use_api_openai_gpt_4o_transcribe, role.use_api_openai_live_transcribe, role.use_api_google_gemini, role.access_admin_panel, role.allow_large_files, role.allow_context_prompt, role.allow_api_key_management, role.allow_public_api_access, role.allow_download_transcript, role.allow_workflows, role.allow_speaker_diarization, role.manage_workflow_templates, role.allow_auto_title_generation] | select | list | length %}
                             <span class="text-text-muted">{{ perm_count }} permissions enabled</span>
                             {% if role.access_admin_panel %}
                                 <span class="badge badge-primary ml-2">Admin Access</span>

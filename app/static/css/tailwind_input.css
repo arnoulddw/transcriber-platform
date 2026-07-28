@@ -10,6 +10,120 @@ These are processed by PostCSS with the Tailwind plugin.
 @tailwind utilities;
 
 @layer components {
+    .live-workspace {
+        @apply min-h-0 flex flex-1 flex-col bg-slate-50 text-slate-950;
+    }
+    .live-toolbar {
+        @apply flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm lg:flex-row lg:items-end lg:justify-between lg:px-8;
+    }
+    .live-toolbar__heading {
+        @apply flex-shrink-0;
+    }
+    .live-eyebrow {
+        @apply mb-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-500;
+    }
+    .live-status {
+        @apply inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600;
+    }
+    .live-status__dot {
+        @apply h-2 w-2 rounded-full bg-slate-400;
+    }
+    .live-status.is-live {
+        @apply bg-cyan-50 text-cyan-950;
+    }
+    .live-status.is-live .live-status__dot {
+        @apply bg-cyan-500;
+        animation: live-pulse 1.6s ease-in-out infinite;
+    }
+    .live-status__timer {
+        @apply border-l border-slate-300 pl-2 font-mono tabular-nums;
+    }
+    .live-controls {
+        @apply flex min-w-0 flex-wrap items-end gap-2;
+    }
+    .live-control {
+        @apply flex min-w-[8rem] flex-col gap-1 text-[0.65rem] font-semibold uppercase tracking-wider text-slate-500;
+    }
+    .live-control--microphone {
+        @apply min-w-[12rem] flex-1 lg:max-w-[18rem];
+    }
+    .live-select {
+        @apply form-select h-10 rounded-lg border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm font-medium normal-case tracking-normal text-slate-800 shadow-none focus:border-primary focus:ring-primary;
+    }
+    .live-icon-button,
+    .live-text-action {
+        @apply inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-primary disabled:pointer-events-none disabled:opacity-40;
+    }
+    .live-icon-button {
+        @apply h-10 px-3;
+    }
+    .live-text-action {
+        @apply px-2.5 py-1.5;
+    }
+    .live-meter {
+        @apply flex h-10 min-w-[7rem] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-500;
+    }
+    .live-meter__track {
+        @apply h-1.5 w-16 overflow-hidden rounded-full bg-slate-200;
+    }
+    .live-meter__level {
+        @apply h-full origin-left rounded-full bg-cyan-500 transition-transform duration-75;
+        transform: scaleX(0);
+    }
+    .live-action-button {
+        @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60;
+    }
+    .live-action-button.is-live {
+        @apply bg-slate-950 hover:bg-slate-800 focus:ring-slate-700;
+    }
+    .live-context-panel {
+        @apply border-b border-slate-200 bg-white px-4 py-3 lg:px-8;
+    }
+    .live-error {
+        @apply border-b border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 lg:px-8;
+    }
+    .live-transcript-scroll {
+        @apply min-h-0 flex-1 overflow-y-auto px-5 pb-16 pt-4 sm:px-8 lg:px-14;
+        scroll-behavior: smooth;
+    }
+    .live-transcript-header {
+        @apply sticky top-0 z-10 mb-5 flex items-center justify-between border-b border-slate-300/80 bg-slate-50/95 pb-3 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-500 backdrop-blur;
+    }
+    .live-transcript {
+        @apply mx-auto max-w-[92rem] pb-[30vh] font-sans font-medium tracking-[-0.035em] text-slate-950;
+        font-size: clamp(2.15rem, 4.6vw, 5.5rem);
+        line-height: 1.08;
+    }
+    .live-transcript__turn {
+        @apply inline;
+    }
+    .live-transcript__turn::after {
+        content: " ";
+    }
+    .live-transcript__turn.is-partial {
+        @apply text-slate-400;
+    }
+    .live-transcript__empty {
+        @apply max-w-4xl font-normal tracking-[-0.025em] text-slate-300;
+    }
+
+    @keyframes live-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.45; transform: scale(0.8); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .live-status.is-live .live-status__dot {
+            animation: none;
+        }
+        .live-transcript-scroll {
+            scroll-behavior: auto;
+        }
+        .live-meter__level {
+            transition: none;
+        }
+    }
+
     .btn-base {
         @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
     }

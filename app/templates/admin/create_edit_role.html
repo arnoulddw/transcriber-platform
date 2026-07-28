@@ -85,6 +85,10 @@
                         <span class="text-sm text-text-strong">{{ form.use_api_openai_gpt_4o_transcribe.label.text }}</span>
                     </label>
                     <label class="flex items-center space-x-2 cursor-pointer">
+                        {{ form.use_api_openai_live_transcribe(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
+                        <span class="text-sm text-text-strong">{{ form.use_api_openai_live_transcribe.label.text }}</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
                         {{ form.use_api_google_gemini(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
                         <span class="text-sm text-text-strong">{{ form.use_api_google_gemini.label.text }}</span>
                     </label>

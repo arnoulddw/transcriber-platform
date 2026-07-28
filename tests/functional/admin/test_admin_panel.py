@@ -187,7 +187,8 @@ def test_create_role(admin_client, app):
         'name': 'new_creative_role',
         'description': 'A new role for creative tasks',
         # Unchecked checkboxes are not sent in form data, so we only include the True value
-        'allow_workflows': 'y'
+        'allow_workflows': 'y',
+        'use_api_openai_live_transcribe': 'y',
     }
     response = admin_client.post(url_for('admin_panel.create_role'), data=role_data, follow_redirects=True)
     assert response.status_code == 200
@@ -202,6 +203,7 @@ def test_create_role(admin_client, app):
         # Instead, we check that the value is not True
         assert new_role.access_admin_panel is not True
         assert new_role.allow_workflows is True
+        assert new_role.use_api_openai_live_transcribe is True
 
 def test_edit_role(admin_client, app):
     """
@@ -229,7 +231,8 @@ def test_edit_role(admin_client, app):
     edited_data = {
         'name': 'edited_role_name',
         'description': 'Updated description',
-        'access_admin_panel': 'y'
+        'access_admin_panel': 'y',
+        'use_api_openai_live_transcribe': 'y',
     }
     response = admin_client.post(url_for('admin_panel.edit_role', role_id=role_to_edit.id), data=edited_data, follow_redirects=True)
     assert response.status_code == 200
@@ -243,6 +246,7 @@ def test_edit_role(admin_client, app):
         assert edited_role.name == 'edited_role_name'
         assert edited_role.description == 'Updated description'
         assert edited_role.access_admin_panel is True
+        assert edited_role.use_api_openai_live_transcribe is True
 
 def test_delete_role(admin_client, app):
     """

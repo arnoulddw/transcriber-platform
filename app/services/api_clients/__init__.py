@@ -16,6 +16,7 @@ from .llm.base_llm_client import BaseLLMClient
 from .transcription.assemblyai import AssemblyAITranscriptionAPI
 from .transcription.openai_whisper import OpenAIWhisperTranscriptionAPI
 from .transcription.openai_gpt_4o_transcribe import OpenAIGPT4OTranscribeClient
+from .transcription.openai_gpt_transcribe import OpenAIGPTTranscribeClient
 from .llm.gemini_client import GeminiClient
 from .llm.openai_client import OpenAIClient
 
@@ -29,7 +30,7 @@ def get_transcription_client(provider_name: str, api_key: str, config: Dict[str,
     Factory method to get the appropriate transcription client instance.
 
     Args:
-        provider_name: The name of the transcription provider (e.g., "assemblyai", "whisper", "gpt-4o-transcribe").
+        provider_name: The name of the transcription provider (e.g., "assemblyai", "whisper", "gpt-transcribe").
         api_key: The API key for the provider.
         config: The Flask application configuration dictionary.
 
@@ -51,6 +52,8 @@ def get_transcription_client(provider_name: str, api_key: str, config: Dict[str,
             return OpenAIWhisperTranscriptionAPI(api_key, config)
         elif provider_name == "gpt-4o-transcribe":
             return OpenAIGPT4OTranscribeClient(api_key, config)
+        elif provider_name == "gpt-transcribe":
+            return OpenAIGPTTranscribeClient(api_key, config)
         else:
             logging.error(f"[API Factory] Unsupported transcription provider requested: {provider_name}")
             raise ValueError(f"Unsupported transcription provider: {provider_name}")

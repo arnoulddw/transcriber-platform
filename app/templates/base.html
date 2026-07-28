@@ -40,7 +40,26 @@
                         </a>
                     </div>
                     <div class="flex items-center">
+                        {% if current_user.is_authenticated and not is_multi_user %}
+                            <a href="{{ url_for('main.live') }}"
+                               class="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white lg:hidden"
+                               {% if request.endpoint == 'main.live' %}aria-current="page"{% endif %}>
+                                <i class="material-icons mr-1.5 text-base" aria-hidden="true">graphic_eq</i>
+                                {{ _('Live') }}
+                            </a>
+                        {% endif %}
                         <div class="hidden lg:flex lg:items-center lg:space-x-4">
+                            {% if current_user.is_authenticated and (not is_multi_user or user_permissions.use_api_openai_live_transcribe) %}
+                                <a href="{{ url_for('main.live') }}"
+                                   class="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
+                                   {% if request.endpoint == 'main.live' %}aria-current="page"{% endif %}>
+                                    <span class="relative mr-2 flex h-2 w-2" aria-hidden="true">
+                                        <span class="absolute inline-flex h-full w-full rounded-full bg-cyan-200 opacity-75"></span>
+                                        <span class="relative inline-flex h-2 w-2 rounded-full bg-cyan-100"></span>
+                                    </span>
+                                    {{ _('Live') }}
+                                </a>
+                            {% endif %}
                             {% if is_multi_user %}
                                 {% if current_user.is_authenticated %}
                                     <div class="relative" id="desktop-user-menu-container">
@@ -135,6 +154,11 @@
 
                 {% if current_user.is_authenticated %}
                     <nav class="mt-2 space-y-1">
+                        {% if user_permissions.use_api_openai_live_transcribe %}
+                        <a href="{{ url_for('main.live') }}" class="flex items-center px-3 py-2 text-text-muted hover:bg-surface-muted hover:text-text-strong rounded-md text-sm font-medium">
+                            <i class="material-icons mr-3 text-text-muted">graphic_eq</i>{{ _('Live transcription') }}
+                        </a>
+                        {% endif %}
                         <a href="#!" id="profileSettingsBtnMobile" class="flex items-center px-3 py-2 text-text-muted hover:bg-surface-muted hover:text-text-strong rounded-md text-sm font-medium">
                             <i class="material-icons mr-3 text-text-muted">person_outline</i>{{ _('User Settings') }}
                         </a>
@@ -178,14 +202,14 @@
         {% endif %}
     </header>
 
-    <main class="flex-grow pt-5 pb-10">
+    <main class="{% block main_class %}flex-grow pt-5 pb-10{% endblock %}">
         {% block flash_messages %}
         <div class="flash-messages-wrapper">
             {% include 'layout/components/flash_messages.html' %}
         </div>
         {% endblock %}
 
-        <div class="container mx-auto sm:px-6 lg:px-8">
+        <div class="{% block content_container_class %}container mx-auto sm:px-6 lg:px-8{% endblock %}">
             {% block content %}{% endblock %}
         </div>
 
@@ -196,6 +220,7 @@
         {% include 'layout/modals/workflow_modal.html' %}
     </main>
 
+    {% block footer %}
     <footer class="bg-gray-200 text-gray-700 text-sm">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div class="text-center">
@@ -206,6 +231,7 @@
             </div>
         </div>
     </footer>
+    {% endblock %}
 
     {# Removed Materialize JS Script #}
     {# <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script> #}

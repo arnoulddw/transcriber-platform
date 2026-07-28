@@ -15,6 +15,7 @@ from app.models import llm_operation as llm_operation_model
 # --- END ADDED ---
 # Import services for prompt matching
 from app.services import user_service, admin_management_service
+from app.core.decorators import check_permission
 
 @main_bp.route('/')
 @login_required
@@ -190,6 +191,21 @@ def index():
         transcription_models=catalog_models,
         transcriptions=transcriptions,
         pagination=pagination
+    )
+
+
+@main_bp.route('/live')
+@login_required
+def live():
+    """Render the full-screen live transcription workspace."""
+    if (
+        current_app.config['DEPLOYMENT_MODE'] == 'multi'
+        and not check_permission(current_user, 'use_api_openai_live_transcribe')
+    ):
+        abort(403)
+    return render_template(
+        'live.html',
+        live_languages=transcription_catalog_model.get_language_map(),
     )
 
 @main_bp.route('/manage-prompts')

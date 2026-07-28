@@ -157,6 +157,7 @@ class Role:
     use_api_assemblyai: bool
     use_api_openai_whisper: bool
     use_api_openai_gpt_4o_transcribe: bool
+    use_api_openai_live_transcribe: bool
     use_api_google_gemini: bool
     # Feature Permissions
     access_admin_panel: bool
@@ -197,6 +198,7 @@ class Role:
         # Process boolean fields
         bool_fields = [
             'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+            'use_api_openai_live_transcribe',
             'use_api_google_gemini',
             'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
             'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript', 'allow_workflows',
@@ -251,6 +253,8 @@ def _map_row_to_role(row: Dict[str, Any]) -> Optional[Role]:
         # --- MODIFIED: Ensure use_api_google_gemini is present ---
         if 'use_api_google_gemini' not in row:
             row['use_api_google_gemini'] = 0
+        if 'use_api_openai_live_transcribe' not in row:
+            row['use_api_openai_live_transcribe'] = 0
         # --- END MODIFIED ---
         if 'default_transcription_model' not in row:
             row['default_transcription_model'] = None
@@ -285,6 +289,7 @@ def init_roles_table() -> None:
                 use_api_assemblyai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_whisper BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_gpt_4o_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
+                use_api_openai_live_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_google_gemini BOOLEAN NOT NULL DEFAULT FALSE,
                 access_admin_panel BOOLEAN NOT NULL DEFAULT FALSE,
                 allow_large_files BOOLEAN NOT NULL DEFAULT FALSE,
@@ -343,9 +348,19 @@ def init_roles_table() -> None:
         _ensure_column(cursor, "roles", None, "default_workflow_model",
                        "VARCHAR(100) DEFAULT NULL", after="default_title_generation_model", log_prefix=log_prefix)
 
+        cursor.execute("SHOW COLUMNS FROM roles LIKE 'use_api_openai_live_transcribe'")
+        live_permission_exists = cursor.fetchone()
+        cursor.fetchall()
+        _ensure_column(cursor, "roles", None, "use_api_openai_live_transcribe",
+                       "BOOLEAN NOT NULL DEFAULT FALSE", after="use_api_openai_gpt_4o_transcribe", log_prefix=log_prefix)
+        if not live_permission_exists:
+            cursor.execute(
+                "UPDATE roles SET use_api_openai_live_transcribe = TRUE WHERE name = 'admin'"
+            )
+
         # --- MODIFIED: Add use_api_google_gemini column idempotently ---
         _ensure_column(cursor, "roles", None, "use_api_google_gemini",
-                       "BOOLEAN NOT NULL DEFAULT FALSE", after="use_api_openai_gpt_4o_transcribe", log_prefix=log_prefix)
+                       "BOOLEAN NOT NULL DEFAULT FALSE", after="use_api_openai_live_transcribe", log_prefix=log_prefix)
         # --- END MODIFIED ---
 
         # Normalize timestamp columns
@@ -390,6 +405,7 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
     # --- MODIFIED: Add use_api_google_gemini to valid columns ---
     valid_permission_columns = [
         'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+        'use_api_openai_live_transcribe',
         'use_api_google_gemini', # Added
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
@@ -648,6 +664,7 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
     updatable_columns = [
         'name', 'description',
         'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+        'use_api_openai_live_transcribe',
         'use_api_google_gemini', # Added
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',

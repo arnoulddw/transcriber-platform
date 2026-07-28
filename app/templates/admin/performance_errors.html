@@ -65,7 +65,7 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% set periods_data_api = ['24h', '7d', '30d', 'all'] %}
-                        {% set api_display_map = transcription_models if transcription_models else {'gpt-4o-transcribe': 'GPT-4o', 'whisper': 'Whisper', 'assemblyai': 'AssemblyAI Universal'} %}
+                        {% set api_display_map = transcription_models if transcription_models else {'gpt-transcribe': 'GPT Transcribe', 'gpt-4o-transcribe': 'GPT-4o', 'whisper': 'Whisper', 'assemblyai': 'AssemblyAI Universal'} %}
                         {% for api_name, display_name in api_display_map.items() %}
                         <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
                             <td data-label="API" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">{{ display_name }}</td>

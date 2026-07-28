@@ -314,6 +314,7 @@ def create_app(config_class=Config) -> Flask:
     from app.admin_panel import admin_panel_bp
     from app.api.workflows import workflows_bp
     from app.api.llm import llm_bp
+    from app.api.live import live_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
@@ -323,6 +324,7 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(admin_panel_bp)
     app.register_blueprint(workflows_bp)
     app.register_blueprint(llm_bp)
+    app.register_blueprint(live_bp)
     _sys_logger.debug("Blueprints registered.")
 
 
@@ -429,6 +431,10 @@ def create_app(config_class=Config) -> Flask:
         api_name_map_for_frontend_subset = {
             model['code']: model['display_name'] for model in catalog_models
         }
+        live_model = app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
+        api_name_map_for_frontend_subset[live_model] = all_provider_names_from_config.get(
+            live_model, 'OpenAI GPT Live Transcribe'
+        )
 
         color_name_map = {
             "#ffffff": "Default", "#ffd1dc": "Pink", "#aec6cf": "Blue Grey",
@@ -444,6 +450,7 @@ def create_app(config_class=Config) -> Flask:
                     'use_api_assemblyai': role.use_api_assemblyai,
                     'use_api_openai_whisper': role.use_api_openai_whisper,
                     'use_api_openai_gpt_4o_transcribe': role.use_api_openai_gpt_4o_transcribe,
+                    'use_api_openai_live_transcribe': role.use_api_openai_live_transcribe,
                     'use_api_google_gemini': role.use_api_google_gemini,
                     'allow_large_files': role.allow_large_files,
                     'allow_context_prompt': role.allow_context_prompt,
@@ -464,7 +471,8 @@ def create_app(config_class=Config) -> Flask:
              }
              user_permissions = {
                  'use_api_assemblyai': True, 'use_api_openai_whisper': True,
-                 'use_api_openai_gpt_4o_transcribe': True, 'use_api_google_gemini': True,
+                 'use_api_openai_gpt_4o_transcribe': True, 'use_api_openai_live_transcribe': True,
+                 'use_api_google_gemini': True,
                  'allow_large_files': True, 'allow_context_prompt': True,
                  'allow_download_transcript': True, 'allow_api_key_management': False,
                  'allow_public_api_access': True,

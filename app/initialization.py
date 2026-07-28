@@ -122,6 +122,7 @@ def create_default_roles() -> None:
             'description': 'Administrator role with all permissions',
             'permissions': {
                 'use_api_assemblyai': True, 'use_api_openai_whisper': True, 'use_api_openai_gpt_4o_transcribe': True,
+                'use_api_openai_live_transcribe': True,
                 'use_api_google_gemini': True, 'access_admin_panel': True, 'allow_large_files': True, 'allow_context_prompt': True,
                 'allow_api_key_management': True, 'allow_download_transcript': True,
                 'allow_workflows': True, 'manage_workflow_templates': True,
@@ -136,6 +137,7 @@ def create_default_roles() -> None:
             'description': 'Beta tester role with standard permissions',
             'permissions': {
                 'use_api_assemblyai': True, 'use_api_openai_whisper': True, 'use_api_openai_gpt_4o_transcribe': True,
+                'use_api_openai_live_transcribe': False,
                 'access_admin_panel': False,
                 'allow_large_files': True, 'allow_context_prompt': True,
                 'allow_api_key_management': True, 'allow_download_transcript': True,

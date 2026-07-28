@@ -1,0 +1,81 @@
+import logging
+from functools import wraps
+
+from flask import Blueprint, current_app, jsonify, request
+from flask_babel import gettext as _
+from flask_login import current_user, login_required
+
+from app.core.decorators import check_permission, check_usage_limits
+from app.extensions import build_user_limit_key, limiter
+from app.services import live_transcription_service
+from app.services.live_transcription_service import (
+    LiveTranscriptionPermissionError,
+    LiveTranscriptionUpstreamError,
+    LiveTranscriptionValidationError,
+)
+from app.services.user_service import MissingApiKeyError
+
+
+live_bp = Blueprint("live", __name__, url_prefix="/api/live")
+LOGGER = logging.getLogger(__name__)
+
+
+def live_permission_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if current_app.config["DEPLOYMENT_MODE"] == "multi" and not check_permission(
+            current_user, "use_api_openai_live_transcribe"
+        ):
+            return jsonify({"error": _("You do not have access to Live transcription.")}), 403
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+@live_bp.route("/session", methods=["POST"])
+@live_permission_required
+@limiter.limit("10 per minute", key_func=lambda: build_user_limit_key("live-session"))
+def create_live_session():
+    data = request.get_json(silent=True) or {}
+    allowed, reason = check_usage_limits(current_user)
+    if not allowed:
+        return jsonify({"error": _("Usage limit exceeded: %(reason)s", reason=reason)}), 403
+    try:
+        result = live_transcription_service.create_session(
+            current_user,
+            data.get("sdp"),
+            data.get("language_code", "auto"),
+            data.get("context_prompt", ""),
+        )
+        return jsonify(result)
+    except LiveTranscriptionValidationError as exc:
+        return jsonify({"error": _(str(exc))}), 400
+    except (LiveTranscriptionPermissionError, MissingApiKeyError) as exc:
+        return jsonify({"error": _(str(exc))}), 403
+    except LiveTranscriptionUpstreamError as exc:
+        return jsonify({"error": _(str(exc))}), 502
+    except Exception:
+        LOGGER.exception("Unexpected error while creating a live transcription session.")
+        return jsonify({"error": _("Could not start Live transcription.")}), 500
+
+
+@live_bp.route("/finalize", methods=["POST"])
+@live_permission_required
+def finalize_live_session():
+    data = request.get_json(silent=True) or {}
+    try:
+        result = live_transcription_service.finalize_session(
+            current_user,
+            data.get("session_token"),
+            data.get("transcript"),
+        )
+        result["history_url"] = "/"
+        return jsonify(result)
+    except LiveTranscriptionValidationError as exc:
+        return jsonify({"error": _(str(exc))}), 400
+    except LiveTranscriptionPermissionError as exc:
+        return jsonify({"error": _(str(exc))}), 403
+    except Exception:
+        LOGGER.exception("Unexpected error while saving a live transcription.")
+        return jsonify({"error": _("Could not save the Live transcript.")}), 500

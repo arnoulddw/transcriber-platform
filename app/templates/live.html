@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Live transcription') }}{% endblock %}
+{% block body_class %}overflow-hidden{% endblock %}
+{% block main_class %}flex min-h-0 flex-1 overflow-hidden{% endblock %}
+{% block content_container_class %}flex min-h-0 flex-1{% endblock %}
+{% block flash_messages %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<section id="liveWorkspace"
+         class="live-workspace"
+         data-i18n-start="{{ _('Start listening') }}"
+         data-i18n-stop="{{ _('Stop and save') }}"
+         data-i18n-new="{{ _('New session') }}"
+         data-i18n-connecting="{{ _('Connecting…') }}"
+         data-i18n-listening="{{ _('Listening live') }}"
+         data-i18n-saving="{{ _('Saving transcript…') }}"
+         data-i18n-saved="{{ _('Saved to transcription history') }}"
+         data-i18n-idle="{{ _('Ready to listen') }}"
+         data-i18n-empty="{{ _('Start listening and spoken words will appear here.') }}"
+         data-i18n-copy="{{ _('Copy transcript') }}"
+         data-i18n-copied="{{ _('Copied') }}"
+         data-i18n-unsaved="{{ _('Stop and save this live transcript before leaving.') }}"
+         data-i18n-default-microphone="{{ _('Default microphone') }}"
+         data-i18n-microphone="{{ _('Microphone') }}"
+         data-i18n-words="{{ _('words') }}"
+         data-i18n-unsupported="{{ _('This browser does not support live microphone transcription.') }}"
+         data-i18n-realtime-error="{{ _('Live transcription reported an error.') }}"
+         data-i18n-interrupted="{{ _('The live connection was interrupted. Saving the transcript received so far.') }}"
+         data-i18n-no-speech="{{ _('No speech was transcribed. You can start another session.') }}"
+         data-i18n-copy-error="{{ _('Could not copy the transcript. Select the text and copy it manually.') }}"
+         data-i18n-request-failed="{{ _('The request failed. Please try again.') }}">
+    <div class="live-toolbar">
+        <div class="live-toolbar__heading">
+            <p class="live-eyebrow">{{ _('Realtime transcription') }}</p>
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-semibold text-slate-950">{{ _('Live') }}</h1>
+                <div id="liveStatus" class="live-status" role="status" aria-live="polite">
+                    <span id="liveStatusDot" class="live-status__dot" aria-hidden="true"></span>
+                    <span id="liveStatusText">{{ _('Ready to listen') }}</span>
+                    <span id="liveTimer" class="live-status__timer">00:00</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="live-controls" aria-label="{{ _('Live transcription controls') }}">
+            <label class="live-control">
+                <span>{{ _('Language') }}</span>
+                <select id="liveLanguage" class="live-select">
+                    <option value="auto">{{ _('Automatic detection') }}</option>
+                    {% for code, name in live_languages.items() if code != 'auto' %}
+                    <option value="{{ code }}">{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label class="live-control live-control--microphone">
+                <span>{{ _('Microphone') }}</span>
+                <select id="liveMicrophone" class="live-select">
+                    <option value="">{{ _('Default microphone') }}</option>
+                </select>
+            </label>
+
+            {% if user_permissions.allow_context_prompt %}
+            <button id="liveContextToggle"
+                    type="button"
+                    class="live-icon-button"
+                    aria-expanded="false"
+                    aria-controls="liveContextPanel">
+                <i class="material-icons text-lg" aria-hidden="true">tune</i>
+                <span>{{ _('Context') }}</span>
+            </button>
+            {% endif %}
+
+            <div class="live-meter" aria-label="{{ _('Microphone volume') }}">
+                <i class="material-icons text-lg" aria-hidden="true">mic</i>
+                <div class="live-meter__track">
+                    <div id="liveVolumeLevel" class="live-meter__level"></div>
+                </div>
+            </div>
+
+            <button id="liveActionButton" type="button" class="live-action-button">
+                <i id="liveActionIcon" class="material-icons text-lg" aria-hidden="true">mic</i>
+                <span id="liveActionText">{{ _('Start listening') }}</span>
+            </button>
+        </div>
+    </div>
+
+    {% if user_permissions.allow_context_prompt %}
+    <div id="liveContextPanel" class="live-context-panel hidden">
+        <label for="liveContextPrompt" class="form-label">{{ _('Context prompt') }}</label>
+        <textarea id="liveContextPrompt"
+                  class="input-textarea mt-1"
+                  rows="2"
+                  placeholder="{{ _('Add names, acronyms, or subject matter that may be spoken.') }}"></textarea>
+        <div class="mt-1 flex items-center justify-between gap-4">
+            <p class="form-hint mt-0">{{ _('Optional. Used only to improve this live session.') }}</p>
+            <p id="liveContextCount" class="form-hint mt-0 tabular-nums">0/120 {{ _('words') }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div id="liveError" class="live-error hidden" role="alert"></div>
+
+    <div id="liveTranscriptScroll" class="live-transcript-scroll">
+        <div class="live-transcript-header">
+            <span>{{ _('Transcript') }}</span>
+            <div class="flex items-center gap-2">
+                <a id="liveHistoryLink"
+                   href="{{ url_for('main.index') }}"
+                   class="live-text-action hidden">
+                    <i class="material-icons text-base" aria-hidden="true">history</i>
+                    {{ _('Open history') }}
+                </a>
+                <button id="liveCopyButton" type="button" class="live-text-action" disabled>
+                    <i class="material-icons text-base" aria-hidden="true">content_copy</i>
+                    <span id="liveCopyText">{{ _('Copy transcript') }}</span>
+                </button>
+            </div>
+        </div>
+        <div id="liveTranscript"
+             class="live-transcript"
+             aria-live="polite"
+             aria-atomic="false">
+            <p id="liveEmptyState" class="live-transcript__empty">
+                {{ _('Start listening and spoken words will appear here.') }}
+            </p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/live_transcription.js') }}"></script>
+{% endblock %}

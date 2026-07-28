@@ -4,7 +4,7 @@
 const mainInitLogPrefix = "[MainInitJS]";
 const initLogger = window.logger.scoped("MainInitJS");
 const LARGE_FILE_THRESHOLD_MB = 25; 
-const CONTEXT_PROMPT_SUPPORTED_APIS = ['gpt-4o-transcribe', 'assemblyai'];
+const CONTEXT_PROMPT_SUPPORTED_APIS = ['gpt-transcribe', 'gpt-4o-transcribe', 'assemblyai'];
 const SPEAKER_DIARIZATION_SUPPORTED_APIS = ['assemblyai'];
 const SPEAKER_BTN_DEFAULT_CLASSES = ['bg-white', 'text-gray-700', 'hover:bg-gray-50', 'border-gray-300'];
 const SPEAKER_BTN_ACTIVE_CLASSES = ['bg-green-600', 'text-white', 'hover:bg-green-700', 'border-green-600'];
@@ -117,7 +117,8 @@ async function fetchReadinessData() {
         return {
             api_keys: { openai: true, assemblyai: true, gemini: true },
             permissions: {
-                use_api_assemblyai: true, use_api_openai_whisper: true, use_api_openai_gpt_4o_transcribe: true,
+                use_api_assemblyai: true, use_api_openai_whisper: true,
+                use_api_openai_gpt_4o_transcribe: true, use_api_openai_live_transcribe: true,
                 use_api_google_gemini: true,
                 allow_large_files: true, allow_context_prompt: true, allow_download_transcript: true,
                 allow_workflows: true,
@@ -311,7 +312,7 @@ async function checkTranscribeButtonState() {
 
     if (!disableReason) {
         let canUseSelectedApi = false;
-        if (selectedApiValue === 'gpt-4o-transcribe') canUseSelectedApi = permissions.use_api_openai_gpt_4o_transcribe;
+        if (selectedApiValue === 'gpt-transcribe' || selectedApiValue === 'gpt-4o-transcribe') canUseSelectedApi = permissions.use_api_openai_gpt_4o_transcribe;
         else if (selectedApiValue === 'whisper') canUseSelectedApi = permissions.use_api_openai_whisper;
         else if (selectedApiValue === 'assemblyai') canUseSelectedApi = permissions.use_api_assemblyai;
 
@@ -423,7 +424,12 @@ function updateApiKeyNotificationVisibility(keyStatus, permissions) {
     const normalizedPermissions = (typeof permissions === 'object' && permissions !== null) ? permissions : {};
 
     const servicePermissions = [
-        { key: 'openai', permitted: normalizedPermissions.use_api_openai_whisper || normalizedPermissions.use_api_openai_gpt_4o_transcribe },
+        {
+            key: 'openai',
+            permitted: normalizedPermissions.use_api_openai_whisper
+                || normalizedPermissions.use_api_openai_gpt_4o_transcribe
+                || normalizedPermissions.use_api_openai_live_transcribe
+        },
         { key: 'assemblyai', permitted: normalizedPermissions.use_api_assemblyai },
         { key: 'gemini', permitted: normalizedPermissions.use_api_google_gemini }
     ];
