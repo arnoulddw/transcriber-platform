@@ -26,6 +26,7 @@ LOGGER = logging.getLogger(__name__)
 SESSION_TOKEN_SALT = "live-transcription-session-v1"
 MAX_CONTEXT_WORDS = 120
 MAX_TRANSCRIPT_CHARS = 10_000_000
+RETRYABLE_SESSION_STATUS_CODES = frozenset({502, 503, 504})
 
 
 class LiveTranscriptionError(Exception):
@@ -93,12 +94,7 @@ def build_session_config(model: str, language: str, prompt: str) -> Dict[str, An
         "audio": {
             "input": {
                 "transcription": transcription,
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
-                },
+                "turn_detection": None,
             }
         },
     }
@@ -118,25 +114,49 @@ def create_session(user, sdp: str, language_code: str, context_prompt: str) -> D
     model = current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
     session_config = build_session_config(model, language, prompt)
 
-    try:
-        response = httpx.post(
-            "https://api.openai.com/v1/realtime/calls",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "OpenAI-Safety-Identifier": _safety_identifier(user.id),
-            },
-            files={
-                "sdp": (None, sdp, "application/sdp"),
-                "session": (None, json.dumps(session_config), "application/json"),
-            },
-            timeout=current_app.config.get("OPENAI_HTTP_TIMEOUT", 120),
-        )
-    except httpx.HTTPError as exc:
-        LOGGER.error("OpenAI realtime session request failed: %s", exc)
-        raise LiveTranscriptionUpstreamError(
-            _("Could not connect to the live transcription service.")
-        ) from exc
+    max_retries = max(
+        0, int(current_app.config.get("LIVE_TRANSCRIPTION_SESSION_MAX_RETRIES", 1))
+    )
+    retry_delay = max(
+        0.0,
+        float(current_app.config.get("LIVE_TRANSCRIPTION_SESSION_RETRY_DELAY", 0.25)),
+    )
+    response = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = httpx.post(
+                "https://api.openai.com/v1/realtime/calls",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "OpenAI-Safety-Identifier": _safety_identifier(user.id),
+                },
+                files={
+                    "sdp": (None, sdp, "application/sdp"),
+                    "session": (None, json.dumps(session_config), "application/json"),
+                },
+                timeout=current_app.config.get("OPENAI_HTTP_TIMEOUT", 120),
+            )
+        except httpx.HTTPError as exc:
+            LOGGER.error("OpenAI realtime session request failed: %s", exc)
+            raise LiveTranscriptionUpstreamError(
+                _("Could not connect to the live transcription service.")
+            ) from exc
 
+        if (
+            response.status_code not in RETRYABLE_SESSION_STATUS_CODES
+            or attempt >= max_retries
+        ):
+            break
+        LOGGER.warning(
+            "OpenAI realtime session returned transient HTTP %s; retrying (%s/%s).",
+            response.status_code,
+            attempt + 1,
+            max_retries,
+        )
+        if retry_delay:
+            time.sleep(retry_delay)
+
+    assert response is not None
     if response.status_code >= 400:
         LOGGER.error(
             "OpenAI realtime session returned HTTP %s: %s",

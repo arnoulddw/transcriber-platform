@@ -17,6 +17,8 @@ def live_app():
         OPENAI_API_KEY="server-only-openai-key",
         OPENAI_HTTP_TIMEOUT=5,
         LIVE_TRANSCRIPTION_MODEL="gpt-live-transcribe",
+        LIVE_TRANSCRIPTION_SESSION_MAX_RETRIES=1,
+        LIVE_TRANSCRIPTION_SESSION_RETRY_DELAY=0,
     )
     Babel(app)
     return app
@@ -31,7 +33,7 @@ def test_build_session_config_omits_languages_for_auto():
         "model": "gpt-live-transcribe",
         "delay": "low",
     }
-    assert config["audio"]["input"]["turn_detection"]["type"] == "server_vad"
+    assert config["audio"]["input"]["turn_detection"] is None
 
 
 def test_build_session_config_adds_language_and_prompt():
@@ -201,6 +203,38 @@ def test_create_session_maps_openai_transport_failure(live_app, monkeypatch):
 
     with live_app.app_context(), pytest.raises(service.LiveTranscriptionUpstreamError):
         service.create_session(user, "offer-sdp", "auto", "")
+
+
+def test_create_session_retries_transient_gateway_failure(live_app, monkeypatch):
+    user = SimpleNamespace(id=42)
+    post = MagicMock(
+        side_effect=[
+            SimpleNamespace(status_code=504, text="gateway timeout"),
+            SimpleNamespace(status_code=200, text="answer-sdp"),
+        ]
+    )
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        result = service.create_session(user, "offer-sdp", "auto", "")
+
+    assert result["answer_sdp"] == "answer-sdp"
+    assert post.call_count == 2
+
+
+def test_create_session_does_not_retry_non_transient_rejection(live_app, monkeypatch):
+    user = SimpleNamespace(id=42)
+    post = MagicMock(
+        return_value=SimpleNamespace(status_code=400, text="invalid session")
+    )
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context(), pytest.raises(service.LiveTranscriptionUpstreamError):
+        service.create_session(user, "offer-sdp", "auto", "")
+
+    assert post.call_count == 1
 
 
 def test_finalize_session_dispatches_title_generation(live_app, monkeypatch):

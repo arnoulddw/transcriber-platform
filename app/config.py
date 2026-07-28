@@ -52,6 +52,12 @@ class Config:
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') # Placeholder for future LLM
     OPENAI_HTTP_TIMEOUT = 120
     LIVE_TRANSCRIPTION_MODEL = os.environ.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
+    LIVE_TRANSCRIPTION_SESSION_MAX_RETRIES = int(
+        os.environ.get('LIVE_TRANSCRIPTION_SESSION_MAX_RETRIES', '1')
+    )
+    LIVE_TRANSCRIPTION_SESSION_RETRY_DELAY = float(
+        os.environ.get('LIVE_TRANSCRIPTION_SESSION_RETRY_DELAY', '0.25')
+    )
 
     # --- Provider Configuration (NEW) ---
     TRANSCRIPTION_PROVIDERS = os.environ.get(
