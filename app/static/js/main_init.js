@@ -4,7 +4,7 @@
 const mainInitLogPrefix = "[MainInitJS]";
 const initLogger = window.logger.scoped("MainInitJS");
 const LARGE_FILE_THRESHOLD_MB = 25; 
-const CONTEXT_PROMPT_SUPPORTED_APIS = ['gpt-4o-transcribe', 'assemblyai'];
+const CONTEXT_PROMPT_SUPPORTED_APIS = ['gpt-transcribe', 'gpt-4o-transcribe', 'assemblyai'];
 const SPEAKER_DIARIZATION_SUPPORTED_APIS = ['assemblyai'];
 const SPEAKER_BTN_DEFAULT_CLASSES = ['bg-white', 'text-gray-700', 'hover:bg-gray-50', 'border-gray-300'];
 const SPEAKER_BTN_ACTIVE_CLASSES = ['bg-green-600', 'text-white', 'hover:bg-green-700', 'border-green-600'];
@@ -311,7 +311,7 @@ async function checkTranscribeButtonState() {
 
     if (!disableReason) {
         let canUseSelectedApi = false;
-        if (selectedApiValue === 'gpt-4o-transcribe') canUseSelectedApi = permissions.use_api_openai_gpt_4o_transcribe;
+        if (selectedApiValue === 'gpt-transcribe' || selectedApiValue === 'gpt-4o-transcribe') canUseSelectedApi = permissions.use_api_openai_gpt_4o_transcribe;
         else if (selectedApiValue === 'whisper') canUseSelectedApi = permissions.use_api_openai_whisper;
         else if (selectedApiValue === 'assemblyai') canUseSelectedApi = permissions.use_api_assemblyai;
 

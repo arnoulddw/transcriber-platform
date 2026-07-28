@@ -120,8 +120,8 @@ The application is configured using environment variables in a `.env` file. The 
 | `GEMINI_API_KEY` | Your API key for Google Gemini (Title Generation, LLMs). | (none) |
 | `ANTHROPIC_API_KEY` | Reserved for future Anthropic LLM support. | (none) |
 | **Provider, Model & Language Settings** | | |
-| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. | `assemblyai,whisper,gpt-4o-transcribe` |
-| `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription API on load (`gpt-4o-transcribe`, `whisper`, `assemblyai`). | `gpt-4o-transcribe` |
+| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe` |
+| `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription API on load (`gpt-transcribe`, `gpt-4o-transcribe`, `whisper`, `assemblyai`). | `gpt-4o-transcribe` |
 | `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`). | `GEMINI` |
 | `LLM_MODEL` | General default LLM model. | (none) |
 | `TITLE_GENERATION_LLM_PROVIDER` | Provider used for generated transcript titles. | `GEMINI` |

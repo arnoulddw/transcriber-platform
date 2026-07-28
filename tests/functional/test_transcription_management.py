@@ -148,3 +148,26 @@ class TestTranscriptionManagement:
         assert "job_id" in response_data
 
         mock_submit_transcription_job.assert_called_once()
+
+    @patch("app.api.transcriptions.submit_transcription_job")
+    def test_successful_gpt_transcribe_upload(
+        self, mock_submit_transcription_job, logged_in_client_with_permissions
+    ):
+        """GPT Transcribe is accepted as an active OpenAI transcription model."""
+        data = {
+            "api_choice": "gpt-transcribe",
+            "language_code": "auto",
+            "audio_file": (
+                io.BytesIO(b"test audio data"),
+                SUCCESS_TEST_FILENAME,
+            ),
+        }
+
+        response = logged_in_client_with_permissions.post(
+            url_for("transcriptions.transcribe_audio"),
+            data=data,
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 202
+        mock_submit_transcription_job.assert_called_once()

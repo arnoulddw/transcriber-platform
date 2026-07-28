@@ -15,6 +15,11 @@ const expectedLogger = window.logger.scoped("MainActionsJS:calculateExpected");
 const stopLogger = window.logger.scoped("MainActionsJS:handleStopTranscription");
 
 const timeFormulas = {
+    'gpt-transcribe': {
+        'no_split': { upload: (s) => 0.5 + s * 0.1, processing: (l) => 1 + l * 0.05, transcription: (l) => 2 + l * 0.2 },
+        'parallel': { upload: (s) => 0.5 + s * 0.1, processing: (l) => 2 + l * 0.1,  transcription: (l) => 5 + l * 1.5 },
+        'series':   { upload: (s) => 0.5 + s * 0.1, processing: (l) => 2 + l * 0.1,  transcription: (l) => 5 + l * 3.5 }
+    },
     'gpt-4o-transcribe': {
         'no_split': { upload: (s) => 0.5 + s * 0.1, processing: (l) => 1 + l * 0.05, transcription: (l) => 2 + l * 0.2 },
         'parallel': { upload: (s) => 0.5 + s * 0.1, processing: (l) => 2 + l * 0.1,  transcription: (l) => 5 + l * 1.5 },

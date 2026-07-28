@@ -47,13 +47,16 @@ class Config:
 
     # --- API Keys (Used ONLY in Single-User mode for global access, or by services) ---
     ASSEMBLYAI_API_KEY = os.environ.get('ASSEMBLYAI_API_KEY')
-    OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') # Used for Whisper, GPT-4o Transcribe, and potentially OpenAI LLMs
+    OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') # Used for OpenAI transcription and LLM models
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') # Used for Gemini LLM
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') # Placeholder for future LLM
     OPENAI_HTTP_TIMEOUT = 120
 
     # --- Provider Configuration (NEW) ---
-    TRANSCRIPTION_PROVIDERS = os.environ.get('TRANSCRIPTION_PROVIDERS', "assemblyai,whisper,gpt-4o-transcribe").split(',')
+    TRANSCRIPTION_PROVIDERS = os.environ.get(
+        'TRANSCRIPTION_PROVIDERS',
+        "assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe",
+    ).split(',')
     LLM_PROVIDERS = ["GEMINI", "OPENAI"]
     # Default providers
     DEFAULT_TRANSCRIPTION_PROVIDER = os.environ.get('DEFAULT_TRANSCRIPTION_PROVIDER', 'gpt-4o-transcribe')
@@ -81,6 +84,7 @@ class Config:
         "assemblyai": "AssemblyAI Universal",
         "whisper": "OpenAI Whisper",
         "gpt-4o-transcribe": "OpenAI GPT-4o Transcribe",
+        "gpt-transcribe": "OpenAI GPT Transcribe",
         # LLM Providers
         "GEMINI": "Google Gemini",
         "OPENAI": "OpenAI",
@@ -198,6 +202,11 @@ class Config:
 
     # --- NEW: Centralized API Limits ---
     API_LIMITS = {
+        'gpt-transcribe': {
+            'duration_s': None,
+            'size_mb': 25,
+            'rate_limit_rpm': None
+        },
         'gpt-4o-transcribe': {
             # OpenAI enforces a hard 1400 second cap on GPT-4o Transcribe uploads.
             # Stay slightly under the limit so borderline files are chunked automatically.

@@ -18,6 +18,12 @@ LANGUAGES_TABLE = "transcription_languages_catalog"
 
 # Default metadata for known providers. Extend this list when new providers are introduced.
 _DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Optional[str]]] = {
+    "gpt-transcribe": {
+        "display_name": "OpenAI GPT Transcribe",
+        "permission_key": "use_api_openai_gpt_4o_transcribe",
+        "required_api_key": "openai",
+        "sort_order": 30,
+    },
     "gpt-4o-transcribe": {
         "display_name": "OpenAI GPT-4o Transcribe",
         "permission_key": "use_api_openai_gpt_4o_transcribe",
