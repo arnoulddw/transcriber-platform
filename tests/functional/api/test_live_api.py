@@ -22,6 +22,7 @@ def test_live_page_requires_permission(logged_in_client):
 
 
 def test_live_page_renders_for_permitted_user(logged_in_client_with_permissions):
+    logged_in_client_with_permissions.application.config["BUILD_TIMESTAMP"] = "test-build"
     response = logged_in_client_with_permissions.get("/live")
 
     assert response.status_code == 200
@@ -29,6 +30,7 @@ def test_live_page_renders_for_permitted_user(logged_in_client_with_permissions)
     assert b'id="liveMicrophone"' in response.data
     assert b'id="liveFollowButton"' in response.data
     assert b"Back to live" in response.data
+    assert b"live_transcription.js?v=test-build" in response.data
     assert b'href="/live"' in response.data
 
 

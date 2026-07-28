@@ -9,7 +9,8 @@
     <title>{% block title %}{{ _('Compass Platform') }}{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2302566C'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle' fill='%23fff' font-family='Arial, sans-serif'%3EC%3C/text%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind_output.css') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/tailwind_output.css', v=build_timestamp) if build_timestamp else url_for('static', filename='css/tailwind_output.css') }}">
     {# main.css is mostly empty after Tailwind migration, can be removed in Phase 6 if it remains so. #}
     {# <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"> #}
     {% block head_extra %}{% endblock %}

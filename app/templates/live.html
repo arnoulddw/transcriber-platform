@@ -138,5 +138,5 @@
 {% endblock %}
 
 {% block page_scripts %}
-<script src="{{ url_for('static', filename='js/live_transcription.js') }}"></script>
+<script src="{{ url_for('static', filename='js/live_transcription.js', v=build_timestamp) if build_timestamp else url_for('static', filename='js/live_transcription.js') }}"></script>
 {% endblock %}
