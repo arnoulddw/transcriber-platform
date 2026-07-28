@@ -42,9 +42,11 @@
         <div class="surface-divider"></div>
         <h5 class="text-lg font-medium text-text-strong">{{ _('Configured Keys') }}</h5>
         <ul class="divide-y divide-border-default">
-            {% if user_permissions.use_api_openai_whisper or user_permissions.use_api_openai_gpt_4o_transcribe %}
+            {% if user_permissions.use_api_openai_whisper
+                  or user_permissions.use_api_openai_gpt_4o_transcribe
+                  or user_permissions.use_api_openai_live_transcribe %}
             <li class="py-3 flex justify-between items-center">
-                <span class="text-sm text-text-strong">{{ _('OpenAI (Whisper/GPT-4o)') }}</span>
+                <span class="text-sm text-text-strong">{{ _('OpenAI (Whisper/GPT/Live)') }}</span>
                 <div class="flex items-center">
                     <span id="openaiKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
                     <span id="openaiKeyActions"></span>

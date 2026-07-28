@@ -56,6 +56,7 @@ def get_user_readiness():
                 'use_api_assemblyai': role.has_permission('use_api_assemblyai'),
                 'use_api_openai_whisper': role.has_permission('use_api_openai_whisper'),
                 'use_api_openai_gpt_4o_transcribe': role.has_permission('use_api_openai_gpt_4o_transcribe'),
+                'use_api_openai_live_transcribe': role.has_permission('use_api_openai_live_transcribe'),
                 'use_api_google_gemini': role.has_permission('use_api_google_gemini'),
                 'allow_large_files': role.has_permission('allow_large_files'),
                 'allow_context_prompt': role.has_permission('allow_context_prompt'),

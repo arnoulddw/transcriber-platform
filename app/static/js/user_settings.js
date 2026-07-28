@@ -424,7 +424,9 @@ function fetchApiKeyStatus() {
         const geminiActionsElem = document.getElementById('geminiKeyActions');
 
         const permissions = window.USER_PERMISSIONS || {};
-        const canUseOpenAI = permissions.use_api_openai_whisper || permissions.use_api_openai_gpt_4o_transcribe;
+        const canUseOpenAI = permissions.use_api_openai_whisper
+            || permissions.use_api_openai_gpt_4o_transcribe
+            || permissions.use_api_openai_live_transcribe;
         const canUseAssemblyAI = permissions.use_api_assemblyai;
         const canUseGemini = permissions.use_api_google_gemini;
 

@@ -121,6 +121,7 @@ def logged_in_client_with_permissions(app, clean_db):
                 'allow_workflows': True,
                 'use_api_openai_whisper': True,
                 'use_api_openai_gpt_4o_transcribe': True,
+                'use_api_openai_live_transcribe': True,
                 'use_api_google_gemini': True,
                 'allow_api_key_management': True,
                 'allow_public_api_access': True,

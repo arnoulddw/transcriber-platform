@@ -117,7 +117,8 @@ async function fetchReadinessData() {
         return {
             api_keys: { openai: true, assemblyai: true, gemini: true },
             permissions: {
-                use_api_assemblyai: true, use_api_openai_whisper: true, use_api_openai_gpt_4o_transcribe: true,
+                use_api_assemblyai: true, use_api_openai_whisper: true,
+                use_api_openai_gpt_4o_transcribe: true, use_api_openai_live_transcribe: true,
                 use_api_google_gemini: true,
                 allow_large_files: true, allow_context_prompt: true, allow_download_transcript: true,
                 allow_workflows: true,
@@ -420,7 +421,12 @@ function updateApiKeyNotificationVisibility(keyStatus, permissions) {
     const normalizedPermissions = (typeof permissions === 'object' && permissions !== null) ? permissions : {};
 
     const servicePermissions = [
-        { key: 'openai', permitted: normalizedPermissions.use_api_openai_whisper || normalizedPermissions.use_api_openai_gpt_4o_transcribe },
+        {
+            key: 'openai',
+            permitted: normalizedPermissions.use_api_openai_whisper
+                || normalizedPermissions.use_api_openai_gpt_4o_transcribe
+                || normalizedPermissions.use_api_openai_live_transcribe
+        },
         { key: 'assemblyai', permitted: normalizedPermissions.use_api_assemblyai },
         { key: 'gemini', permitted: normalizedPermissions.use_api_google_gemini }
     ];

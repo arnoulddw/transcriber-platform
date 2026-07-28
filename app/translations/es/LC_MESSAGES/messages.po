@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-11-08 17:33+0100\n"
+"POT-Creation-Date: 2026-07-29 00:17+0200\n"
 "PO-Revision-Date: 2025-06-09 15:45+0200\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: es <LL@li.org>\n"
@@ -19,74 +19,64 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: app/__init__.py:360
+#: app/__init__.py:359
 msgid "Service temporarily unavailable. Initialization in progress."
 msgstr "Servicio temporalmente no disponible. Inicialización en curso."
 
-#: app/__init__.py:371 app/__init__.py:538
+#: app/__init__.py:375 app/__init__.py:567 app/api/auth.py:57
 msgid "Authentication required."
 msgstr "Se requiere autenticación."
 
-#: app/__init__.py:510
+#: app/__init__.py:539
 msgid "Not Found"
 msgstr "No encontrado"
 
-#: app/__init__.py:523 app/templates/errors/500.html:5
+#: app/__init__.py:554 app/templates/errors/500.html:5
 msgid "Internal Server Error"
 msgstr "Error interno del servidor"
 
-#: app/__init__.py:530 app/templates/errors/403.html:5
+#: app/__init__.py:560 app/templates/errors/403.html:5
 msgid "Forbidden"
 msgstr "Acceso prohibido"
 
-#: app/__init__.py:538
+#: app/__init__.py:567
 msgid "Unauthorized"
 msgstr "No autorizado"
 
-#: app/__init__.py:546
-#, python-format
-msgid "Too many requests. Please wait a moment and try again."
-msgstr "Demasiadas solicitudes. Espera un momento e inténtalo de nuevo."
+#: app/__init__.py:584
+msgid ""
+"Your session security token expired or was invalid. Please refresh the page "
+"and try again."
+msgstr ""
 
-#: app/__init__.py:549 app/api/llm.py:31 app/api/transcriptions.py:43
-#: app/api/workflows.py:39
+#: app/__init__.py:604
+msgid ""
+"The request could not be understood. Please refresh the page and try again."
+msgstr ""
+
+#: app/__init__.py:606 app/__init__.py:618 app/api/llm.py:31
+#: app/api/transcriptions.py:61 app/api/workflows.py:39
 msgid "Details"
 msgstr "Detalles"
 
-#: app/__init__.py:566
+#: app/__init__.py:615
+msgid "Too many requests. Please wait a moment and try again."
+msgstr "Demasiadas solicitudes. Espera un momento e inténtalo de nuevo."
+
+#: app/__init__.py:633
 #, python-format
 msgid "File is too large. The maximum allowed file size is %(size)sMB."
 msgstr ""
 "El archivo es demasiado grande. El tamaño máximo permitido es de %(size)s "
 "MB."
 
-#: app/config.py:80
-msgid "Automatic Detection"
-msgstr "Detección automática"
-
-#: app/config.py:81
-msgid "English"
-msgstr "Inglés"
-
-#: app/config.py:82
-msgid "Dutch"
-msgstr "Holandés"
-
-#: app/config.py:83
-msgid "French"
-msgstr "Francés"
-
-#: app/config.py:84
-msgid "Spanish"
-msgstr "Español"
-
-#: app/forms.py:29 app/forms.py:62 app/forms.py:124
-#: app/templates/layout/modals/profile_modal.html:26
+#: app/forms.py:29 app/forms.py:62 app/forms.py:125
+#: app/templates/layout/modals/profile_modal.html:20
 msgid "Username"
 msgstr "Nombre de usuario"
 
-#: app/forms.py:36 app/forms.py:96
-#: app/templates/layout/modals/profile_modal.html:32
+#: app/forms.py:36 app/forms.py:97
+#: app/templates/layout/modals/profile_modal.html:28
 msgid "Email"
 msgstr "Correo electrónico"
 
@@ -98,7 +88,7 @@ msgstr "Contraseña"
 msgid "Confirm Password"
 msgstr "Confirmar contraseña"
 
-#: app/forms.py:56 app/templates/base.html:82 app/templates/base.html:165
+#: app/forms.py:56 app/templates/base.html:101 app/templates/base.html:189
 msgid "Register"
 msgstr "Registrarse"
 
@@ -107,226 +97,255 @@ msgstr "Registrarse"
 msgid "Remember Me"
 msgstr "Recordarme"
 
-#: app/forms.py:70 app/templates/base.html:79 app/templates/base.html:162
+#: app/forms.py:71 app/templates/base.html:98 app/templates/base.html:186
 msgid "Login"
 msgstr "Iniciar sesión"
 
-#: app/forms.py:75 app/templates/layout/modals/api_key_modal.html:34
+#: app/forms.py:76 app/templates/layout/modals/api_key_modal.html:28
 msgid "API Service"
 msgstr "Servicio de API"
 
-#: app/forms.py:85 app/templates/layout/modals/api_key_modal.html:43
+#: app/forms.py:86 app/templates/layout/modals/api_key_modal.html:37
 msgid "API Key"
 msgstr "Clave de API"
 
-#: app/forms.py:91
+#: app/forms.py:92
 #, fuzzy
 msgid "Save API Key"
 msgstr "Guardar clave"
 
-#: app/forms.py:102
+#: app/forms.py:103
 msgid "Send Reset Link"
 msgstr "Enviar enlace de restablecimiento"
 
-#: app/forms.py:106 app/forms.py:229
-#: app/templates/layout/modals/profile_modal.html:121
+#: app/forms.py:107 app/forms.py:230
+#: app/templates/layout/modals/profile_modal.html:126
 msgid "New Password"
 msgstr "Nueva contraseña"
 
-#: app/forms.py:113 app/forms.py:236
-#: app/templates/layout/modals/profile_modal.html:132
+#: app/forms.py:114 app/forms.py:237
+#: app/templates/layout/modals/profile_modal.html:137
 msgid "Confirm New Password"
 msgstr "Confirmar nueva contraseña"
 
-#: app/forms.py:119 app/templates/reset_password.html:47
+#: app/forms.py:120 app/templates/reset_password.html:47
 msgid "Reset Password"
 msgstr "Restablecer contraseña"
 
-#: app/forms.py:131
+#: app/forms.py:132
 msgid "Email Address"
 msgstr "Dirección de correo electrónico"
 
-#: app/forms.py:137 app/templates/layout/modals/profile_modal.html:38
+#: app/forms.py:138 app/templates/layout/modals/profile_modal.html:36
 msgid "First Name"
 msgstr "Nombre"
 
-#: app/forms.py:138 app/templates/layout/modals/profile_modal.html:43
+#: app/forms.py:139 app/templates/layout/modals/profile_modal.html:43
 msgid "Last Name"
 msgstr "Apellidos"
 
-#: app/forms.py:141 app/templates/layout/modals/profile_modal.html:62
+#: app/forms.py:142 app/templates/layout/modals/profile_modal.html:66
 msgid "Default Transcription Language"
 msgstr "Idioma de transcripción predeterminado"
 
-#: app/forms.py:145 app/forms.py:259
-#: app/templates/layout/modals/profile_modal.html:68
+#: app/forms.py:146 app/forms.py:260
+#: app/templates/layout/modals/profile_modal.html:74
 msgid "Default Transcription Model"
 msgstr "Modelo de transcripción predeterminado"
 
-#: app/forms.py:149 app/templates/layout/modals/profile_modal.html:50
+#: app/forms.py:150 app/templates/layout/modals/profile_modal.html:52
 msgid "Interface Language"
 msgstr "Idioma de la interfaz"
 
-#: app/forms.py:151 app/templates/layout/modals/profile_modal.html:80
+#: app/forms.py:152 app/templates/layout/modals/profile_modal.html:88
 msgid "Automatically Generate Titles for Transcriptions"
 msgstr "Generar títulos para las transcripciones automáticamente"
 
-#: app/forms.py:225 app/templates/layout/modals/profile_modal.html:110
+#: app/forms.py:226 app/templates/layout/modals/profile_modal.html:115
 msgid "Current Password"
 msgstr "Contraseña actual"
 
-#: app/forms.py:247
+#: app/forms.py:248
 #, fuzzy
 msgid "Role Name"
 msgstr "Apellidos"
 
-#: app/forms.py:254
+#: app/forms.py:255
 #, fuzzy
 msgid "Description"
 msgstr "Modelo de transcripción"
 
-#: app/forms.py:265
+#: app/forms.py:266
 msgid "Default Title Generation Model"
 msgstr "Modelo predeterminado para generación de títulos"
 
-#: app/forms.py:271
+#: app/forms.py:272
 #, fuzzy
 msgid "Default Workflow Model"
 msgstr "Modelo predeterminado de flujos de trabajo"
 
-#: app/forms.py:278
+#: app/forms.py:279
 #, fuzzy
 msgid "Use AssemblyAI API"
 msgstr "AssemblyAI"
 
-#: app/forms.py:279
+#: app/forms.py:280
 #, fuzzy
 msgid "Use OpenAI Whisper API"
 msgstr "OpenAI (Whisper/GPT-4o)"
 
-#: app/forms.py:280
+#: app/forms.py:281
 msgid "Use OpenAI GPT-4o Transcribe API"
 msgstr "Usar la API de transcripción de OpenAI GPT-4o"
 
-#: app/forms.py:283
+#: app/forms.py:282
+msgid "Use OpenAI Live Transcription"
+msgstr "Usar la transcripción en directo de OpenAI"
+
+#: app/forms.py:284
 #, fuzzy
 msgid "Use Google Gemini API"
 msgstr "Google (Gemini)"
 
-#: app/forms.py:285
+#: app/forms.py:286
 #, fuzzy
 msgid "Access Admin Panel"
 msgstr "Panel de administración"
 
-#: app/forms.py:286
+#: app/forms.py:287
 msgid "Allow Large Files (>25MB)"
 msgstr "Permitir archivos grandes (>25 MB)"
 
-#: app/forms.py:287
+#: app/forms.py:288
 #, fuzzy
 msgid "Allow Context Prompt"
 msgstr "Contexto para la transcripción"
 
-#: app/forms.py:288
+#: app/forms.py:289
 msgid "Allow User API Key Management"
 msgstr "Permitir la gestión de claves de API por el usuario"
 
-#: app/forms.py:289
+#: app/forms.py:290
+msgid "Allow Public API Access"
+msgstr ""
+
+#: app/forms.py:291
 #, fuzzy
 msgid "Allow Transcript Download"
 msgstr "Modelo de transcripción predeterminado"
 
-#: app/forms.py:290
+#: app/forms.py:292
 #, fuzzy
 msgid "Allow Workflows"
 msgstr "Aplicar Workflow"
 
-#: app/forms.py:291
+#: app/forms.py:293
 msgid "Manage Workflow Templates (Admin)"
 msgstr "Gestionar plantillas de Workflow (Admin)"
 
-#: app/forms.py:292
+#: app/forms.py:294
 #, fuzzy
 msgid "Allow Automatic Title Generation"
 msgstr "Detección automática"
 
-#: app/forms.py:295 app/forms.py:298 app/forms.py:301
+#: app/forms.py:295
+msgid "Allow Speaker Diarization (AssemblyAI)"
+msgstr ""
+
+#: app/forms.py:298 app/forms.py:301 app/forms.py:304
 msgid "Daily Quota"
 msgstr "Cuota diaria"
 
-#: app/forms.py:296 app/forms.py:299 app/forms.py:302
+#: app/forms.py:299 app/forms.py:302 app/forms.py:305
 msgid "Weekly Quota"
 msgstr "Cuota semanal"
 
-#: app/forms.py:297 app/forms.py:300 app/forms.py:303
+#: app/forms.py:300 app/forms.py:303 app/forms.py:306
 msgid "Monthly Quota"
 msgstr "Cuota mensual"
 
-#: app/forms.py:305
+#: app/forms.py:308
 msgid "Max History Items"
 msgstr "Máximo de elementos del historial"
 
-#: app/forms.py:309
+#: app/forms.py:312
 msgid "History Retention Days"
 msgstr "Días de retención del historial"
 
-#: app/forms.py:313
+#: app/forms.py:316
 #, fuzzy
 msgid "Save Role"
 msgstr "Guardar clave"
 
-#: app/forms.py:387 app/templates/manage_prompts.html:32
-#: app/templates/manage_prompts.html:101
+#: app/forms.py:390 app/templates/manage_prompts.html:27
+#: app/templates/manage_prompts.html:86
 msgid "Workflow Label"
 msgstr "Etiqueta del Workflow"
 
-#: app/forms.py:394 app/templates/manage_prompts.html:46
-#: app/templates/manage_prompts.html:114
+#: app/forms.py:397 app/templates/manage_prompts.html:41
+#: app/templates/manage_prompts.html:99
 msgid "Workflow Prompt"
 msgstr "Prompt del Workflow"
 
-#: app/forms.py:401
+#: app/forms.py:404
 #, fuzzy
 msgid "Workflow Language"
 msgstr "Etiqueta del Workflow"
 
-#: app/forms.py:404 app/templates/manage_prompts.html:37
-#: app/templates/manage_prompts.html:106
+#: app/forms.py:407 app/templates/manage_prompts.html:32
+#: app/templates/manage_prompts.html:91
 msgid "Label Color"
 msgstr "Color de la etiqueta"
 
-#: app/forms.py:405
+#: app/forms.py:408
 #, fuzzy
 msgid "Save Workflow Template"
 msgstr "Etiqueta del Workflow"
 
-#: app/api/auth.py:283
+#: app/api/auth.py:265
 msgid "Already logged in."
 msgstr "Ya ha iniciado sesión."
 
-#: app/api/auth.py:288
+#: app/api/auth.py:269
 msgid "Google Sign-In is not configured on the server."
 msgstr "El inicio de sesión con Google no está configurado en el servidor."
 
-#: app/api/auth.py:294
+#: app/api/auth.py:284
 msgid "Invalid request payload."
 msgstr "Datos de la solicitud no válidos."
 
-#: app/api/auth.py:303
+#: app/api/auth.py:289
 msgid "Invalid Google token."
 msgstr "Token de Google no válido."
 
-#: app/api/auth.py:309
+#: app/api/auth.py:293
 msgid "Failed to process Google Sign-In."
 msgstr "No se pudo procesar el inicio de sesión con Google."
 
-#: app/api/auth.py:338
+#: app/api/auth.py:326
 msgid "Login successful."
 msgstr "Inicio de sesión exitoso."
 
-#: app/api/auth.py:345
+#: app/api/auth.py:335
 msgid "An unexpected server error occurred."
 msgstr "Ocurrió un error inesperado en el servidor."
+
+#: app/api/live.py:30
+msgid "You do not have access to Live transcription."
+msgstr "No tienes acceso a la transcripción en directo."
+
+#: app/api/live.py:43
+#, python-format
+msgid "Usage limit exceeded: %(reason)s"
+msgstr "Límite de uso superado: %(reason)s"
+
+#: app/api/live.py:60
+msgid "Could not start Live transcription."
+msgstr "No se pudo iniciar la transcripción en directo."
+
+#: app/api/live.py:81
+msgid "Could not save the Live transcript."
+msgstr "No se pudo guardar la transcripción en directo."
 
 #: app/api/llm.py:52
 msgid "Please include a prompt before requesting AI text generation."
@@ -383,50 +402,70 @@ msgstr ""
 "Se produjo un error interno al obtener el estado de la operación de IA. "
 "Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:91
+#: app/api/transcriptions.py:85
+msgid "A valid API key is required. Provide it in the Authorization header."
+msgstr ""
+
+#: app/api/transcriptions.py:88
+msgid "A valid API key is required."
+msgstr ""
+
+#: app/api/transcriptions.py:92
+msgid "Authentication failed. Please check your API key."
+msgstr ""
+
+#: app/api/transcriptions.py:94 app/api/user_settings.py:131
+#: app/api/user_settings.py:155 app/api/user_settings.py:182
+#: app/api/user_settings.py:208
+#, fuzzy
+msgid "You do not have permission to use the public API."
+msgstr "No tienes permiso para eliminar esta transcripción."
+
+#: app/api/transcriptions.py:136
+#, fuzzy
+msgid "Transcription was cancelled."
+msgstr "Se solicitó la cancelación de la transcripción."
+
+#: app/api/transcriptions.py:194 app/api/transcriptions.py:416
 msgid "We did not receive an audio file in your request."
 msgstr "No recibimos un archivo de audio en tu solicitud."
 
-#: app/api/transcriptions.py:95
+#: app/api/transcriptions.py:198 app/api/transcriptions.py:420
 msgid "Please choose a file before starting the transcription."
 msgstr "Elige un archivo antes de iniciar la transcripción."
 
-#: app/api/transcriptions.py:98
+#: app/api/transcriptions.py:201 app/api/transcriptions.py:423
 msgid "This file type is not supported for transcription."
 msgstr "Este tipo de archivo no es compatible con la transcripción."
 
-#: app/api/transcriptions.py:126
+#: app/api/transcriptions.py:209
+msgid "No transcription provider is available for your account."
+msgstr ""
+
+#: app/api/transcriptions.py:214
+#, fuzzy
+msgid "You do not have permission to use this transcription provider."
+msgstr "No tienes permiso para eliminar esta transcripción."
+
+#: app/api/transcriptions.py:247 app/api/transcriptions.py:451
 #, python-format
 msgid "The file exceeds the size limit of %(size)sMB."
 msgstr "El archivo supera el límite de %(size)s MB."
 
-#: app/api/transcriptions.py:142
+#: app/api/transcriptions.py:262 app/api/transcriptions.py:467
 msgid "We could not save or process the uploaded file. Please try again."
 msgstr "No pudimos guardar o procesar el archivo cargado. Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:210 app/api/transcriptions.py:214
+#: app/api/transcriptions.py:294 app/api/transcriptions.py:298
+#: app/api/transcriptions.py:544 app/api/transcriptions.py:548
 msgid "We could not initialize the transcription job. Please try again."
 msgstr "No pudimos iniciar el trabajo de transcripción. Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:241
+#: app/api/transcriptions.py:323 app/api/transcriptions.py:573
 msgid "Transcription job started successfully."
 msgstr "El trabajo de transcripción se inició correctamente."
 
-#: app/api/transcriptions.py:255
-msgid ""
-"We could not start the transcription because one of the inputs was invalid."
-msgstr ""
-"No pudimos iniciar la transcripción porque alguna entrada era inválida."
-
-#: app/api/transcriptions.py:257
-msgid ""
-"We could not start the transcription because of a configuration or "
-"permission issue."
-msgstr ""
-"No pudimos iniciar la transcripción debido a un problema de configuración o "
-"permisos."
-
-#: app/api/transcriptions.py:267
+#: app/api/transcriptions.py:334 app/api/transcriptions.py:599
 msgid ""
 "We could not start the transcription job due to an internal error. Please "
 "try again."
@@ -434,27 +473,21 @@ msgstr ""
 "No pudimos iniciar el trabajo de transcripción debido a un error interno. "
 "Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:293 app/api/transcriptions.py:384
-#: app/api/transcriptions.py:585 app/api/transcriptions.py:636
+#: app/api/transcriptions.py:361 app/api/transcriptions.py:625
+#: app/api/transcriptions.py:716 app/api/transcriptions.py:982
+#: app/api/transcriptions.py:1033
 #, fuzzy
 msgid "You do not have access to this transcription job."
 msgstr "No tiene permiso para acceder a esta página."
 
-#: app/api/transcriptions.py:296 app/api/transcriptions.py:387
-#: app/api/transcriptions.py:588 app/api/transcriptions.py:639
+#: app/api/transcriptions.py:363 app/api/transcriptions.py:628
+#: app/api/transcriptions.py:719 app/api/transcriptions.py:985
+#: app/api/transcriptions.py:1036
 #, fuzzy
 msgid "We could not find that transcription job."
 msgstr "Aún no hay transcripciones completadas."
 
-#: app/api/transcriptions.py:309
-msgid "Error: Invalid progress log format."
-msgstr "Error: formato de registro de progreso inválido."
-
-#: app/api/transcriptions.py:331
-msgid "LLM/Workflow status must be polled separately."
-msgstr "El estado del LLM/flujo debe consultarse por separado."
-
-#: app/api/transcriptions.py:363
+#: app/api/transcriptions.py:369 app/api/transcriptions.py:695
 msgid ""
 "We encountered an internal error while fetching job progress. Please try "
 "again."
@@ -462,48 +495,79 @@ msgstr ""
 "Se produjo un error interno al obtener el progreso del trabajo. Inténtalo de"
 " nuevo."
 
-#: app/api/transcriptions.py:392
+#: app/api/transcriptions.py:495
+#, fuzzy
+msgid "You do not have permission to identify speakers for this model."
+msgstr "No tienes permiso para eliminar esta transcripción."
+
+#: app/api/transcriptions.py:587
+msgid ""
+"We could not start the transcription because one of the inputs was invalid."
+msgstr ""
+"No pudimos iniciar la transcripción porque alguna entrada era inválida."
+
+#: app/api/transcriptions.py:589
+msgid ""
+"We could not start the transcription because of a configuration or "
+"permission issue."
+msgstr ""
+"No pudimos iniciar la transcripción debido a un problema de configuración o "
+"permisos."
+
+#: app/api/transcriptions.py:641
+msgid "Error: Invalid progress log format."
+msgstr "Error: formato de registro de progreso inválido."
+
+#: app/api/transcriptions.py:663
+msgid "LLM/Workflow status must be polled separately."
+msgstr "El estado del LLM/flujo debe consultarse por separado."
+
+#: app/api/transcriptions.py:724
 #, python-format
 msgid ""
 "This transcription cannot be cancelled because it is in %(status)s status."
 msgstr ""
 "Esta transcripción no se puede cancelar porque está en estado %(status)s."
 
-#: app/api/transcriptions.py:395
+#: app/api/transcriptions.py:727
 msgid "Cancellation requested by user."
 msgstr "Cancelación solicitada por el usuario."
 
-#: app/api/transcriptions.py:398
+#: app/api/transcriptions.py:730
 msgid "Transcription cancellation requested."
 msgstr "Se solicitó la cancelación de la transcripción."
 
-#: app/api/transcriptions.py:402
+#: app/api/transcriptions.py:734
 msgid ""
 "We encountered an internal error while requesting cancellation. Please try "
 "again."
 msgstr ""
 "Se produjo un error interno al solicitar la cancelación. Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:427
+#: app/api/transcriptions.py:759
 msgid "We could not retrieve your transcription history. Please try again."
 msgstr ""
 "No pudimos recuperar tu historial de transcripciones. Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:454
+#: app/api/transcriptions.py:796
+msgid "Search failed. Please try again."
+msgstr ""
+
+#: app/api/transcriptions.py:824
 msgid "Transcription deleted successfully."
 msgstr "La transcripción se eliminó correctamente."
 
-#: app/api/transcriptions.py:459
+#: app/api/transcriptions.py:829
 msgid "You do not have permission to delete this transcription."
 msgstr "No tienes permiso para eliminar esta transcripción."
 
-#: app/api/transcriptions.py:462 app/api/transcriptions.py:491
-#: app/api/transcriptions.py:553
+#: app/api/transcriptions.py:832 app/api/transcriptions.py:861
+#: app/api/transcriptions.py:921 app/api/transcriptions.py:952
 #, fuzzy
 msgid "We could not find that transcription."
 msgstr "Aún no hay transcripciones completadas."
 
-#: app/api/transcriptions.py:465
+#: app/api/transcriptions.py:835
 msgid ""
 "We could not delete the transcription because of an internal error. Please "
 "try again."
@@ -511,19 +575,19 @@ msgstr ""
 "No pudimos eliminar la transcripción debido a un error interno. Inténtalo de"
 " nuevo."
 
-#: app/api/transcriptions.py:482
+#: app/api/transcriptions.py:852
 msgid "Transcription restored."
 msgstr "La transcripción fue restaurada."
 
-#: app/api/transcriptions.py:487
+#: app/api/transcriptions.py:857
 msgid "Transcription already active."
 msgstr "La transcripción ya está activa."
 
-#: app/api/transcriptions.py:494
+#: app/api/transcriptions.py:864
 msgid "This transcription cannot be restored."
 msgstr "Esta transcripción no se puede restaurar."
 
-#: app/api/transcriptions.py:497
+#: app/api/transcriptions.py:867
 msgid ""
 "We could not restore the transcription because of an internal error. Please "
 "try again."
@@ -531,12 +595,12 @@ msgstr ""
 "No pudimos restaurar la transcripción debido a un error interno. Inténtalo "
 "de nuevo."
 
-#: app/api/transcriptions.py:524
+#: app/api/transcriptions.py:892
 #, python-format
 msgid "All %(count)s transcriptions were cleared successfully."
 msgstr "Se eliminaron correctamente las %(count)s transcripciones."
 
-#: app/api/transcriptions.py:527
+#: app/api/transcriptions.py:895
 msgid ""
 "We could not clear your transcriptions because of an internal error. Please "
 "try again."
@@ -544,27 +608,27 @@ msgstr ""
 "No pudimos limpiar tus transcripciones debido a un error interno. Inténtalo "
 "de nuevo."
 
-#: app/api/transcriptions.py:542
+#: app/api/transcriptions.py:910
 msgid "You do not have permission to download transcripts."
 msgstr "No tienes permiso para descargar transcripciones."
 
-#: app/api/transcriptions.py:548
+#: app/api/transcriptions.py:916
 msgid "Download logged successfully."
 msgstr "La descarga se registró correctamente."
 
-#: app/api/transcriptions.py:556
+#: app/api/transcriptions.py:924
 msgid "You do not have permission to access this transcription."
 msgstr "No tienes permiso para acceder a esta transcripción."
 
-#: app/api/transcriptions.py:559
+#: app/api/transcriptions.py:927
 msgid "You can only download completed transcriptions."
 msgstr "Solo puedes descargar transcripciones completadas."
 
-#: app/api/transcriptions.py:562
+#: app/api/transcriptions.py:930
 msgid "We could not log this download. Please try again."
 msgstr "No pudimos registrar esta descarga. Inténtalo de nuevo."
 
-#: app/api/transcriptions.py:565
+#: app/api/transcriptions.py:933
 msgid ""
 "We could not log the download because of an internal error. Please try "
 "again."
@@ -572,7 +636,24 @@ msgstr ""
 "No pudimos registrar la descarga debido a un error interno. Inténtalo de "
 "nuevo."
 
-#: app/api/transcriptions.py:615
+#: app/api/transcriptions.py:955
+#, fuzzy
+msgid "You do not have permission to modify this transcription."
+msgstr "No tienes permiso para eliminar esta transcripción."
+
+#: app/api/transcriptions.py:958
+#, fuzzy
+msgid "Could not toggle pin. Please try again."
+msgstr "No pudimos registrar esta descarga. Inténtalo de nuevo."
+
+#: app/api/transcriptions.py:961
+#, fuzzy
+msgid "An internal error occurred. Please try again."
+msgstr ""
+"Se produjo un error interno al obtener el progreso del trabajo. Inténtalo de"
+" nuevo."
+
+#: app/api/transcriptions.py:1012
 msgid ""
 "We encountered an internal error while fetching the title status. Please try"
 " again."
@@ -580,7 +661,7 @@ msgstr ""
 "Se produjo un error interno al obtener el estado del título. Inténtalo de "
 "nuevo."
 
-#: app/api/transcriptions.py:660
+#: app/api/transcriptions.py:1057
 msgid ""
 "We encountered an internal error while fetching workflow details. Please try"
 " again."
@@ -588,111 +669,125 @@ msgstr ""
 "Se produjo un error interno al obtener los detalles del flujo. Inténtalo de "
 "nuevo."
 
-#: app/api/user_settings.py:92
+#: app/api/user_settings.py:97
 msgid "Failed to retrieve user readiness status."
 msgstr "No se pudo obtener el estado de disponibilidad del usuario."
 
-#: app/api/user_settings.py:112
+#: app/api/user_settings.py:117 app/api/user_settings.py:140
 msgid "Failed to retrieve API key status."
 msgstr "No se pudo obtener el estado de la clave de API."
 
-#: app/api/user_settings.py:132
+#: app/api/user_settings.py:168
+#, fuzzy
+msgid "An unexpected error occurred while generating the API key."
+msgstr "Ocurrió un error inesperado al eliminar la clave de API."
+
+#: app/api/user_settings.py:185 app/api/user_settings.py:211
+msgid "Public API key revoked."
+msgstr ""
+
+#: app/api/user_settings.py:194 app/api/user_settings.py:223
+#, fuzzy
+msgid "An unexpected error occurred while revoking the API key."
+msgstr "Ocurrió un error inesperado al guardar la clave de API."
+
+#: app/api/user_settings.py:243
 #, python-format
 msgid "API key for %(service)s saved successfully."
 msgstr "Clave de API para %(service)s guardada correctamente."
 
-#: app/api/user_settings.py:139
+#: app/api/user_settings.py:250
 msgid "An unexpected error occurred while saving the API key."
 msgstr "Ocurrió un error inesperado al guardar la clave de API."
 
-#: app/api/user_settings.py:143 app/api/user_settings.py:238
-#: app/api/user_settings.py:276
+#: app/api/user_settings.py:254 app/api/user_settings.py:349
+#: app/api/user_settings.py:387
 msgid "Validation failed"
 msgstr "Error de validación"
 
-#: app/api/user_settings.py:158
+#: app/api/user_settings.py:269
 msgid "Invalid service specified in URL."
 msgstr "Servicio especificado en la URL no válido."
 
-#: app/api/user_settings.py:164
+#: app/api/user_settings.py:275
 #, python-format
 msgid "API key for %(service)s deleted successfully."
 msgstr "Clave de API para %(service)s eliminada correctamente."
 
-#: app/api/user_settings.py:174
+#: app/api/user_settings.py:285
 msgid "An unexpected error occurred while deleting the API key."
 msgstr "Ocurrió un error inesperado al eliminar la clave de API."
 
-#: app/api/user_settings.py:201
+#: app/api/user_settings.py:312
 msgid "Failed to retrieve profile data."
 msgstr "No se pudieron obtener los datos del perfil."
 
-#: app/api/user_settings.py:221
+#: app/api/user_settings.py:332
 msgid "Profile updated successfully."
 msgstr "Perfil actualizado correctamente."
 
-#: app/api/user_settings.py:234
+#: app/api/user_settings.py:345
 msgid "An unexpected error occurred while updating the profile."
 msgstr "Ocurrió un error inesperado al actualizar el perfil."
 
-#: app/api/user_settings.py:251
+#: app/api/user_settings.py:362
 msgid ""
 "Password change is not available for accounts signed in via Google/OAuth."
 msgstr ""
 "El cambio de contraseña no está disponible para cuentas iniciadas con "
 "Google/OAuth."
 
-#: app/api/user_settings.py:262
+#: app/api/user_settings.py:373
 msgid "Password changed successfully."
 msgstr "Contraseña cambiada correctamente."
 
-#: app/api/user_settings.py:272
+#: app/api/user_settings.py:383
 msgid "An unexpected error occurred while changing the password."
 msgstr "Ocurrió un error inesperado al cambiar la contraseña."
 
-#: app/api/user_settings.py:307
+#: app/api/user_settings.py:418
 msgid "Failed to retrieve user prompts."
 msgstr "No se pudieron obtener las Prompts del usuario."
 
-#: app/api/user_settings.py:318 app/api/user_settings.py:356
+#: app/api/user_settings.py:429 app/api/user_settings.py:467
 msgid "Missing title or prompt_text in request body."
 msgstr "Falta el título o el texto de la Prompt en la solicitud."
 
-#: app/api/user_settings.py:329
+#: app/api/user_settings.py:440
 msgid "Prompt saved successfully."
 msgstr "Prompt guardada correctamente."
 
-#: app/api/user_settings.py:333
+#: app/api/user_settings.py:444
 msgid "Failed to save prompt (service returned None)."
 msgstr "No se pudo guardar la Prompt (el servicio no devolvió respuesta)."
 
-#: app/api/user_settings.py:345
+#: app/api/user_settings.py:456
 msgid "An unexpected error occurred while saving the prompt."
 msgstr "Ocurrió un error inesperado al guardar la Prompt."
 
-#: app/api/user_settings.py:366
+#: app/api/user_settings.py:477
 msgid "Prompt updated successfully."
 msgstr "Prompt actualizada correctamente."
 
-#: app/api/user_settings.py:368
+#: app/api/user_settings.py:479
 msgid "Failed to update prompt (check ownership or logs)."
 msgstr ""
 "No se pudo actualizar la Prompt (verifique la propiedad o los registros)."
 
-#: app/api/user_settings.py:377
+#: app/api/user_settings.py:488
 msgid "An unexpected error occurred while updating the prompt."
 msgstr "Ocurrió un error inesperado al actualizar la Prompt."
 
-#: app/api/user_settings.py:388
+#: app/api/user_settings.py:499
 msgid "Prompt deleted successfully."
 msgstr "Prompt eliminada correctamente."
 
-#: app/api/user_settings.py:390
+#: app/api/user_settings.py:501
 msgid "Failed to delete prompt (check ownership or logs)."
 msgstr ""
 "No se pudo eliminar la Prompt (verifique la propiedad o los registros)."
 
-#: app/api/user_settings.py:399
+#: app/api/user_settings.py:510
 msgid "An unexpected error occurred while deleting the prompt."
 msgstr "Ocurrió un error inesperado al eliminar la Prompt."
 
@@ -829,8 +924,63 @@ msgstr "Has alcanzado tu límite de uso justo."
 msgid "An error occurred while checking usage limits."
 msgstr "Ocurrió un error inesperado al eliminar la Prompt."
 
+#: app/services/live_transcription_service.py:58
+#: app/services/live_transcription_service.py:61
+msgid "OpenAI API key is not configured."
+msgstr "La clave API de OpenAI no está configurada."
+
+#: app/services/live_transcription_service.py:70
+msgid "Select a supported transcription language."
+msgstr "Selecciona un idioma de transcripción compatible."
+
+#: app/services/live_transcription_service.py:73
+msgid "You do not have permission to use a context prompt."
+msgstr "No tienes permiso para usar un contexto."
+
+#: app/services/live_transcription_service.py:77
+#, python-format
+msgid "Context prompt cannot exceed %(count)s words."
+msgstr "El contexto no puede superar las %(count)s palabras."
+
+#: app/services/live_transcription_service.py:115
+msgid "A WebRTC session offer is required."
+msgstr "Se necesita una oferta de sesión WebRTC."
+
+#: app/services/live_transcription_service.py:137
+msgid "Could not connect to the live transcription service."
+msgstr "No se pudo conectar al servicio de transcripción en directo."
+
+#: app/services/live_transcription_service.py:147
+msgid "The live transcription service rejected the session."
+msgstr "El servicio de transcripción en directo rechazó la sesión."
+
+#: app/services/live_transcription_service.py:165
+msgid "The live session token is missing."
+msgstr "Falta el token de la sesión en directo."
+
+#: app/services/live_transcription_service.py:169
+#: app/services/live_transcription_service.py:178
+msgid "The live session token is invalid."
+msgstr "El token de la sesión en directo no es válido."
+
+#: app/services/live_transcription_service.py:186
+msgid "This live session belongs to another user."
+msgstr "Esta sesión en directo pertenece a otro usuario."
+
+#: app/services/live_transcription_service.py:196
+msgid "The live session identifier is already in use."
+msgstr "El identificador de la sesión en directo ya está en uso."
+
+#: app/services/live_transcription_service.py:203
+msgid "There is no transcript to save."
+msgstr "No hay ninguna transcripción que guardar."
+
+#: app/services/live_transcription_service.py:206
+msgid "The live transcript is too large to save."
+msgstr "La transcripción en directo es demasiado grande para guardarla."
+
 #: app/templates/base.html:9 app/templates/base.html:39
-#: app/templates/index.html:5
+#: app/templates/index.html:7
 #, fuzzy
 msgid "Compass Platform"
 msgstr "Plataforma de Transcripción"
@@ -839,83 +989,88 @@ msgstr "Plataforma de Transcripción"
 msgid "Open main menu"
 msgstr "Abrir menú principal"
 
-#: app/templates/base.html:50
+#: app/templates/base.html:48 app/templates/base.html:60
+#: app/templates/live.html:38
+msgid "Live"
+msgstr "En directo"
+
+#: app/templates/base.html:69
 msgid "Open user menu"
 msgstr "Abrir menú de usuario"
 
-#: app/templates/base.html:59 app/templates/base.html:136
-#: app/templates/layout/modals/profile_modal.html:14
+#: app/templates/base.html:78 app/templates/base.html:160
+#: app/templates/layout/modals/profile_modal.html:8
 msgid "User Settings"
 msgstr "Ajustes de usuario"
 
-#: app/templates/base.html:61 app/templates/base.html:140
-#: app/templates/layout/modals/api_key_modal.html:14
+#: app/templates/base.html:80 app/templates/base.html:164
+#: app/templates/layout/modals/api_key_modal.html:8
 msgid "Manage API Keys"
 msgstr "Gestionar claves de API"
 
-#: app/templates/base.html:64 app/templates/base.html:145
-#: app/templates/manage_prompts.html:5 app/templates/manage_prompts.html:19
+#: app/templates/base.html:83 app/templates/base.html:169
+#: app/templates/manage_prompts.html:7 app/templates/manage_prompts.html:18
 msgid "Manage your Workflows"
 msgstr "Gestionar sus Workflows"
 
-#: app/templates/base.html:68 app/templates/base.html:151
+#: app/templates/base.html:87 app/templates/base.html:175
 msgid "Admin Panel"
 msgstr "Panel de administración"
 
-#: app/templates/base.html:73 app/templates/base.html:156
+#: app/templates/base.html:92 app/templates/base.html:180
 msgid "Logout"
 msgstr "Cerrar sesión"
 
-#: app/templates/base.html:104
-msgid "English picker"
-msgstr "English"
-
-#: app/templates/base.html:104
+#: app/templates/base.html:123
 msgid "Español"
 msgstr "Español"
 
-#: app/templates/base.html:104
+#: app/templates/base.html:123
 msgid "Français"
 msgstr "Français"
 
-#: app/templates/base.html:104
+#: app/templates/base.html:123
 msgid "Nederlands"
 msgstr "Nederlands"
 
-#: app/templates/base.html:125
+#: app/templates/base.html:144
 msgid "Menu"
 msgstr "Menú"
 
-#: app/templates/base.html:128
+#: app/templates/base.html:147
 msgid "Close menu"
 msgstr "Cerrar menú"
 
-#: app/templates/base.html:192
+#: app/templates/base.html:156 app/templates/live.html:3
+msgid "Live transcription"
+msgstr "Transcripción en directo"
+
+#: app/templates/base.html:221
 #, fuzzy
 msgid "Compass Platform App"
 msgstr "Aplicación Plataforma de Transcripción"
 
-#: app/templates/index.html:22
+#: app/templates/index.html:11
 msgid "Upload Audio File"
 msgstr "Subir archivo de audio"
 
-#: app/templates/index.html:26
+#: app/templates/index.html:15
 msgid "Audio File"
 msgstr "Archivo de audio"
 
-#: app/templates/index.html:31
+#: app/templates/index.html:20
 msgid "Choose File"
 msgstr "Seleccionar archivo"
 
-#: app/templates/index.html:37 app/templates/index.html:38
+#: app/templates/index.html:26 app/templates/index.html:27
 msgid "Select an audio file (mp3, wav, m4a...)"
 msgstr "Seleccione un archivo de audio (mp3, wav, m4a...)"
 
-#: app/templates/index.html:38
+#: app/templates/index.html:27
 msgid "Select audio file…"
 msgstr "Seleccionar archivo de audio…"
 
-#: app/templates/index.html:40
+#: app/templates/index.html:29
 msgid ""
 "Max file size: 200 MB. Supported formats: MP3, M4A, WAV, OGG, WEBM, MPGA, "
 "MPEG."
@@ -923,175 +1078,352 @@ msgstr ""
 "Tamaño máximo de archivo: 200 MB. Formatos admitidos: MP3, M4A, WAV, OGG, "
 "WEBM, MPGA, MPEG."
 
-#: app/templates/index.html:45
+#: app/templates/index.html:34
 msgid "Transcription Model"
 msgstr "Modelo de transcripción"
 
-#: app/templates/index.html:61
+#: app/templates/index.html:50
 msgid "Transcription Language"
 msgstr "Idioma de la transcripción"
 
-#: app/templates/index.html:77
+#: app/templates/index.html:66
 msgid "Context Prompt"
 msgstr "Contexto para la transcripción"
 
-#: app/templates/index.html:84
+#: app/templates/index.html:73
+msgid "Identify Speakers"
+msgstr ""
+
+#: app/templates/index.html:80
 msgid "Apply Workflow"
 msgstr "Aplicar Workflow"
 
-#: app/templates/index.html:97
+#: app/templates/index.html:81
+#, fuzzy
+msgid "Remove applied workflow"
+msgstr "Aplicar Workflow"
+
+#: app/templates/index.html:92
 msgid "Context Prompt (Max 120 words)"
 msgstr "Contexto para la transcripción (máx. 120 palabras)"
 
-#: app/templates/index.html:101 app/templates/index.html:102
+#: app/templates/index.html:96 app/templates/index.html:97
 msgid "(Optional) Provide context like names or jargon..."
 msgstr "(Opcional) Proporcione contexto como nombres o jerga..."
 
-#: app/templates/index.html:103
+#: app/templates/index.html:98
 msgid "(Optional) Add context..."
 msgstr "(Opcional) Añada contexto..."
 
-#: app/templates/index.html:105
-#: app/templates/layout/modals/workflow_modal.html:39
+#: app/templates/index.html:100
+#: app/templates/layout/modals/workflow_modal.html:36
+#: app/templates/live.html:27 app/templates/live.html:99
 msgid "words"
 msgstr "palabras"
 
-#: app/templates/index.html:120
+#: app/templates/index.html:114
 msgid "TRANSCRIBE"
 msgstr "TRANSCRIBIR"
 
-#: app/templates/index.html:133
+#: app/templates/index.html:126
 msgid "Waiting..."
 msgstr "Esperando..."
 
-#: app/templates/index.html:138
+#: app/templates/index.html:131
 msgid "STOP"
 msgstr "DETENER"
 
-#: app/templates/index.html:148
-msgid "Transcription History"
-msgstr "Historial de transcripciones"
-
-#: app/templates/index.html:152
+#: app/templates/index.html:137
 msgid "Clear All"
 msgstr "Borrar todo"
 
-#: app/templates/index.html:198
+#: app/templates/index.html:138
+msgid "Transcription History"
+msgstr "Historial de transcripciones"
+
+#: app/templates/index.html:146
+#, fuzzy
+msgid "Search transcriptions…"
+msgstr "Modelo de transcripción predeterminado"
+
+#: app/templates/index.html:149
+#, fuzzy
+msgid "Search transcription history"
+msgstr "Historial de transcripciones"
+
+#: app/templates/index.html:152
+#, fuzzy
+msgid "Clear search"
+msgstr "Borrar todo"
+
+#: app/templates/index.html:202
 msgid "(Failed)"
 msgstr "(Error)"
 
-#: app/templates/index.html:220
+#: app/templates/index.html:206
+#, fuzzy
+msgid "Copy Transcript"
+msgstr "TRANSCRIBIR"
+
+#: app/templates/index.html:210
+msgid "Download Transcript"
+msgstr ""
+
+#: app/templates/index.html:214
+msgid "Unpin"
+msgstr ""
+
+#: app/templates/index.html:214
+msgid "Pin to top"
+msgstr ""
+
+#: app/templates/index.html:217
+#, fuzzy
+msgid "Delete Transcript"
+msgstr "Modelo de transcripción predeterminado"
+
+#: app/templates/index.html:227
 #: app/templates/layout/scripts/base_bootstrap.html:34
 msgid "Start Workflow"
 msgstr "Iniciar Workflow"
 
-#: app/templates/index.html:231
+#: app/templates/index.html:238
 msgid "Processing Workflow..."
 msgstr "Procesando Workflow..."
 
-#: app/templates/index.html:237
+#: app/templates/index.html:244
 #: app/templates/layout/scripts/base_bootstrap.html:35
 msgid "Workflow Result"
 msgstr "Resultado del Workflow"
 
-#: app/templates/index.html:240
+#: app/templates/index.html:247
 msgid "Ran:"
 msgstr "Ejecutado:"
 
-#: app/templates/index.html:242 app/templates/index.html:271
+#: app/templates/index.html:249 app/templates/index.html:278
 msgid "Workflow Label:"
 msgstr "Etiqueta del Workflow:"
 
-#: app/templates/index.html:244 app/templates/index.html:246
-#: app/templates/index.html:273 app/templates/index.html:275
+#: app/templates/index.html:251 app/templates/index.html:253
+#: app/templates/index.html:280 app/templates/index.html:282
 msgid "Prompt:"
 msgstr "Prompt:"
 
-#: app/templates/index.html:266
+#: app/templates/index.html:273
 #: app/templates/layout/scripts/base_bootstrap.html:36
 msgid "Workflow Error"
 msgstr "Error en el Workflow"
 
-#: app/templates/index.html:269
+#: app/templates/index.html:276
 msgid "Attempted:"
 msgstr "Se intentó:"
 
-#: app/templates/index.html:291
+#: app/templates/index.html:298
 msgid "No completed transcriptions yet."
 msgstr "Aún no hay transcripciones completadas."
 
-#: app/templates/index.html:302
+#: app/templates/index.html:309
 msgid "Previous"
 msgstr "Anterior"
 
-#: app/templates/index.html:333
+#: app/templates/index.html:340
 msgid "Next"
 msgstr "Siguiente"
 
-#: app/templates/index.html:338
+#: app/templates/index.html:345
 #, python-format
 msgid "Showing %(length)s of %(total)s items"
 msgstr "Mostrando %(length)s de %(total)s elementos"
 
-#: app/templates/login.html:25
-msgid "Error:"
-msgstr "Error:"
+#: app/templates/live.html:13 app/templates/live.html:85
+msgid "Start listening"
+msgstr "Empezar a escuchar"
 
-#: app/templates/login.html:102
+#: app/templates/live.html:14
+msgid "Stop and save"
+msgstr "Detener y guardar"
+
+#: app/templates/live.html:15
+msgid "New session"
+msgstr "Nueva sesión"
+
+#: app/templates/live.html:16
+msgid "Connecting…"
+msgstr "Conectando…"
+
+#: app/templates/live.html:17
+msgid "Listening live"
+msgstr "Escuchando en directo"
+
+#: app/templates/live.html:18
+msgid "Saving transcript…"
+msgstr "Guardando transcripción…"
+
+#: app/templates/live.html:19
+msgid "Saved to transcription history"
+msgstr "Guardado en el historial de transcripciones"
+
+#: app/templates/live.html:20 app/templates/live.html:41
+msgid "Ready to listen"
+msgstr "Listo para escuchar"
+
+#: app/templates/live.html:21 app/templates/live.html:127
+msgid "Start listening and spoken words will appear here."
+msgstr "Empieza a escuchar y las palabras aparecerán aquí."
+
+#: app/templates/live.html:22 app/templates/live.html:118
+msgid "Copy transcript"
+msgstr "Copiar transcripción"
+
+#: app/templates/live.html:23
+msgid "Copied"
+msgstr "Copiado"
+
+#: app/templates/live.html:24
+msgid "Stop and save this live transcript before leaving."
+msgstr "Detén y guarda esta transcripción en directo antes de salir."
+
+#: app/templates/live.html:25 app/templates/live.html:61
+msgid "Default microphone"
+msgstr "Micrófono predeterminado"
+
+#: app/templates/live.html:26 app/templates/live.html:59
+msgid "Microphone"
+msgstr "Micrófono"
+
+#: app/templates/live.html:28
+msgid "This browser does not support live microphone transcription."
+msgstr "Este navegador no admite la transcripción en directo por micrófono."
+
+#: app/templates/live.html:29
+msgid "Live transcription reported an error."
+msgstr "La transcripción en directo ha informado de un error."
+
+#: app/templates/live.html:30
+msgid ""
+"The live connection was interrupted. Saving the transcript received so far."
+msgstr ""
+"La conexión en directo se interrumpió. Se guardará la transcripción "
+"recibida."
+
+#: app/templates/live.html:31
+msgid "No speech was transcribed. You can start another session."
+msgstr "No se transcribió ninguna voz. Puedes iniciar otra sesión."
+
+#: app/templates/live.html:32
+msgid "Could not copy the transcript. Select the text and copy it manually."
+msgstr ""
+"No se pudo copiar la transcripción. Selecciona el texto y cópialo "
+"manualmente."
+
+#: app/templates/live.html:33
+msgid "The request failed. Please try again."
+msgstr "La solicitud ha fallado. Inténtalo de nuevo."
+
+#: app/templates/live.html:36
+msgid "Realtime transcription"
+msgstr "Transcripción en tiempo real"
+
+#: app/templates/live.html:47
+msgid "Live transcription controls"
+msgstr "Controles de transcripción en directo"
+
+#: app/templates/live.html:49
+msgid "Language"
+msgstr "Idioma"
+
+#: app/templates/live.html:51
+msgid "Automatic detection"
+msgstr "Detección automática"
+
+#: app/templates/live.html:72
+msgid "Context"
+msgstr "Contexto"
+
+#: app/templates/live.html:76
+msgid "Microphone volume"
+msgstr "Volumen del micrófono"
+
+#: app/templates/live.html:92
+msgid "Context prompt"
+msgstr "Contexto para el modelo"
+
+#: app/templates/live.html:96
+msgid "Add names, acronyms, or subject matter that may be spoken."
+msgstr "Añade nombres, acrónimos o temas que puedan mencionarse."
+
+#: app/templates/live.html:98
+msgid "Optional. Used only to improve this live session."
+msgstr "Opcional. Solo se usa para mejorar esta sesión en directo."
+
+#: app/templates/live.html:108
+msgid "Transcript"
+msgstr "Transcripción"
+
+#: app/templates/live.html:114
+msgid "Open history"
+msgstr "Abrir historial"
+
+#: app/templates/login.html:35
+msgid "Message:"
+msgstr ""
+
+#: app/templates/login.html:126
 #, fuzzy
 msgid "Remember me"
 msgstr "Recordarme"
 
-#: app/templates/login.html:108 app/templates/login.html:117
+#: app/templates/login.html:140
 #, fuzzy
 msgid "Forgot your password?"
 msgstr "¿Olvidó su contraseña?"
 
-#: app/templates/login.html:136
+#: app/templates/login.html:151
 msgid "Or continue with"
 msgstr "O continuar con"
 
-#: app/templates/manage_prompts.html:20
+#: app/templates/manage_prompts.html:19
 msgid "Create, edit, or delete your reusable workflow prompts."
 msgstr "Cree, edite o elimine sus Prompts de Workflow reutilizables."
 
-#: app/templates/manage_prompts.html:28
+#: app/templates/manage_prompts.html:23
 msgid "Add New Workflow"
 msgstr "Añadir nuevo Workflow"
 
-#: app/templates/manage_prompts.html:54
+#: app/templates/manage_prompts.html:48
 msgid "Add Workflow"
 msgstr "Añadir Workflow"
 
 #: app/templates/layout/scripts/base_bootstrap.html:32
-#: app/templates/manage_prompts.html:65
+#: app/templates/manage_prompts.html:59
 msgid "Your Saved Workflows"
 msgstr "Sus Workflows guardados"
 
-#: app/templates/manage_prompts.html:68 app/templates/manage_prompts.html:71
+#: app/templates/manage_prompts.html:62 app/templates/manage_prompts.html:65
 msgid "Loading workflows..."
 msgstr "Cargando Workflows..."
 
-#: app/templates/manage_prompts.html:69
+#: app/templates/manage_prompts.html:63
 msgid "You have no saved workflows yet."
 msgstr "Aún no tiene Workflows guardados."
 
-#: app/templates/manage_prompts.html:70
+#: app/templates/manage_prompts.html:64
 msgid "Error loading workflows:"
 msgstr "Error al cargar los Workflows:"
 
-#: app/templates/manage_prompts.html:88
+#: app/templates/manage_prompts.html:73
 msgid "Edit Workflow"
 msgstr "Editar Workflow"
 
+#: app/templates/admin/create_edit_role.html:215
 #: app/templates/layout/modals/profile_modal.html:154
-#: app/templates/layout/modals/workflow_modal.html:47
-#: app/templates/manage_prompts.html:123
+#: app/templates/layout/modals/workflow_modal.html:42
+#: app/templates/manage_prompts.html:106
 msgid "Cancel"
 msgstr "Cancelar"
 
-#: app/templates/layout/modals/profile_modal.html:90
-#: app/templates/manage_prompts.html:127
+#: app/templates/layout/modals/profile_modal.html:96
+#: app/templates/manage_prompts.html:107
 msgid "Save Changes"
 msgstr "Guardar cambios"
 
@@ -1103,9 +1435,156 @@ msgstr "Restablezca su contraseña"
 msgid "Please enter your new password below."
 msgstr "Por favor, introduzca su nueva contraseña a continuación."
 
-#: app/templates/admin/costs.html:87
+#: app/templates/admin/costs.html:7
+msgid "Manage the costs of the different services and view cost analytics."
+msgstr ""
+
+#: app/templates/admin/costs.html:10
+#, fuzzy
+msgid "Pricing Configuration"
+msgstr "Guardar configuración de precios"
+
+#: app/templates/admin/costs.html:16
+#, fuzzy
+msgid "Transcription Models"
+msgstr "Modelo de transcripción"
+
+#: app/templates/admin/costs.html:35
+#, fuzzy
+msgid "Title Generations"
+msgstr "Modelo predeterminado para generación de títulos"
+
+#: app/templates/admin/costs.html:60 app/templates/admin/dashboard.html:131
+#: app/templates/admin/dashboard.html:143
+#, fuzzy
+msgid "Workflows"
+msgstr "Ejecutar Workflow"
+
+#: app/templates/admin/costs.html:82
 msgid "Save Pricing Configuration"
 msgstr "Guardar configuración de precios"
+
+#: app/templates/admin/costs.html:89
+msgid "Cost Analytics"
+msgstr ""
+
+#: app/templates/admin/costs.html:92
+msgid "By Component"
+msgstr ""
+
+#: app/templates/admin/costs.html:119
+#, fuzzy
+msgid "By Role"
+msgstr "Guardar clave"
+
+#: app/templates/admin/dashboard.html:9
+msgid "Quick, high-level snapshot of current activity and health."
+msgstr ""
+
+#: app/templates/admin/dashboard.html:12
+msgid "Warning:"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:13
+msgid "Some metrics might be unavailable."
+msgstr ""
+
+#: app/templates/admin/dashboard.html:21
+msgid "Total Users"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:26
+msgid "Active Users (24h)"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:31
+#, fuzzy
+msgid "Transcriptions (24h)"
+msgstr "Historial de transcripciones"
+
+#: app/templates/admin/dashboard.html:36
+#, fuzzy
+msgid "Workflows Run (24h)"
+msgstr "Resultado del Workflow"
+
+#: app/templates/admin/dashboard.html:40
+msgid "Last 24h"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:40
+#, fuzzy
+msgid "Last 7 Days"
+msgstr "Apellidos"
+
+#: app/templates/admin/dashboard.html:40
+msgid "Last 30 Days"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:40
+msgid "All Time"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:44
+msgid "Active Users (Submitted Job)"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:49 app/templates/admin/dashboard.html:56
+#: app/templates/admin/dashboard.html:75 app/templates/admin/dashboard.html:82
+#: app/templates/admin/dashboard.html:103
+#: app/templates/admin/dashboard.html:110
+#: app/templates/admin/dashboard.html:129
+#: app/templates/admin/dashboard.html:137
+msgid "Period"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:50 app/templates/admin/dashboard.html:59
+#, fuzzy
+msgid "Users"
+msgstr "Nombre de usuario"
+
+#: app/templates/admin/dashboard.html:70
+msgid "Jobs Submitted"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:76 app/templates/admin/dashboard.html:85
+#: app/templates/admin/dashboard.html:104
+#: app/templates/admin/dashboard.html:113
+msgid "Count"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:98
+#, fuzzy
+msgid "Workflows Run"
+msgstr "Resultado del Workflow"
+
+#: app/templates/admin/dashboard.html:124
+msgid "Error Rates"
+msgstr ""
+
+#: app/templates/admin/dashboard.html:130
+#: app/templates/admin/dashboard.html:140
+#, fuzzy
+msgid "Transcriptions"
+msgstr "Historial de transcripciones"
+
+#: app/templates/admin/roles.html:15
+msgid "View, create, and manage user roles and their permissions."
+msgstr ""
+
+#: app/templates/admin/roles.html:21
+msgid "Create New Role"
+msgstr ""
+
+#: app/templates/admin/roles.html:27
+#: app/templates/admin/template_prompts.html:36
+#: app/templates/admin/users.html:20
+msgid "Error:"
+msgstr "Error:"
+
+#: app/templates/admin/template_prompts.html:30
+#, fuzzy
+msgid "Create New Workflow Template"
+msgstr "Etiqueta del Workflow"
 
 #: app/templates/errors/403.html:10
 msgid "403 - Forbidden"
@@ -1161,7 +1640,7 @@ msgstr ""
 "Hemos sido notificados y estamos investigando el problema. Por favor, "
 "inténtelo de nuevo más tarde."
 
-#: app/templates/layout/modals/api_key_modal.html:24
+#: app/templates/layout/modals/api_key_modal.html:18
 msgid ""
 "Enter your personal API keys for the transcription and workflow services. "
 "These keys are stored securely and used only for your transcription "
@@ -1171,68 +1650,124 @@ msgstr ""
 "y Workflows. Estas claves se almacenan de forma segura y se utilizan "
 "únicamente para sus solicitudes de transcripción."
 
-#: app/templates/layout/modals/api_key_modal.html:25
+#: app/templates/layout/modals/api_key_modal.html:19
 msgid "You can get your keys here:"
 msgstr "Puede obtener sus claves aquí:"
 
-#: app/templates/layout/modals/api_key_modal.html:36
+#: app/templates/layout/modals/api_key_modal.html:30
 msgid "Choose service"
 msgstr "Elija un servicio"
 
-#: app/templates/layout/modals/api_key_modal.html:37
-#: app/templates/layout/modals/api_key_modal.html:55
+#: app/templates/layout/modals/api_key_modal.html:31
 msgid "OpenAI (Whisper/GPT-4o)"
 msgstr "OpenAI (Whisper/GPT-4o)"
 
-#: app/templates/layout/modals/api_key_modal.html:38
-#: app/templates/layout/modals/api_key_modal.html:64
+#: app/templates/layout/modals/api_key_modal.html:32
+#: app/templates/layout/modals/api_key_modal.html:58
 msgid "AssemblyAI (Universal)"
 msgstr "AssemblyAI (Universal)"
 
-#: app/templates/layout/modals/api_key_modal.html:39
-#: app/templates/layout/modals/api_key_modal.html:73
+#: app/templates/layout/modals/api_key_modal.html:33
+#: app/templates/layout/modals/api_key_modal.html:67
 msgid "Google (Gemini)"
 msgstr "Google (Gemini)"
 
-#: app/templates/layout/modals/api_key_modal.html:47
+#: app/templates/layout/modals/api_key_modal.html:40
 msgid "Save Key"
 msgstr "Guardar clave"
 
-#: app/templates/layout/modals/api_key_modal.html:51
+#: app/templates/layout/modals/api_key_modal.html:43
 msgid "Configured Keys"
 msgstr "Claves configuradas"
 
-#: app/templates/layout/modals/api_key_modal.html:57
-#: app/templates/layout/modals/api_key_modal.html:66
-#: app/templates/layout/modals/api_key_modal.html:75
+#: app/templates/layout/modals/api_key_modal.html:49
+msgid "OpenAI (Whisper/GPT/Live)"
+msgstr "OpenAI (Whisper/GPT/Live)"
+
+#: app/templates/layout/modals/api_key_modal.html:51
+#: app/templates/layout/modals/api_key_modal.html:60
+#: app/templates/layout/modals/api_key_modal.html:69
 msgid "Checking..."
 msgstr "Verificando..."
 
-#: app/templates/layout/modals/api_key_modal.html:85
+#: app/templates/layout/modals/api_key_modal.html:80
+msgid "Public API Access"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:82
+msgid ""
+"Use this key to call the transcription API without logging in. Send it as"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:83
+msgid "YOUR_KEY"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:86
+#, fuzzy
+msgid "Not Configured"
+msgstr "Claves configuradas"
+
+#: app/templates/layout/modals/api_key_modal.html:90
+#, fuzzy
+msgid "Key Name"
+msgstr "Apellidos"
+
+#: app/templates/layout/modals/api_key_modal.html:91
+msgid "Production upload script"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:93
+#, fuzzy
+msgid "Create Key"
+msgstr "Guardar clave"
+
+#: app/templates/layout/modals/api_key_modal.html:96
+msgid "New key created"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:98
+msgid "Generate a key to view it"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:100
+msgid "Copy"
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:103
+msgid "For security, the full key is shown only immediately after generation."
+msgstr ""
+
+#: app/templates/layout/modals/api_key_modal.html:106
+#, fuzzy
+msgid "Configured Public API Keys"
+msgstr "Claves configuradas"
+
+#: app/templates/layout/modals/api_key_modal.html:113
 msgid "Close"
 msgstr "Cerrar"
 
-#: app/templates/layout/modals/profile_modal.html:59
+#: app/templates/layout/modals/profile_modal.html:63
 msgid "Preferences"
 msgstr "Preferencias"
 
-#: app/templates/layout/modals/profile_modal.html:83
+#: app/templates/layout/modals/profile_modal.html:91
 msgid "This feature is not enabled for your account role."
 msgstr "Esta función no está habilitada para su rol de usuario."
 
-#: app/templates/layout/modals/profile_modal.html:97
+#: app/templates/layout/modals/profile_modal.html:102
 msgid "Change Password"
 msgstr "Cambiar contraseña"
 
-#: app/templates/layout/modals/profile_modal.html:145
+#: app/templates/layout/modals/profile_modal.html:148
 msgid "Update Password"
 msgstr "Actualizar contraseña"
 
-#: app/templates/layout/modals/workflow_modal.html:13
+#: app/templates/layout/modals/workflow_modal.html:7
 msgid "Run Workflow"
 msgstr "Ejecutar Workflow"
 
-#: app/templates/layout/modals/workflow_modal.html:23
+#: app/templates/layout/modals/workflow_modal.html:17
 msgid ""
 "Apply AI analysis to the selected transcript using the workflow prompt "
 "below."
@@ -1240,28 +1775,33 @@ msgstr ""
 "Aplique un análisis de IA a la transcripción seleccionada utilizando la "
 "Prompt de Workflow a continuación."
 
-#: app/templates/layout/modals/workflow_modal.html:25
+#: app/templates/layout/modals/workflow_modal.html:19
 msgid "You can manage your workflows"
 msgstr "Puede gestionar sus Workflows"
 
-#: app/templates/layout/modals/workflow_modal.html:25
+#: app/templates/layout/modals/workflow_modal.html:19
 msgid "here"
 msgstr "aquí"
 
-#: app/templates/layout/modals/workflow_modal.html:31
+#: app/templates/layout/modals/workflow_modal.html:23
+#, fuzzy
+msgid "Saved Workflows"
+msgstr "Sus Workflows guardados"
+
+#: app/templates/layout/modals/workflow_modal.html:27
 msgid "Select a Workflow or Enter a Custom Prompt Below"
 msgstr "Elija un Workflow o introduzca uno personalizado"
 
-#: app/templates/layout/modals/workflow_modal.html:35
+#: app/templates/layout/modals/workflow_modal.html:32
 msgid "Custom Workflow Prompt"
 msgstr "Prompt de Workflow personalizada"
 
-#: app/templates/layout/modals/workflow_modal.html:38
+#: app/templates/layout/modals/workflow_modal.html:35
 msgid "Enter your custom workflow prompt here (max 120 words)..."
 msgstr ""
 "Introduzca aquí su Prompt de Workflow personalizada (máx. 120 palabras)..."
 
-#: app/templates/layout/modals/workflow_modal.html:51
+#: app/templates/layout/modals/workflow_modal.html:43
 msgid "Submit Workflow"
 msgstr "Enviar Workflow"
 
@@ -1361,3 +1901,18 @@ msgstr "Workflow integrado - "
 #~ msgid "Your password has been reset successfully. You can now log in."
 #~ msgstr ""
 #~ "Su contraseña se ha restablecido correctamente. Ya puede iniciar sesión."
+
+#~ msgid "English"
+#~ msgstr "Inglés"
+
+#~ msgid "Dutch"
+#~ msgstr "Holandés"
+
+#~ msgid "French"
+#~ msgstr "Francés"
+
+#~ msgid "Spanish"
+#~ msgstr "Español"
+
+#~ msgid "English picker"
+#~ msgstr "English"

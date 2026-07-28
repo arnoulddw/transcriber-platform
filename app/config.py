@@ -51,6 +51,7 @@ class Config:
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') # Used for Gemini LLM
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') # Placeholder for future LLM
     OPENAI_HTTP_TIMEOUT = 120
+    LIVE_TRANSCRIPTION_MODEL = os.environ.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
 
     # --- Provider Configuration (NEW) ---
     TRANSCRIPTION_PROVIDERS = os.environ.get(
@@ -85,6 +86,7 @@ class Config:
         "whisper": "OpenAI Whisper",
         "gpt-4o-transcribe": "OpenAI GPT-4o Transcribe",
         "gpt-transcribe": "OpenAI GPT Transcribe",
+        "gpt-live-transcribe": "OpenAI GPT Live Transcribe",
         # LLM Providers
         "GEMINI": "Google Gemini",
         "OPENAI": "OpenAI",

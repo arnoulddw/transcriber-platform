@@ -25,7 +25,10 @@ def get_transcription_display_map() -> Dict[str, str]:
     Returns an ordered mapping of transcription provider codes to display names.
     Pulls from the transcription catalog when available and falls back to config overrides.
     """
-    provider_codes = current_app.config.get("TRANSCRIPTION_PROVIDERS", []) or []
+    provider_codes = list(current_app.config.get("TRANSCRIPTION_PROVIDERS", []) or [])
+    live_model = current_app.config.get("LIVE_TRANSCRIPTION_MODEL")
+    if live_model:
+        provider_codes.append(live_model)
     name_fallbacks = current_app.config.get("API_PROVIDER_NAME_MAP", {}) or {}
     try:
         catalog_models = transcription_catalog_model.get_active_models()

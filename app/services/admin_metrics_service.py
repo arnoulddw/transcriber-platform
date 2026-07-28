@@ -187,7 +187,13 @@ def get_usage_analytics_metrics() -> Dict[str, Any]:
         'error': None
     }
     time_periods = _get_time_periods()
-    supported_apis = ['gpt-transcribe', 'gpt-4o-transcribe', 'whisper', 'assemblyai']
+    supported_apis = [
+        'gpt-transcribe',
+        'gpt-4o-transcribe',
+        'whisper',
+        'assemblyai',
+        current_app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe'),
+    ]
     supported_workflow_models, workflow_display_map = _get_supported_llm_models()
     # Define relevant statuses for volume/duration metrics
     relevant_statuses_for_volume = ('finished', 'cancelled')
@@ -342,7 +348,13 @@ def get_performance_error_metrics() -> Dict[str, Any]:
         'error': None
     }
     time_periods = _get_time_periods()
-    supported_apis = ['gpt-transcribe', 'gpt-4o-transcribe', 'whisper', 'assemblyai']
+    supported_apis = [
+        'gpt-transcribe',
+        'gpt-4o-transcribe',
+        'whisper',
+        'assemblyai',
+        current_app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe'),
+    ]
     supported_workflow_models, workflow_display_map = _get_supported_llm_models()
 
     try:
