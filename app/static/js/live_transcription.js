@@ -46,9 +46,75 @@
         }
     }
 
+    async function createCompleteOffer(connection, timeoutMs = 2000) {
+        const offer = await connection.createOffer();
+        await connection.setLocalDescription(offer);
+        if (connection.iceGatheringState !== 'complete') {
+            await new Promise((resolve) => {
+                const timeout = global.setTimeout(finish, timeoutMs);
+
+                function finish() {
+                    global.clearTimeout(timeout);
+                    connection.removeEventListener('icegatheringstatechange', handleStateChange);
+                    resolve();
+                }
+
+                function handleStateChange() {
+                    if (connection.iceGatheringState === 'complete') finish();
+                }
+
+                connection.addEventListener('icegatheringstatechange', handleStateChange);
+            });
+        }
+        return connection.localDescription || offer;
+    }
+
+    function waitForDataChannelOpen(channel, connection, timeoutMs, errorMessage) {
+        if (channel.readyState === 'open') return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const timeout = global.setTimeout(() => finish(reject, new Error(errorMessage)), timeoutMs);
+
+            function cleanup() {
+                global.clearTimeout(timeout);
+                channel.removeEventListener('open', handleOpen);
+                channel.removeEventListener('close', handleFailure);
+                channel.removeEventListener('error', handleFailure);
+                connection.removeEventListener('connectionstatechange', handleConnectionState);
+            }
+
+            function finish(callback, value) {
+                cleanup();
+                callback(value);
+            }
+
+            function handleOpen() {
+                finish(resolve);
+            }
+
+            function handleFailure() {
+                finish(reject, new Error(errorMessage));
+            }
+
+            function handleConnectionState() {
+                if (connection.connectionState === 'failed' || connection.connectionState === 'closed') {
+                    handleFailure();
+                }
+            }
+
+            channel.addEventListener('open', handleOpen);
+            channel.addEventListener('close', handleFailure);
+            channel.addEventListener('error', handleFailure);
+            connection.addEventListener('connectionstatechange', handleConnectionState);
+        });
+    }
+
     global.LiveTranscriptReducer = LiveTranscriptReducer;
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { LiveTranscriptReducer };
+        module.exports = {
+            LiveTranscriptReducer,
+            createCompleteOffer,
+            waitForDataChannelOpen,
+        };
     }
     if (typeof document === 'undefined') return;
 
@@ -365,14 +431,18 @@
                     if (state === 'live' && !stopping) stopAndSave();
                 };
                 peerConnection.onconnectionstatechange = () => {
-                    if (peerConnection && peerConnection.connectionState === 'failed' && !stopping) {
+                    if (
+                        peerConnection
+                        && peerConnection.connectionState === 'failed'
+                        && state === 'live'
+                        && !stopping
+                    ) {
                         setError(labels.interrupted);
                         stopAndSave();
                     }
                 };
 
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
+                const offer = await createCompleteOffer(peerConnection);
                 const session = await postJson('/api/live/session', {
                     sdp: offer.sdp,
                     language_code: elements.language.value,
@@ -383,6 +453,12 @@
                     type: 'answer',
                     sdp: session.answer_sdp,
                 });
+                await waitForDataChannelOpen(
+                    dataChannel,
+                    peerConnection,
+                    10000,
+                    labels.interrupted
+                );
 
                 setStatus('live', labels.listening);
                 setAction(labels.stop, 'stop', false, true);

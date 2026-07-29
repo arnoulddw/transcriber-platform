@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 
 const {
     LiveTranscriptReducer,
+    createCompleteOffer,
+    waitForDataChannelOpen,
 } = require('../../app/static/js/live_transcription.js');
 
 test('reconciles interleaved deltas by item and preserves first-seen order', () => {
@@ -53,4 +55,50 @@ test('completed events replace partial text without reordering turns', () => {
             ['second', 'Second turn.', true],
         ],
     );
+});
+
+test('uses the local description updated by ICE gathering', async () => {
+    class FakeConnection extends EventTarget {
+        constructor() {
+            super();
+            this.iceGatheringState = 'new';
+            this.localDescription = null;
+        }
+
+        async createOffer() {
+            return { type: 'offer', sdp: 'initial SDP' };
+        }
+
+        async setLocalDescription(offer) {
+            this.localDescription = offer;
+            queueMicrotask(() => {
+                this.localDescription = { type: 'offer', sdp: 'SDP with mobile ICE candidates' };
+                this.iceGatheringState = 'complete';
+                this.dispatchEvent(new Event('icegatheringstatechange'));
+            });
+        }
+    }
+
+    const offer = await createCompleteOffer(new FakeConnection());
+
+    assert.equal(offer.sdp, 'SDP with mobile ICE candidates');
+});
+
+test('waits for the realtime data channel before reporting a live connection', async () => {
+    class FakeDataChannel extends EventTarget {
+        constructor() {
+            super();
+            this.readyState = 'connecting';
+        }
+    }
+
+    const channel = new FakeDataChannel();
+    const connection = new EventTarget();
+    connection.connectionState = 'connecting';
+    const opened = waitForDataChannelOpen(channel, connection, 100, 'Connection failed');
+
+    channel.readyState = 'open';
+    channel.dispatchEvent(new Event('open'));
+
+    await opened;
 });
