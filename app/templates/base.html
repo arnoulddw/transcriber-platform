@@ -41,9 +41,9 @@
                         </a>
                     </div>
                     <div class="flex items-center">
-                        {% if current_user.is_authenticated and not is_multi_user %}
+                        {% if current_user.is_authenticated and (not is_multi_user or user_permissions.use_api_openai_live_transcribe) %}
                             <a href="{{ url_for('main.live') }}"
-                               class="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white lg:hidden"
+                               class="inline-flex items-center rounded-full bg-danger px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-white lg:hidden"
                                {% if request.endpoint == 'main.live' %}aria-current="page"{% endif %}>
                                 <i class="material-icons mr-1.5 text-base" aria-hidden="true">graphic_eq</i>
                                 {{ _('Live') }}
@@ -52,7 +52,7 @@
                         <div class="hidden lg:flex lg:items-center lg:space-x-4">
                             {% if current_user.is_authenticated and (not is_multi_user or user_permissions.use_api_openai_live_transcribe) %}
                                 <a href="{{ url_for('main.live') }}"
-                                   class="inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white"
+                                   class="inline-flex items-center rounded-full bg-danger px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-white"
                                    {% if request.endpoint == 'main.live' %}aria-current="page"{% endif %}>
                                     <i class="material-icons mr-1.5 text-base" aria-hidden="true">graphic_eq</i>
                                     {{ _('Live') }}
@@ -152,11 +152,6 @@
 
                 {% if current_user.is_authenticated %}
                     <nav class="mt-2 space-y-1">
-                        {% if user_permissions.use_api_openai_live_transcribe %}
-                        <a href="{{ url_for('main.live') }}" class="flex items-center px-3 py-2 text-text-muted hover:bg-surface-muted hover:text-text-strong rounded-md text-sm font-medium">
-                            <i class="material-icons mr-3 text-text-muted">graphic_eq</i>{{ _('Live transcription') }}
-                        </a>
-                        {% endif %}
                         <a href="#!" id="profileSettingsBtnMobile" class="flex items-center px-3 py-2 text-text-muted hover:bg-surface-muted hover:text-text-strong rounded-md text-sm font-medium">
                             <i class="material-icons mr-3 text-text-muted">person_outline</i>{{ _('User Settings') }}
                         </a>

@@ -391,7 +391,7 @@
                 await cleanupConnection();
                 setControlsDisabled(false);
                 setStatus('idle', labels.idle);
-                setAction(labels.start, 'mic', false, false);
+                setAction(labels.start, 'graphic_eq', false, false);
                 setError(error.message);
             }
         }
@@ -419,7 +419,7 @@
                     unsavedTranscript = false;
                     sessionToken = null;
                     setStatus('idle', labels.idle);
-                    setAction(labels.start, 'mic', false, false);
+                    setAction(labels.start, 'graphic_eq', false, false);
                     setControlsDisabled(false);
                     setError(labels.noSpeech);
                     return;
@@ -454,7 +454,7 @@
             setError('');
             setControlsDisabled(false);
             setStatus('idle', labels.idle);
-            setAction(labels.start, 'mic', false, false);
+            setAction(labels.start, 'graphic_eq', false, false);
         }
 
         elements.action.addEventListener('click', () => {

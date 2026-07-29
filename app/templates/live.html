@@ -10,7 +10,7 @@
 {% block content %}
 <section id="liveWorkspace"
          class="live-workspace"
-         data-i18n-start="{{ _('Start listening') }}"
+         data-i18n-start="{{ _('Start') }}"
          data-i18n-stop="{{ _('Stop and save') }}"
          data-i18n-new="{{ _('New session') }}"
          data-i18n-connecting="{{ _('Connecting…') }}"
@@ -34,8 +34,7 @@
     <div class="live-toolbar">
         <div class="live-toolbar__heading">
             <p class="live-eyebrow">{{ _('Realtime transcription') }}</p>
-            <div class="flex items-center gap-3">
-                <h1 class="text-xl font-semibold text-slate-950">{{ _('Live') }}</h1>
+            <div class="flex items-center">
                 <div id="liveStatus" class="live-status" role="status" aria-live="polite">
                     <span id="liveStatusDot" class="live-status__dot" aria-hidden="true"></span>
                     <span id="liveStatusText">{{ _('Ready to listen') }}</span>
@@ -81,8 +80,8 @@
             </div>
 
             <button id="liveActionButton" type="button" class="live-action-button">
-                <i id="liveActionIcon" class="material-icons text-lg" aria-hidden="true">mic</i>
-                <span id="liveActionText">{{ _('Start listening') }}</span>
+                <i id="liveActionIcon" class="material-icons text-lg" aria-hidden="true">graphic_eq</i>
+                <span id="liveActionText">{{ _('Start') }}</span>
             </button>
         </div>
     </div>

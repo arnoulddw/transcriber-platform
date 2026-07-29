@@ -1241,8 +1241,8 @@ msgid "Showing %(length)s of %(total)s items"
 msgstr "Toont %(length)s van %(total)s items"
 
 #: app/templates/live.html:13 app/templates/live.html:85
-msgid "Start listening"
-msgstr "Begin met luisteren"
+msgid "Start"
+msgstr "Start"
 
 #: app/templates/live.html:14
 msgid "Stop and save"

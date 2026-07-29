@@ -1248,8 +1248,8 @@ msgid "Showing %(length)s of %(total)s items"
 msgstr "Affiche %(length)s sur %(total)s éléments"
 
 #: app/templates/live.html:13 app/templates/live.html:85
-msgid "Start listening"
-msgstr "Commencer l’écoute"
+msgid "Start"
+msgstr "Démarrer"
 
 #: app/templates/live.html:14
 msgid "Stop and save"
