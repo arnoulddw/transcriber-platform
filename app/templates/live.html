@@ -83,6 +83,21 @@
                 <i id="liveActionIcon" class="material-icons text-lg" aria-hidden="true">graphic_eq</i>
                 <span id="liveActionText">{{ _('Start') }}</span>
             </button>
+
+            <div class="live-transcript-actions"
+                 role="group"
+                 aria-label="{{ _('Transcript') }}">
+                <a id="liveHistoryLink"
+                   href="{{ url_for('main.index') }}"
+                   class="live-text-action hidden">
+                    <i class="material-icons text-base" aria-hidden="true">history</i>
+                    {{ _('Open history') }}
+                </a>
+                <button id="liveCopyButton" type="button" class="live-text-action" disabled>
+                    <i class="material-icons text-base" aria-hidden="true">content_copy</i>
+                    <span id="liveCopyText">{{ _('Copy transcript') }}</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -103,21 +118,6 @@
     <div id="liveError" class="live-error hidden" role="alert"></div>
 
     <div id="liveTranscriptScroll" class="live-transcript-scroll">
-        <div class="live-transcript-header">
-            <span>{{ _('Transcript') }}</span>
-            <div class="flex items-center gap-2">
-                <a id="liveHistoryLink"
-                   href="{{ url_for('main.index') }}"
-                   class="live-text-action hidden">
-                    <i class="material-icons text-base" aria-hidden="true">history</i>
-                    {{ _('Open history') }}
-                </a>
-                <button id="liveCopyButton" type="button" class="live-text-action" disabled>
-                    <i class="material-icons text-base" aria-hidden="true">content_copy</i>
-                    <span id="liveCopyText">{{ _('Copy transcript') }}</span>
-                </button>
-            </div>
-        </div>
         <div id="liveTranscript"
              class="live-transcript"
              aria-live="polite"

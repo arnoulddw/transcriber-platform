@@ -66,7 +66,13 @@ These are processed by PostCSS with the Tailwind plugin.
         @apply h-10 px-3;
     }
     .live-text-action {
-        @apply px-2.5 py-1.5;
+        @apply h-full rounded-none px-3;
+    }
+    .live-transcript-actions {
+        @apply flex h-10 flex-none items-stretch overflow-hidden rounded-lg border border-slate-200 bg-white;
+    }
+    .live-transcript-actions .live-text-action:not(.hidden) ~ .live-text-action:not(.hidden) {
+        @apply border-l border-slate-200;
     }
     .live-meter {
         @apply flex h-10 min-w-[7rem] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-500;
@@ -94,9 +100,6 @@ These are processed by PostCSS with the Tailwind plugin.
         @apply min-h-0 flex-1 overflow-y-auto px-5 pb-16 pt-4 sm:px-8 lg:px-14;
         overscroll-behavior: contain;
         touch-action: pan-y;
-    }
-    .live-transcript-header {
-        @apply sticky top-0 z-10 mb-5 flex items-center justify-between border-b border-slate-300/80 bg-slate-50/95 pb-3 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-500 backdrop-blur;
     }
     .live-transcript {
         @apply mx-auto max-w-[92rem] pb-[30vh] font-sans font-medium tracking-[-0.025em] text-black;
