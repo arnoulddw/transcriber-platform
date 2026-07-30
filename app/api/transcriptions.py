@@ -723,7 +723,7 @@ def get_progress(job_id):
 @login_required
 @limiter.exempt
 def get_active_transcriptions():
-    """Return unfinished/recently failed jobs so progress reconnects after refresh."""
+    """Return unfinished jobs so progress reconnects after refresh."""
     try:
         maybe_recover_abandoned_jobs(current_app._get_current_object())
         jobs = transcription_model.get_active_transcriptions(current_user.id)

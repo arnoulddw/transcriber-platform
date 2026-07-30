@@ -357,6 +357,22 @@ class BaseTranscriptionClient(ABC):
                         self.logger.debug(f"{log_prefix} Single file attempt {attempt+1}: API call successful. Duration: {duration:.2f}s")
                         break
                     except Exception as exc:
+                        if (
+                            isinstance(exc, TranscriptionProcessingError)
+                            and "could not read this audio file" in str(exc).lower()
+                        ):
+                            self._report_progress(
+                                "The provider could not read the original audio. "
+                                "Converting it to a compatible format and retrying...",
+                                False,
+                            )
+                            return self._split_and_transcribe(
+                                audio_file_path,
+                                requested_language,
+                                context_prompt,
+                                display_filename,
+                                extra_options=extra_options,
+                            )
                         if retryable_errors and isinstance(exc, retryable_errors):
                             if attempt < single_file_max_retries:
                                 wait_time = self._get_retry_delay_seconds(attempt, is_chunk=False)

@@ -119,21 +119,15 @@ def get_transcription_by_id(transcription_id: str, user_id: Optional[int] = None
 
 
 def get_active_transcriptions(user_id: int) -> List[Dict[str, Any]]:
-    """Return unfinished or recently failed jobs for progress-panel reconnection."""
+    """Return unfinished jobs for progress-panel reconnection."""
     cursor = get_cursor()
     cursor.execute(
         """
         SELECT * FROM transcriptions
         WHERE user_id = %s
-          AND (
-              status IN ('pending', 'processing', 'cancelling')
-              OR (
-                  status IN ('error', 'interrupted')
-                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL 15 MINUTE
-              )
-          )
+          AND status IN ('pending', 'processing', 'cancelling')
           AND is_hidden_from_user = FALSE
-        ORDER BY FIELD(status, 'processing', 'cancelling', 'pending', 'interrupted', 'error'), created_at ASC
+        ORDER BY FIELD(status, 'processing', 'cancelling', 'pending'), created_at ASC
         """,
         (user_id,),
     )

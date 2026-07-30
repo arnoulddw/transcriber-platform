@@ -159,6 +159,12 @@ class OpenAIBaseTranscriptionClient(BaseTranscriptionClient):
                 "a provider that supports longer recordings (e.g., Whisper)."
             )
 
+        if re.search(r"audio file might be corrupted or unsupported", error_body, flags=re.IGNORECASE):
+            return (
+                f"{api_name} could not read this audio file. It may be corrupted or use "
+                "an unsupported audio codec. Export it as MP3 or WAV and try again."
+            )
+
         return None
 
     @staticmethod

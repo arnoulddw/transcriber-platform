@@ -74,9 +74,18 @@ function formatSecondsForDisplay(seconds) {
 function updateProgressActivity(icon, message, iconColorClass = '') {
     const progressElement = document.getElementById('progressActivity');
     if (progressElement) {
-        // Use innerHTML to allow links, but escape the icon name itself
-        // MODIFIED: Added mr-3 to icon, removed 'left' class and space after <i>
-        progressElement.innerHTML = `<i class="material-icons tiny ${iconColorClass} mr-3">${escapeHtml(icon)}</i>${message}`;
+        const isError = iconColorClass.includes('text-red');
+        const progressContainer = document.getElementById('progressContainer');
+        progressElement.classList.toggle('text-red-800', isError);
+        progressElement.classList.toggle('text-blue-700', !isError);
+        if (progressContainer) {
+            progressContainer.classList.toggle('bg-red-50', isError);
+            progressContainer.classList.toggle('border-red-200', isError);
+            progressContainer.classList.toggle('bg-blue-50', !isError);
+            progressContainer.classList.toggle('border-blue-200', !isError);
+        }
+        // Use innerHTML to allow the structured error content, but escape the icon.
+        progressElement.innerHTML = `<i class="material-icons tiny ${iconColorClass} mr-3 mt-0.5 shrink-0">${escapeHtml(icon)}</i><div class="min-w-0 flex-1">${message}</div>`;
     }
 }
 
@@ -142,8 +151,12 @@ function translateBackendErrorMessage(backendMessage) {
             message = `${providerLabel} only supports up to ${limitDisplay} per file.${fileDetail} Please trim the audio or switch to Whisper for longer recordings.`;
             icon = 'timer_off';
             iconColorClass = 'text-red-600';
-        } else if (lowerErrorContent.includes('could not decode audio') || lowerErrorContent.includes('invalid audio format')) {
-             message = "Could not process the audio file. Please ensure it's a valid format (MP3, WAV, M4A, etc.) and not corrupted.";
+        } else if (lowerErrorContent.includes('could not decode audio')
+            || lowerErrorContent.includes('could not read this audio file')
+            || lowerErrorContent.includes('invalid audio format')
+            || lowerErrorContent.includes('audio splitting failed')
+            || lowerErrorContent.includes('corrupted or unsupported')) {
+             message = "This audio file could not be read. It may be damaged or use an unsupported codec. Export it as MP3 or WAV, then try again.";
              icon = 'broken_image';
         } else if (lowerErrorContent.includes('connection error') || lowerErrorContent.includes('network error') || lowerErrorContent.includes('could not connect')) {
              message = "Connection error communicating with the transcription service. Please check your internet connection.";
@@ -185,10 +198,16 @@ window.translateBackendErrorMessage = translateBackendErrorMessage;
 function deriveDiagnosticCode(errorMessage) {
     const text = String(errorMessage || '').toUpperCase();
     if (text.includes('WORKER_INTERRUPTED')) return 'WORKER_INTERRUPTED';
+    if (text.includes('API KEY NOT CONFIGURED') || text.includes('NO API KEYS CONFIGURED')) return 'MISSING_API_KEY';
     if (text.includes('AUTHENTICATION') || text.includes('INVALID API KEY') || text.includes('INCORRECT API KEY')) return 'PROVIDER_AUTH';
     if (text.includes('QUOTA')) return 'PROVIDER_QUOTA';
     if (text.includes('RATE LIMIT')) return 'PROVIDER_RATE_LIMIT';
-    if (text.includes('DECODE') || text.includes('AUDIO FORMAT')) return 'INVALID_AUDIO';
+    if (text.includes('DECODE')
+        || text.includes('AUDIO FORMAT')
+        || text.includes('COULD NOT READ THIS AUDIO FILE')
+        || text.includes('AUDIO SPLITTING FAILED')
+        || text.includes('CORRUPTED OR UNSUPPORTED')
+        || (text.includes('INVALID_VALUE') && text.includes('AUDIO'))) return 'INVALID_AUDIO';
     if (text.includes('CONNECTION') || text.includes('NETWORK')) return 'PROVIDER_CONNECTION';
     return 'TRANSCRIPTION_FAILED';
 }
@@ -222,10 +241,19 @@ function retrySelectedFile() {
     window.handleTranscribeSubmit();
 }
 
+function chooseAnotherFile() {
+    document.getElementById('audioFile')?.click();
+}
+
+function dismissTranscriptionError() {
+    resetTranscribeUI(false, false);
+}
+
 function renderActionableError(errorMessage, jobData = {}) {
-    const translated = translateBackendErrorMessage(`ERROR: ${errorMessage || 'An unknown error occurred.'}`);
+    const technicalMessage = String(errorMessage || 'An unknown error occurred.').replace(/^ERROR:\s*/i, '');
+    const translated = translateBackendErrorMessage(`ERROR: ${technicalMessage}`);
     const reference = String(jobData.job_id || '').slice(0, 8) || 'not-created';
-    const diagnosticCode = deriveDiagnosticCode(errorMessage);
+    const diagnosticCode = deriveDiagnosticCode(technicalMessage);
     window.lastTranscriptionDiagnostics = {
         code: diagnosticCode,
         reference,
@@ -233,30 +261,42 @@ function renderActionableError(errorMessage, jobData = {}) {
         status: jobData.status || 'error',
         provider: jobData.api_used || null,
         filename: jobData.filename || null,
-        technical_message: String(errorMessage || 'Unknown error'),
+        technical_message: technicalMessage,
         captured_at: new Date().toISOString(),
     };
 
+    const actionButton = (action, label, primary = false) => (
+        `<button type="button" data-transcription-error-action="${action}" class="inline-flex min-h-[40px] w-full sm:w-auto items-center justify-center rounded-md border px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 ${primary ? 'border-red-700 bg-red-700 text-white hover:bg-red-800 focus:ring-red-600' : 'border-red-300 bg-white text-red-800 hover:bg-red-100 focus:ring-red-500'}">${label}</button>`
+    );
     const actions = [];
-    if (document.getElementById('audioFile')?.files?.length) {
-        actions.push('<button type="button" data-transcription-error-action="retry" class="underline font-medium">Retry</button>');
+    if (diagnosticCode === 'INVALID_AUDIO') {
+        actions.push(actionButton('select-file', 'Choose another file', true));
+        actions.push(actionButton('provider', 'Change provider'));
+    } else {
+        if (document.getElementById('audioFile')?.files?.length) {
+            actions.push(actionButton('retry', 'Retry', true));
+        }
+        actions.push(actionButton('provider', 'Change provider'));
     }
-    actions.push('<button type="button" data-transcription-error-action="provider" class="underline font-medium">Change provider</button>');
-    if (window.USER_PERMISSIONS?.allow_api_key_management && typeof window.openApiKeyModal === 'function') {
-        actions.push('<button type="button" data-transcription-error-action="manage-key" class="underline font-medium">Update API key</button>');
+    if (['MISSING_API_KEY', 'PROVIDER_AUTH'].includes(diagnosticCode)
+        && window.USER_PERMISSIONS?.allow_api_key_management
+        && typeof window.openApiKeyModal === 'function') {
+        actions.push(actionButton('manage-key', 'Update API key', actions.length === 0));
     }
-    actions.push('<button type="button" data-transcription-error-action="diagnostics" class="underline font-medium">Download diagnostics</button>');
+    actions.push(actionButton('dismiss', 'Dismiss'));
 
     return {
         icon: translated.icon,
         iconColorClass: translated.iconColorClass,
-        message: `<div><div>${translated.message}</div><div class="mt-2 text-xs">Code: ${escapeHtml(diagnosticCode)} · Reference: ${escapeHtml(reference)}</div><div class="mt-2 flex flex-wrap justify-center gap-3">${actions.join('')}</div><details class="mt-2 text-left text-xs"><summary class="cursor-pointer">Technical details</summary><code class="block mt-1 break-words">${escapeHtml(errorMessage || 'Unknown error')}</code></details></div>`,
+        message: `<div class="w-full text-left"><div class="font-medium">${translated.message}</div><div class="mt-1 text-xs text-red-700">Code: ${escapeHtml(diagnosticCode)} · Reference: ${escapeHtml(reference)}</div><div class="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">${actions.join('')}</div><details class="mt-3 text-xs"><summary class="cursor-pointer font-medium">Technical details</summary><code class="mt-2 block break-words rounded bg-white/70 p-2">${escapeHtml(technicalMessage)}</code><button type="button" data-transcription-error-action="diagnostics" class="mt-2 min-h-[36px] underline font-medium">Download diagnostics</button></details></div>`,
     };
 }
 
 window.downloadTranscriptionDiagnostics = downloadTranscriptionDiagnostics;
 window.focusModelPicker = focusModelPicker;
 window.retrySelectedFile = retrySelectedFile;
+window.chooseAnotherFile = chooseAnotherFile;
+window.dismissTranscriptionError = dismissTranscriptionError;
 window.renderActionableError = renderActionableError;
 
 if (!window.transcriptionErrorActionsBound) {
@@ -267,9 +307,11 @@ if (!window.transcriptionErrorActionsBound) {
         event.preventDefault();
         const action = actionElement.dataset.transcriptionErrorAction;
         if (action === 'retry') retrySelectedFile();
+        else if (action === 'select-file') chooseAnotherFile();
         else if (action === 'provider') focusModelPicker();
         else if (action === 'manage-key') openApiKeyModal(event);
         else if (action === 'diagnostics') downloadTranscriptionDiagnostics();
+        else if (action === 'dismiss') dismissTranscriptionError();
     });
 }
 

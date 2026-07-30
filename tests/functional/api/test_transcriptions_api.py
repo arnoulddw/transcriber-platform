@@ -101,7 +101,7 @@ def test_interrupted_job_is_a_finished_error_state(app, logged_in_client_with_pe
 
     active_response = logged_in_client_with_permissions.get("/api/transcriptions/active")
     assert active_response.status_code == 200
-    assert job_id in [job["job_id"] for job in active_response.get_json()]
+    assert job_id not in [job["job_id"] for job in active_response.get_json()]
 
 
 def test_marks_abandoned_jobs_interrupted(app, logged_in_client_with_permissions):
