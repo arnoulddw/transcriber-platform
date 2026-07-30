@@ -84,3 +84,20 @@ def test_live_finalize_endpoint_returns_saved_history_link(
         "saved": True,
         "transcription_id": "live-id",
     }
+
+
+def test_live_stop_endpoint_hangs_up_remote_session(
+    logged_in_client_with_permissions,
+):
+    with patch(
+        "app.api.live.live_transcription_service.hangup_session",
+        return_value={"stopped": True},
+    ) as hangup:
+        response = logged_in_client_with_permissions.post(
+            "/api/live/stop",
+            json={"session_token": "signed-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"stopped": True}
+    assert hangup.call_args.args[1] == "signed-token"

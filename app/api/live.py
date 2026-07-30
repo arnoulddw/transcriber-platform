@@ -79,3 +79,25 @@ def finalize_live_session():
     except Exception:
         LOGGER.exception("Unexpected error while saving a live transcription.")
         return jsonify({"error": _("Could not save the Live transcript.")}), 500
+
+
+@live_bp.route("/stop", methods=["POST"])
+@live_permission_required
+def stop_live_session():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(
+            live_transcription_service.hangup_session(
+                current_user,
+                data.get("session_token"),
+            )
+        )
+    except LiveTranscriptionValidationError as exc:
+        return jsonify({"error": _(str(exc))}), 400
+    except LiveTranscriptionPermissionError as exc:
+        return jsonify({"error": _(str(exc))}), 403
+    except LiveTranscriptionUpstreamError as exc:
+        return jsonify({"error": _(str(exc))}), 502
+    except Exception:
+        LOGGER.exception("Unexpected error while stopping a live transcription.")
+        return jsonify({"error": _("Could not stop the Live transcription.")}), 500

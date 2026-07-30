@@ -50,7 +50,11 @@ def test_build_session_config_adds_language_and_prompt():
 
 def test_create_session_posts_multipart_without_exposing_api_key(live_app, monkeypatch):
     user = SimpleNamespace(id=42)
-    response = SimpleNamespace(status_code=200, text="answer-sdp")
+    response = SimpleNamespace(
+        status_code=200,
+        text="answer-sdp",
+        headers={"Location": "/v1/realtime/calls/rtc_test_call"},
+    )
     post = MagicMock(return_value=response)
     monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
     monkeypatch.setattr(service.httpx, "post", post)
@@ -65,6 +69,37 @@ def test_create_session_posts_multipart_without_exposing_api_key(live_app, monke
     assert call.kwargs["headers"]["Authorization"] == "Bearer server-only-openai-key"
     assert "server-only-openai-key" not in result["session_token"]
     assert call.kwargs["files"]["sdp"][1] == "offer-sdp"
+
+
+def test_hangup_session_stops_the_openai_call(live_app, monkeypatch):
+    user = SimpleNamespace(id=7)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "call_id": "rtc_test_call",
+        },
+    )
+    post = MagicMock(return_value=SimpleNamespace(status_code=200))
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        result = service.hangup_session(user, "token")
+
+    assert result == {"stopped": True}
+    assert post.call_args.args[0].endswith(
+        "/v1/realtime/calls/rtc_test_call/hangup"
+    )
+
+
+def test_call_id_is_read_from_openai_location_header():
+    assert (
+        service._call_id_from_location(
+            "https://api.openai.com/v1/realtime/calls/rtc_123"
+        )
+        == "rtc_123"
+    )
 
 
 def test_finalize_session_saves_usage_and_normalizes_auto_language(live_app, monkeypatch):
@@ -104,6 +139,57 @@ def test_finalize_session_saves_usage_and_normalizes_auto_language(live_app, mon
     update_cost.assert_called_once_with("live-job", pytest.approx(0.5))
     increment_usage.assert_called_once_with(7, pytest.approx(0.5), pytest.approx(2.0))
     disable_title.assert_called_once_with("live-job", "disabled")
+
+
+def test_finalize_session_caps_recorded_usage_at_120_minutes(
+    live_app, monkeypatch
+):
+    user = SimpleNamespace(id=7, enable_auto_title_generation=False)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "long-live-job",
+            "started_at": 1000.0,
+            "language": "en",
+            "context_prompt_used": False,
+        },
+    )
+    monkeypatch.setattr(service.time, "time", lambda: 1000.0 + (180 * 60))
+    monkeypatch.setattr(
+        service.transcription_model,
+        "get_transcription_by_id",
+        lambda *_: None,
+    )
+    create_job = MagicMock()
+    monkeypatch.setattr(
+        service.transcription_model,
+        "create_transcription_job",
+        create_job,
+    )
+    monkeypatch.setattr(
+        service.transcription_model,
+        "update_transcription_cost",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        service.transcription_model,
+        "finalize_job_success",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        service.transcription_model,
+        "update_title_generation_status",
+        MagicMock(),
+    )
+    monkeypatch.setattr(service.role_model, "increment_usage", MagicMock())
+    monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: 0)
+
+    with live_app.app_context():
+        service.finalize_session(user, "token", "Long transcript")
+
+    assert create_job.call_args.args[5] == 120
 
 
 def test_finalize_session_is_idempotent(live_app, monkeypatch):
@@ -210,7 +296,11 @@ def test_create_session_retries_transient_gateway_failure(live_app, monkeypatch)
     post = MagicMock(
         side_effect=[
             SimpleNamespace(status_code=504, text="gateway timeout"),
-            SimpleNamespace(status_code=200, text="answer-sdp"),
+            SimpleNamespace(
+                status_code=200,
+                text="answer-sdp",
+                headers={"Location": "/v1/realtime/calls/rtc_retry_call"},
+            ),
         ]
     )
     monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))

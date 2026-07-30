@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import threading
 import time
 import uuid
@@ -26,7 +27,9 @@ LOGGER = logging.getLogger(__name__)
 SESSION_TOKEN_SALT = "live-transcription-session-v1"
 MAX_CONTEXT_WORDS = 120
 MAX_TRANSCRIPT_CHARS = 10_000_000
+MAX_SESSION_DURATION_MINUTES = 120
 RETRYABLE_SESSION_STATUS_CODES = frozenset({502, 503, 504})
+ENDED_CALL_STATUS_CODES = frozenset({404, 409})
 
 
 class LiveTranscriptionError(Exception):
@@ -106,7 +109,14 @@ def _safety_identifier(user_id: int) -> str:
     return digest[:64]
 
 
-def create_session(user, sdp: str, language_code: str, context_prompt: str) -> Dict[str, str]:
+def _call_id_from_location(location: str) -> Optional[str]:
+    match = re.search(r"/realtime/calls/([^/?#]+)", location or "")
+    return match.group(1) if match else None
+
+
+def create_session(
+    user, sdp: str, language_code: str, context_prompt: str
+) -> Dict[str, str]:
     if not isinstance(sdp, str) or not sdp.strip():
         raise LiveTranscriptionValidationError(_("A WebRTC session offer is required."))
     language, prompt = _validate_settings(user, language_code, context_prompt)
@@ -167,11 +177,19 @@ def create_session(user, sdp: str, language_code: str, context_prompt: str) -> D
             _("The live transcription service rejected the session.")
         )
 
+    call_id = _call_id_from_location(response.headers.get("Location", ""))
+    if not call_id:
+        LOGGER.error("OpenAI realtime session response did not include a call ID.")
+        raise LiveTranscriptionUpstreamError(
+            _("The live transcription service returned an incomplete session.")
+        )
+
     transcription_id = str(uuid.uuid4())
     token = _serializer().dumps(
         {
             "user_id": user.id,
             "transcription_id": transcription_id,
+            "call_id": call_id,
             "started_at": time.time(),
             "language": language,
             "context_prompt_used": bool(prompt),
@@ -197,6 +215,47 @@ def _decode_session_token(token: str) -> Dict[str, Any]:
     if not isinstance(payload, dict) or not required_fields.issubset(payload):
         raise LiveTranscriptionValidationError(_("The live session token is invalid."))
     return payload
+
+
+def hangup_session(user, session_token: str) -> Dict[str, bool]:
+    payload = _decode_session_token(session_token)
+    if int(payload["user_id"]) != int(user.id):
+        raise LiveTranscriptionPermissionError(
+            _("This live session belongs to another user.")
+        )
+    call_id = payload.get("call_id")
+    if not isinstance(call_id, str) or not call_id:
+        raise LiveTranscriptionValidationError(_("The live session cannot be stopped."))
+
+    try:
+        response = httpx.post(
+            f"https://api.openai.com/v1/realtime/calls/{call_id}/hangup",
+            headers={"Authorization": f"Bearer {_resolve_openai_api_key(user)}"},
+            timeout=current_app.config.get("OPENAI_HTTP_TIMEOUT", 120),
+        )
+    except httpx.HTTPError as exc:
+        LOGGER.warning(
+            "Could not explicitly stop OpenAI realtime call %s: %s",
+            call_id,
+            exc,
+        )
+        raise LiveTranscriptionUpstreamError(
+            _("Could not stop the live transcription service.")
+        ) from exc
+
+    if (
+        response.status_code >= 400
+        and response.status_code not in ENDED_CALL_STATUS_CODES
+    ):
+        LOGGER.warning(
+            "OpenAI realtime hangup returned HTTP %s for call %s.",
+            response.status_code,
+            call_id,
+        )
+        raise LiveTranscriptionUpstreamError(
+            _("Could not stop the live transcription service.")
+        )
+    return {"stopped": True}
 
 
 def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any]:
@@ -227,7 +286,10 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         )
 
     started_at = float(payload["started_at"])
-    duration_minutes = max(0.0, (time.time() - started_at) / 60.0)
+    duration_minutes = min(
+        MAX_SESSION_DURATION_MINUTES,
+        max(0.0, (time.time() - started_at) / 60.0),
+    )
     language = payload["language"] if payload["language"] != "auto" else "und"
     model = current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
     filename = datetime.now(timezone.utc).strftime(

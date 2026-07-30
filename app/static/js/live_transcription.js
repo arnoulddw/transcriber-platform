@@ -1,6 +1,8 @@
 (function (global) {
     'use strict';
 
+    const MAX_SESSION_DURATION_MS = 120 * 60 * 1000;
+
     class LiveTranscriptReducer {
         constructor() {
             this.order = [];
@@ -108,11 +110,17 @@
         });
     }
 
+    function remainingSessionMilliseconds(startedAt, now = Date.now()) {
+        return Math.max(0, MAX_SESSION_DURATION_MS - (now - startedAt));
+    }
+
     global.LiveTranscriptReducer = LiveTranscriptReducer;
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
+            MAX_SESSION_DURATION_MS,
             LiveTranscriptReducer,
             createCompleteOffer,
+            remainingSessionMilliseconds,
             waitForDataChannelOpen,
         };
     }
@@ -164,6 +172,7 @@
             unsupported: root.dataset.i18nUnsupported,
             realtimeError: root.dataset.i18nRealtimeError,
             interrupted: root.dataset.i18nInterrupted,
+            maxDuration: root.dataset.i18nMaxDuration,
             noSpeech: root.dataset.i18nNoSpeech,
             copyError: root.dataset.i18nCopyError,
             requestFailed: root.dataset.i18nRequestFailed,
@@ -179,8 +188,10 @@
         let analyser = null;
         let volumeFrame = null;
         let timerInterval = null;
+        let sessionDeadlineTimeout = null;
         let startedAt = null;
         let sessionToken = null;
+        let stopSignalSent = false;
         let unsavedTranscript = false;
         let stopping = false;
         let followingLive = true;
@@ -223,14 +234,29 @@
         function startTimer() {
             startedAt = Date.now();
             elements.timer.textContent = '00:00';
+            const updateTimer = () => {
+                const remaining = remainingSessionMilliseconds(startedAt);
+                const elapsed = Math.min(MAX_SESSION_DURATION_MS, Date.now() - startedAt);
+                elements.timer.textContent = formatElapsed(elapsed);
+                if (remaining === 0 && !stopping) {
+                    setError(labels.maxDuration);
+                    stopAndSave(true);
+                }
+            };
             timerInterval = global.setInterval(() => {
-                elements.timer.textContent = formatElapsed(Date.now() - startedAt);
+                updateTimer();
             }, 1000);
+            sessionDeadlineTimeout = global.setTimeout(
+                updateTimer,
+                MAX_SESSION_DURATION_MS
+            );
         }
 
         function stopTimer() {
             if (timerInterval) global.clearInterval(timerInterval);
+            if (sessionDeadlineTimeout) global.clearTimeout(sessionDeadlineTimeout);
             timerInterval = null;
+            sessionDeadlineTimeout = null;
         }
 
         function isAtBottom() {
@@ -369,7 +395,7 @@
             analyser = null;
         }
 
-        async function postJson(url, body) {
+        async function postJson(url, body, keepalive = false) {
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -378,12 +404,29 @@
                     'X-CSRFToken': global.csrfToken,
                 },
                 body: JSON.stringify(body),
+                keepalive,
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
                 throw new Error(data.error || `${labels.requestFailed} (${response.status})`);
             }
             return data;
+        }
+
+        function stopAudioInput() {
+            if (!stream) return;
+            stream.getTracks().forEach((track) => {
+                track.onended = null;
+                track.stop();
+            });
+        }
+
+        function requestRemoteStop(keepalive = false) {
+            if (!sessionToken || stopSignalSent) return Promise.resolve();
+            stopSignalSent = true;
+            return postJson('/api/live/stop', {
+                session_token: sessionToken,
+            }, keepalive);
         }
 
         async function startListening() {
@@ -449,6 +492,7 @@
                     context_prompt: elements.contextPrompt ? elements.contextPrompt.value.trim() : '',
                 });
                 sessionToken = session.session_token;
+                stopSignalSent = false;
                 await peerConnection.setRemoteDescription({
                     type: 'answer',
                     sdp: session.answer_sdp,
@@ -476,18 +520,23 @@
             return new Promise((resolve) => global.setTimeout(resolve, milliseconds));
         }
 
-        async function stopAndSave() {
+        async function stopAndSave(stopAudioImmediately = false) {
             if (stopping || !['live', 'connecting', 'save-error'].includes(state)) return;
             stopping = true;
             setStatus('saving', labels.saving);
             setAction(labels.saving, 'hourglass_top', true, false);
             stopTimer();
+            if (stopAudioImmediately) stopAudioInput();
 
             if (dataChannel && dataChannel.readyState === 'open') {
                 dataChannel.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
                 await wait(800);
             }
             const transcriptText = reducer.text();
+            stopAudioInput();
+            await requestRemoteStop().catch((error) => {
+                console.warn('Could not explicitly stop the realtime session.', error);
+            });
             await cleanupConnection();
 
             try {
@@ -523,6 +572,7 @@
             reducer.clear();
             renderTranscript();
             sessionToken = null;
+            stopSignalSent = false;
             unsavedTranscript = false;
             startedAt = null;
             elements.timer.textContent = '00:00';
@@ -603,6 +653,16 @@
                 event.preventDefault();
                 event.returnValue = labels.unsaved;
             }
+        });
+        global.addEventListener('pagehide', () => {
+            stopping = true;
+            stopTimer();
+            stopAudioInput();
+            requestRemoteStop(true).catch(() => {});
+            cleanupConnection();
+        });
+        global.addEventListener('pageshow', (event) => {
+            if (event.persisted && stopping) global.location.reload();
         });
         if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
             navigator.mediaDevices.addEventListener('devicechange', () => {

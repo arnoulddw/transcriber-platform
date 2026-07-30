@@ -2,10 +2,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    MAX_SESSION_DURATION_MS,
     LiveTranscriptReducer,
     createCompleteOffer,
+    remainingSessionMilliseconds,
     waitForDataChannelOpen,
 } = require('../../app/static/js/live_transcription.js');
+
+test('caps live sessions at 120 minutes', () => {
+    assert.equal(MAX_SESSION_DURATION_MS, 120 * 60 * 1000);
+    assert.equal(remainingSessionMilliseconds(1000, 1000), MAX_SESSION_DURATION_MS);
+    assert.equal(
+        remainingSessionMilliseconds(1000, 1000 + MAX_SESSION_DURATION_MS),
+        0,
+    );
+});
 
 test('reconciles interleaved deltas by item and preserves first-seen order', () => {
     const reducer = new LiveTranscriptReducer();
