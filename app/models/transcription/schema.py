@@ -39,6 +39,7 @@ def init_db_command() -> None:
                 transcription_text MEDIUMTEXT,
                 api_used VARCHAR(50),
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL DEFAULT NULL,
                 status VARCHAR(20) DEFAULT 'pending',
                 progress_log JSON,
                 error_message TEXT,
@@ -239,6 +240,16 @@ def init_db_command() -> None:
             cursor.execute(
                 "ALTER TABLE transcriptions ADD FULLTEXT INDEX "
                 "ftx_transcription_history (filename, generated_title, transcription_text)"
+            )
+
+        cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'completed_at'")
+        completed_at_col = cursor.fetchone()
+        cursor.fetchall()
+        if not completed_at_col:
+            logger.info("Adding 'completed_at' column (TIMESTAMP).")
+            cursor.execute(
+                "ALTER TABLE transcriptions "
+                "ADD COLUMN completed_at TIMESTAMP NULL DEFAULT NULL AFTER created_at"
             )
 
         # Normalize timestamp columns

@@ -6,6 +6,9 @@ from app.database import get_cursor, get_db
 from app.logging_config import get_logger
 
 
+TERMINAL_JOB_STATUSES = {"finished", "error", "cancelled", "interrupted"}
+
+
 def update_job_progress(job_id: str, message: str) -> None:
     """
     Appends a progress message to the job's progress log (JSON array/TEXT) in the database.
@@ -87,7 +90,15 @@ def update_job_status(job_id: str, status: str) -> None:
         logger.error(f"Attempted to set invalid status: '{status}'")
         return
 
-    sql = "UPDATE transcriptions SET status = %s WHERE id = %s"
+    if status in TERMINAL_JOB_STATUSES:
+        sql = """
+            UPDATE transcriptions
+            SET status = %s,
+                completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)
+            WHERE id = %s
+        """
+    else:
+        sql = "UPDATE transcriptions SET status = %s WHERE id = %s"
     cursor = get_cursor()
     try:
         cursor.execute(sql, (status, job_id))
@@ -116,7 +127,13 @@ def set_job_error(job_id: str, error_message: str) -> None:
     except Exception as prog_err:
         logger.error(f"Failed to add error message to progress log: {prog_err}", exc_info=True)
 
-    sql = "UPDATE transcriptions SET status = 'error', error_message = %s WHERE id = %s"
+    sql = """
+        UPDATE transcriptions
+        SET status = 'error',
+            completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
+            error_message = %s
+        WHERE id = %s
+        """
     cursor = get_cursor()
     try:
         cursor.execute(sql, (error_message, job_id))
@@ -145,7 +162,9 @@ def mark_active_jobs_interrupted(job_ids) -> int:
         cursor.execute(
             f"""
             UPDATE transcriptions
-            SET status = 'interrupted', error_message = %s,
+            SET status = 'interrupted',
+                completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
+                error_message = %s,
                 progress_log = JSON_ARRAY_APPEND(
                     COALESCE(progress_log, JSON_ARRAY()), '$', %s
                 )
@@ -185,6 +204,7 @@ def finalize_job_success(job_id: str, transcription_text: str, detected_language
     sql = """
         UPDATE transcriptions
         SET status = 'finished',
+            completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
             transcription_text = %s,
             detected_language = %s,
             error_message = NULL
