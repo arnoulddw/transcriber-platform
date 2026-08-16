@@ -186,6 +186,16 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
                  transcript_text = transcript_text[:max_prompt_chars] + "..."
                  logger.debug(f"{log_prefix} Truncated transcript text for title generation prompt.", extra=log_extra)
 
+            user_provider_override: Optional[str] = None
+            user_model_override: Optional[str] = None
+            user_model_preference = llm_service.resolve_user_model_preference(user, 'default_title_generation_model')
+            if user_model_preference:
+                user_provider_override, user_model_override = user_model_preference
+                logger.info(
+                    f"{log_prefix} Using user's auxiliary LLM model preference '{user_model_override}'.",
+                    extra=log_extra,
+                )
+
             role_obj = user.role
             role_provider_override: Optional[str] = None
             role_model_override: Optional[str] = None
@@ -208,10 +218,10 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
                 logger.warning(f"{log_prefix} Failed to resolve default title generation model from catalog: {catalog_err}", exc_info=True, extra=log_extra)
 
             fallback_model = current_app.config.get('TITLE_GENERATION_LLM_MODEL') or current_app.config.get('LLM_MODEL')
-            model_name = role_model_override or catalog_default_model or fallback_model
+            model_name = user_model_override or role_model_override or catalog_default_model or fallback_model
             user_openrouter_override = False
             user_openrouter_model = getattr(user, 'default_openrouter_llm_model', None)
-            if user_openrouter_model and check_permission(user, 'use_api_openrouter'):
+            if not user_model_override and user_openrouter_model and check_permission(user, 'use_api_openrouter'):
                 try:
                     model_name = normalize_openrouter_model(user_openrouter_model)
                     user_openrouter_override = True
@@ -225,12 +235,14 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
                         extra=log_extra,
                     )
 
-            provider_config = 'OPENROUTER' if user_openrouter_override else role_provider_override
+            provider_config = user_provider_override or ('OPENROUTER' if user_openrouter_override else role_provider_override)
             if not provider_config and model_name:
                 provider_config = llm_service.get_provider_for_model_code(model_name)
             if not provider_config:
                 provider_config = current_app.config.get('TITLE_GENERATION_LLM_PROVIDER', current_app.config.get('LLM_PROVIDER', 'GEMINI'))
-            if role_provider_override:
+            if user_provider_override:
+                logger.debug(f"{log_prefix} Using user-level auxiliary model preference '{model_name}' with provider '{provider_config}'.", extra=log_extra)
+            elif role_provider_override:
                 logger.debug(f"{log_prefix} Using role-level title generation model override '{model_name}' with provider '{provider_config}'.", extra=log_extra)
             else:
                 logger.debug(f"{log_prefix} Using configured title generation model '{model_name}' with provider '{provider_config}'.", extra=log_extra)

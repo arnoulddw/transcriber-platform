@@ -104,6 +104,19 @@ function updateProfileOpenrouterField() {
     input.disabled = !enabled;
 }
 
+function populateProfileLlmModelSelect(select) {
+    if (!select) return;
+    while (select.options.length > 0) select.remove(0);
+    select.appendChild(new Option('-- Use System Default --', ''));
+
+    const catalogModels = window.LLM_MODEL_CATALOG || [];
+    const userPermissions = window.USER_PERMISSIONS || {};
+    catalogModels.forEach(model => {
+        if (!model.code || (model.permission_key && !userPermissions[model.permission_key])) return;
+        select.appendChild(new Option(model.display_name || model.code, model.code));
+    });
+}
+
 
 document.addEventListener('DOMContentLoaded', function() {
     if (!initializeProfileModalElements()) {
@@ -201,11 +214,13 @@ async function loadProfileData() {
     const lastNameInput = document.getElementById('profileLastName');
     const langSelect = document.getElementById('profileDefaultLanguage');
     const modelSelect = document.getElementById('profileDefaultModel');
+    const workflowModelSelect = document.getElementById('profileDefaultWorkflowModel');
+    const auxiliaryModelSelect = document.getElementById('profileDefaultAuxiliaryModel');
     const openrouterModelInput = document.getElementById('profileDefaultOpenrouterModel');
     const autoTitleCheckbox = document.getElementById('enable_auto_title_generation');
     const uiLangSelect = document.getElementById('profileLanguage');
 
-    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !openrouterModelInput || !autoTitleCheckbox || !uiLangSelect) {
+    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !workflowModelSelect || !auxiliaryModelSelect || !openrouterModelInput || !autoTitleCheckbox || !uiLangSelect) {
         window.logger.error(profileLogPrefix, "One or more profile form elements not found.");
         window.showNotification('Error loading profile form.', 'error', 4000, false);
         return;
@@ -217,6 +232,8 @@ async function loadProfileData() {
     lastNameInput.value = '';
     langSelect.value = '';
     modelSelect.value = '';
+    workflowModelSelect.value = '';
+    auxiliaryModelSelect.value = '';
     openrouterModelInput.value = '';
     updateProfileOpenrouterField();
     uiLangSelect.value = '';
@@ -245,6 +262,9 @@ async function loadProfileData() {
         }
     });
 
+    populateProfileLlmModelSelect(workflowModelSelect);
+    populateProfileLlmModelSelect(auxiliaryModelSelect);
+
     // Populate UI language dropdown
     while (uiLangSelect.options.length > 0) uiLangSelect.remove(0);
     const supportedUiLangs = window.SUPPORTED_LANGUAGES || [];
@@ -272,6 +292,8 @@ async function loadProfileData() {
         lastNameInput.value = data.last_name || '';
         langSelect.value = data.default_content_language || '';
         modelSelect.value = data.default_transcription_model || '';
+        workflowModelSelect.value = data.default_workflow_model || '';
+        auxiliaryModelSelect.value = data.default_title_generation_model || '';
         openrouterModelInput.value = data.default_openrouter_model || '';
         updateProfileOpenrouterField();
         uiLangSelect.value = data.language || window.CURRENT_UI_LANGUAGE || 'en';
@@ -431,12 +453,15 @@ function displayProfileErrors(errors) {
     clearProfileErrors();
     for (const field in errors) {
         const errorMsg = Array.isArray(errors[field]) ? errors[field][0] : errors[field];
-        const errorSpanId = field === 'default_openrouter_model'
-            ? 'profileDefaultOpenrouterModelError'
-            : `profile${field.charAt(0).toUpperCase() + field.slice(1)}Error`;
-        const inputId = field === 'default_openrouter_model'
-            ? 'profileDefaultOpenrouterModel'
-            : `profile${field.charAt(0).toUpperCase() + field.slice(1)}`;
+        const fieldMappings = {
+            default_openrouter_model: ['profileDefaultOpenrouterModelError', 'profileDefaultOpenrouterModel'],
+            default_workflow_model: ['profileDefaultWorkflowModelError', 'profileDefaultWorkflowModel'],
+            default_title_generation_model: ['profileDefaultAuxiliaryModelError', 'profileDefaultAuxiliaryModel'],
+        };
+        const [errorSpanId, inputId] = fieldMappings[field] || [
+            `profile${field.charAt(0).toUpperCase() + field.slice(1)}Error`,
+            `profile${field.charAt(0).toUpperCase() + field.slice(1)}`,
+        ];
         const errorSpan = document.getElementById(errorSpanId);
         const inputElement = document.getElementById(inputId);
 

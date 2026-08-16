@@ -155,6 +155,13 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
             raise UsageLimitExceededError(reason)
         logger.debug("Workflow quota reserved.")
 
+        user_provider_override: Optional[str] = None
+        user_model_override: Optional[str] = None
+        user_model_preference = llm_service.resolve_user_model_preference(user, 'default_workflow_model')
+        if user_model_preference:
+            user_provider_override, user_model_override = user_model_preference
+            logger.info(f"Using user's workflow LLM model preference: {user_model_override}")
+
         role_provider_override: Optional[str] = None
         role_model_override: Optional[str] = None
         if role_obj:
@@ -177,10 +184,10 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
 
         fallback_model = current_app.config.get('WORKFLOW_LLM_MODEL') or current_app.config.get('LLM_MODEL')
         config_model = catalog_default_model or fallback_model
-        llm_model = role_model_override or config_model
+        llm_model = user_model_override or role_model_override or config_model
         user_openrouter_override = False
         user_openrouter_model = getattr(user, 'default_openrouter_llm_model', None)
-        if user_openrouter_model and check_permission(user, 'use_api_openrouter'):
+        if not user_model_override and user_openrouter_model and check_permission(user, 'use_api_openrouter'):
             try:
                 llm_model = normalize_openrouter_model(user_openrouter_model)
                 user_openrouter_override = True
@@ -190,14 +197,16 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
                     f"Ignoring invalid user's OpenRouter LLM model '{user_openrouter_model}': {model_err}"
                 )
 
-        provider_candidate = 'OPENROUTER' if user_openrouter_override else role_provider_override
+        provider_candidate = user_provider_override or ('OPENROUTER' if user_openrouter_override else role_provider_override)
         if not provider_candidate and llm_model:
             provider_candidate = llm_service.get_provider_for_model_code(llm_model)
         if not provider_candidate:
             provider_candidate = current_app.config.get('WORKFLOW_LLM_PROVIDER', current_app.config.get('LLM_PROVIDER', 'GEMINI'))
         llm_provider = provider_candidate
 
-        if role_provider_override:
+        if user_provider_override:
+            logger.info(f"Using user-level workflow LLM model preference: {llm_provider} ({llm_model})")
+        elif role_provider_override:
             logger.info(f"Using role-level workflow LLM provider override: {llm_provider} ({llm_model})")
         else:
             logger.info(f"Using configured workflow LLM provider: {llm_provider} ({llm_model})")

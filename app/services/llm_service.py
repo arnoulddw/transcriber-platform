@@ -58,6 +58,45 @@ def get_provider_for_model_code(model_code: Optional[str]) -> Optional[str]:
                 return provider.upper()
     return None
 
+
+def resolve_user_model_preference(user: Any, attribute_name: str) -> Optional[Tuple[str, str]]:
+    """Return an allowed user's selected model and its provider, if any."""
+    candidate = getattr(user, attribute_name, None)
+    if not isinstance(candidate, str):
+        return None
+    candidate = candidate.strip()
+    if not candidate:
+        return None
+
+    model_entry = None
+    try:
+        model_entry = llm_catalog_model.get_model_by_code(candidate)
+    except Exception as catalog_err:
+        logging.warning(
+            "[LLM Service] Failed to validate user model preference '%s': %s",
+            candidate,
+            catalog_err,
+        )
+
+    if model_entry:
+        if model_entry.get('is_active') is False:
+            logging.warning("[LLM Service] Ignoring inactive user model preference '%s'.", candidate)
+            return None
+        permission_key = model_entry.get('permission_key')
+        if permission_key and not user.has_permission(permission_key):
+            logging.warning(
+                "[LLM Service] Ignoring user model preference '%s' without permission '%s'.",
+                candidate,
+                permission_key,
+            )
+            return None
+
+    provider = (model_entry or {}).get('provider') or get_provider_for_model_code(candidate)
+    if not provider:
+        logging.warning("[LLM Service] Ignoring unknown user model preference '%s'.", candidate)
+        return None
+    return str(provider).upper(), candidate
+
 def generate_text_via_llm(
     provider_name: str,
     prompt: str,

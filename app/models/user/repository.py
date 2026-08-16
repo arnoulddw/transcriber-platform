@@ -632,9 +632,12 @@ def update_user_preferences(
     language: Optional[str] = None,
     default_openrouter_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
     default_openrouter_llm_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
+    default_title_generation_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
+    default_workflow_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
 ) -> bool:
     """
-    Updates the user's language, transcription model, OpenRouter model preferences, and auto-title setting.
+    Updates the user's language, transcription model, LLM model preferences,
+    OpenRouter model preferences, and auto-title setting.
     """
     log_prefix = f"[DB:User:{user_id}]"
     set_clauses = []
@@ -663,6 +666,14 @@ def update_user_preferences(
     if default_openrouter_llm_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
         set_clauses.append("default_openrouter_llm_model = %s")
         params.append(default_openrouter_llm_model if default_openrouter_llm_model else None)
+
+    if default_title_generation_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
+        set_clauses.append("default_title_generation_model = %s")
+        params.append(default_title_generation_model if default_title_generation_model else None)
+
+    if default_workflow_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
+        set_clauses.append("default_workflow_model = %s")
+        params.append(default_workflow_model if default_workflow_model else None)
 
     if not set_clauses:
         logger.debug(f"{log_prefix} No preference fields provided for update.")

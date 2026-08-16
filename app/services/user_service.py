@@ -575,9 +575,10 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     Args:
         user_id: The ID of the user to update.
         data: A dictionary containing the profile data, typically from a validated form.
-              Expected keys: 'username', 'email', 'first_name', 'last_name',
-                             'default_content_language', 'default_transcription_model',
-                             'default_openrouter_model', 'enable_auto_title_generation', 'language'.
+               Expected keys: 'username', 'email', 'first_name', 'last_name',
+                              'default_content_language', 'default_transcription_model',
+                              'default_title_generation_model', 'default_workflow_model',
+                              'default_openrouter_model', 'enable_auto_title_generation', 'language'.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     logger.debug(f"Attempting to update profile with data: {data}")
@@ -592,6 +593,8 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     last_name = data.get('last_name')
     default_language = data.get('default_content_language')
     default_model = data.get('default_transcription_model')
+    default_title_generation_model = data.get('default_title_generation_model')
+    default_workflow_model = data.get('default_workflow_model')
     default_openrouter_model_raw = data.get('default_openrouter_model')
     language = data.get('language')
     enable_auto_title_raw = data.get('enable_auto_title_generation')
@@ -602,6 +605,10 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
 
     default_language = None if default_language == "" else default_language
     default_model = None if default_model == "" else default_model
+    if isinstance(default_title_generation_model, str):
+        default_title_generation_model = default_title_generation_model.strip() or None
+    if isinstance(default_workflow_model, str):
+        default_workflow_model = default_workflow_model.strip() or None
     language = None if language == "" else language
     if default_model == 'openrouter':
         raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
@@ -610,6 +617,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         default_openrouter_model = None
     logger.debug(
         f"Processed preferences - Lang: {default_language}, Model: {default_model}, "
+        f"AuxiliaryModel: {default_title_generation_model}, WorkflowModel: {default_workflow_model}, "
         f"OpenRouterModel: {default_openrouter_model}, AutoTitle: {enable_auto_title}, UI Lang: {language}"
     )
 
@@ -643,12 +651,22 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
             first_name != current_user_obj.first_name or
             last_name != current_user_obj.last_name
         )
+        llm_preferences_present = (
+            'default_title_generation_model' in data or
+            'default_workflow_model' in data
+        )
         prefs_changed = (
             default_language != current_user_obj.default_content_language or
             default_model != current_user_obj.default_transcription_model or
             default_openrouter_model != getattr(current_user_obj, 'default_openrouter_model', None) or
             enable_auto_title != current_user_obj.enable_auto_title_generation or
-            language != current_user_obj.language
+            language != current_user_obj.language or
+            (
+                llm_preferences_present and (
+                    default_title_generation_model != getattr(current_user_obj, 'default_title_generation_model', None) or
+                    default_workflow_model != getattr(current_user_obj, 'default_workflow_model', None)
+                )
+            )
         )
 
         if not core_info_changed and not prefs_changed:
@@ -671,6 +689,11 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         prefs_update_performed = False
         if prefs_changed:
             logger.debug("Preferences changed, attempting update...")
+            preference_kwargs = {}
+            if 'default_title_generation_model' in data:
+                preference_kwargs['default_title_generation_model'] = default_title_generation_model
+            if 'default_workflow_model' in data:
+                preference_kwargs['default_workflow_model'] = default_workflow_model
             if user_model.update_user_preferences(
                 user_id,
                 default_language,
@@ -678,6 +701,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                 enable_auto_title,
                 language,
                 default_openrouter_model,
+                **preference_kwargs,
             ):
                 prefs_update_performed = True
                 logger.debug("Preferences updated successfully in DB.")
