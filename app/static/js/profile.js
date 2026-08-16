@@ -255,12 +255,20 @@ async function loadProfileData() {
     while (modelSelect.options.length > 0) modelSelect.remove(0);
     const catalogModels = window.TRANSCRIPTION_MODELS || [];
     const userPermissions = window.USER_PERMISSIONS || {};
+    const apiKeyStatus = window.API_KEY_STATUS || {};
+    const missingKeyMarker = ' (API Key Missing)';
     catalogModels.forEach(model => {
         if (!model.permission_key || userPermissions[model.permission_key]) {
             const displayName = model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL
                 ? window.DEFAULT_OPENROUTER_MODEL
                 : (model.display_name || model.code);
             const opt = new Option(displayName, model.code);
+            const requiredKey = model.required_api_key;
+            if (requiredKey && !apiKeyStatus[requiredKey]) {
+                opt.disabled = true;
+                opt.textContent += missingKeyMarker;
+            }
+            if (requiredKey) opt.dataset.keyRequired = requiredKey;
             modelSelect.appendChild(opt);
         }
     });
