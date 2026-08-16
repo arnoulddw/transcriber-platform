@@ -153,6 +153,7 @@ class Role:
     default_transcription_model: Optional[str]
     default_title_generation_model: Optional[str]
     default_workflow_model: Optional[str]
+    default_openrouter_model: Optional[str]
     # Transcription API Permissions
     use_api_assemblyai: bool
     use_api_openai_whisper: bool
@@ -196,6 +197,7 @@ class Role:
         self.default_transcription_model = kwargs.get('default_transcription_model') or None
         self.default_title_generation_model = kwargs.get('default_title_generation_model') or None
         self.default_workflow_model = kwargs.get('default_workflow_model') or None
+        self.default_openrouter_model = kwargs.get('default_openrouter_model') or None
         # Process boolean fields
         bool_fields = [
             'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
@@ -266,6 +268,8 @@ def _map_row_to_role(row: Dict[str, Any]) -> Optional[Role]:
             row['default_title_generation_model'] = None
         if 'default_workflow_model' not in row:
             row['default_workflow_model'] = None
+        if 'default_openrouter_model' not in row:
+            row['default_openrouter_model'] = None
         if 'allow_auto_title_generation' not in row:
             row['allow_auto_title_generation'] = 0
         if 'allow_speaker_diarization' not in row:
@@ -290,6 +294,7 @@ def init_roles_table() -> None:
                 default_transcription_model VARCHAR(100) DEFAULT NULL,
                 default_title_generation_model VARCHAR(100) DEFAULT NULL,
                 default_workflow_model VARCHAR(100) DEFAULT NULL,
+                default_openrouter_model VARCHAR(120) DEFAULT NULL,
                 use_api_assemblyai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_whisper BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_gpt_4o_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
@@ -352,6 +357,8 @@ def init_roles_table() -> None:
                        "VARCHAR(100) DEFAULT NULL", after="default_transcription_model", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "default_workflow_model",
                        "VARCHAR(100) DEFAULT NULL", after="default_title_generation_model", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "default_openrouter_model",
+                       "VARCHAR(120) DEFAULT NULL", after="default_workflow_model", log_prefix=log_prefix)
 
         cursor.execute("SHOW COLUMNS FROM roles LIKE 'use_api_openai_live_transcribe'")
         live_permission_exists = cursor.fetchone()
@@ -422,7 +429,7 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
-        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model',
+        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model',
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
@@ -682,7 +689,7 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
-        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model',
+        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model',
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
