@@ -6,6 +6,7 @@ import pytest
 from flask import Flask
 
 from app.forms import AdminRoleForm, UserProfileForm
+from app.models import llm_catalog
 from app.models.user.model import _map_row_to_user
 from app.models.user.repository import update_user_preferences
 from app.services import user_service
@@ -158,6 +159,35 @@ def test_profile_form_exposes_permitted_llm_model_choices(form_context):
     assert auxiliary_choices[0][0] == ""
     assert auxiliary_choices[1:] == expected_model_choices
     assert form.validate() is True
+
+
+def test_llm_model_catalog_hides_models_without_an_available_provider_key():
+    models = [
+        {
+            "code": "google/gemini-3.7-flash",
+            "display_name": "Gemini 3.7 Flash (OpenRouter)",
+            "required_api_key": "openrouter",
+        },
+        {
+            "code": "gemini-3.0-flash",
+            "display_name": "Gemini 3.0 Flash",
+            "required_api_key": "gemini",
+        },
+        {
+            "code": "local-model",
+            "display_name": "Local Model",
+            "required_api_key": None,
+        },
+    ]
+
+    available_models = llm_catalog.filter_models_by_api_key_status(
+        models, {"openrouter": True, "gemini": False}
+    )
+
+    assert [model["code"] for model in available_models] == [
+        "google/gemini-3.7-flash",
+        "local-model",
+    ]
 
 
 class _Cursor:

@@ -158,6 +158,28 @@ def test_llm_service_passes_requested_openrouter_model_to_key_lookup():
     get_key.assert_called_once_with(7, "openrouter", "x-ai/grok-stt-1.0")
 
 
+def test_openrouter_key_lookup_falls_back_to_key_saved_for_another_model():
+    cursor = Mock()
+    expected_record = {
+        "id": 7,
+        "provider_code": "openrouter",
+        "model_slug": "x-ai/grok-stt-1.0",
+        "encrypted_key": "encrypted",
+    }
+    cursor.fetchone.return_value = expected_record
+
+    with patch.object(user_api_key, "get_cursor", return_value=cursor):
+        record = user_api_key.get_api_key_record(
+            7, "openrouter", "google/gemini-3.7-flash"
+        )
+
+    sql, params = cursor.execute.call_args.args
+    assert record == expected_record
+    assert params == (7, "openrouter", "google/gemini-3.7-flash")
+    assert "ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END" in sql
+    assert "model_slug = %s OR model_slug = ''" not in sql
+
+
 def test_api_key_modal_contract_contains_requested_copy_and_selected_state():
     template = open(
         "app/templates/layout/modals/api_key_modal.html", encoding="utf-8"

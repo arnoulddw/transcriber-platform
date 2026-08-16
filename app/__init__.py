@@ -491,6 +491,20 @@ def create_app(config_class=Config) -> Flask:
                  'allow_speaker_diarization': True
              }
 
+        if user or not is_multi:
+            can_use_user_keys = not is_multi or bool(
+                role and getattr(role, 'allow_api_key_management', False)
+            )
+            effective_key_status = dict(initial_key_status) if can_use_user_keys else {}
+            for service in ('openai', 'assemblyai', 'gemini', 'openrouter'):
+                effective_key_status[service] = bool(
+                    effective_key_status.get(service)
+                    or app.config.get(f'{service.upper()}_API_KEY')
+                )
+            llm_model_catalog = llm_catalog_model.filter_models_by_api_key_status(
+                llm_model_catalog, effective_key_status
+            )
+
         display_name = user.first_name if user and user.first_name else user.username if user else None
 
         # --- MODIFIED: Determine UI language and Formatting locale separately ---
