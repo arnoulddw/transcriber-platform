@@ -115,9 +115,9 @@ async function fetchReadinessData() {
     if (!window.IS_MULTI_USER) {
         initLogger.debug("Single-user mode: Assuming readiness.");
         return {
-            api_keys: { openai: true, assemblyai: true, gemini: true },
+            api_keys: { openai: true, assemblyai: true, gemini: true, openrouter: true },
             permissions: {
-                use_api_assemblyai: true, use_api_openai_whisper: true,
+                use_api_assemblyai: true, use_api_openrouter: true, use_api_openai_whisper: true,
                 use_api_openai_gpt_4o_transcribe: true, use_api_openai_live_transcribe: true,
                 use_api_google_gemini: true,
                 allow_large_files: true, allow_context_prompt: true, allow_download_transcript: true,
@@ -198,6 +198,15 @@ async function fetchReadinessData() {
 }
 window.fetchReadinessData = fetchReadinessData;
 
+function updateOpenRouterModelField(selectedApi) {
+    const field = document.getElementById('openrouterModelField');
+    const input = document.getElementById('openrouterModelInput');
+    if (!field || !input) return;
+    const show = selectedApi === 'openrouter';
+    field.classList.toggle('hidden', !show);
+    input.disabled = !show;
+}
+
 async function checkTranscribeButtonState() {
     const apiSelect = document.getElementById('apiSelect');
     const fileInput = document.getElementById('audioFile');
@@ -264,6 +273,7 @@ async function checkTranscribeButtonState() {
     const apiKeyRequired = selectedApiOption ? selectedApiOption.dataset.keyRequired : null;
     const isFileSelected = fileInput.files.length > 0;
     updateSpeakerDiarizationVisibility(selectedApiValue, permissions);
+    updateOpenRouterModelField(selectedApiValue);
 
     if (toggleContextPromptBtn) {
         const currentPermissions = readinessData.permissions || {};
@@ -315,11 +325,19 @@ async function checkTranscribeButtonState() {
         if (selectedApiValue === 'gpt-transcribe' || selectedApiValue === 'gpt-4o-transcribe') canUseSelectedApi = permissions.use_api_openai_gpt_4o_transcribe;
         else if (selectedApiValue === 'whisper') canUseSelectedApi = permissions.use_api_openai_whisper;
         else if (selectedApiValue === 'assemblyai') canUseSelectedApi = permissions.use_api_assemblyai;
+        else if (selectedApiValue === 'openrouter') canUseSelectedApi = permissions.use_api_openrouter;
 
         if (!canUseSelectedApi || (selectedApiOption && selectedApiOption.disabled)) {
             const apiName = window.API_NAME_MAP_FRONTEND[selectedApiValue] || selectedApiValue;
             disableReason = `Permission denied for ${apiName} API.`;
             isPermissionError = true;
+        }
+    }
+
+    if (!disableReason && selectedApiValue === 'openrouter') {
+        const openrouterModelInput = document.getElementById('openrouterModelInput');
+        if (!openrouterModelInput || !openrouterModelInput.value.includes('/')) {
+            disableReason = "Enter an OpenRouter model (e.g. openai/gpt-transcribe).";
         }
     }
 
@@ -558,6 +576,7 @@ window.validateSelectedAudioFile = validateSelectedAudioFile;
 document.addEventListener('DOMContentLoaded', function() {
     const apiSelect = document.getElementById('apiSelect');
     const contextPromptInput = document.getElementById('contextPrompt');
+    const openrouterModelInput = document.getElementById('openrouterModelInput');
     const fileInput = document.getElementById('audioFile');
     const transcribeBtn = document.getElementById('transcribeBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -580,6 +599,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (contextPromptInput) {
         contextPromptInput.addEventListener('input', validateContextPrompt);
+    }
+    if (openrouterModelInput) {
+        openrouterModelInput.addEventListener('input', checkTranscribeButtonState);
     }
     if (fileInput) {
         fileInput.addEventListener('change', function() {
