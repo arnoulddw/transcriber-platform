@@ -231,6 +231,23 @@ def test_repository_persists_new_llm_model_preferences():
     )
 
 
+def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
+    config = open("app/config.py", encoding="utf-8").read()
+    compose = open("docker-compose.yml", encoding="utf-8").read()
+    index_template = open("app/templates/index.html", encoding="utf-8").read()
+    bootstrap_template = open(
+        "app/templates/layout/scripts/base_bootstrap.html", encoding="utf-8"
+    ).read()
+    profile_script = open("app/static/js/profile.js", encoding="utf-8").read()
+
+    assert "gpt-transcribe,openrouter" in config
+    assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
+    assert "model_display_name = effective_openrouter_model" in index_template
+    assert "data-openrouter-model=\"{{ effective_openrouter_model }}\"" in index_template
+    assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
+    assert "model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL" in profile_script
+
+
 def test_service_normalizes_and_passes_openrouter_default():
     current_user = SimpleNamespace(
         username="testuser",

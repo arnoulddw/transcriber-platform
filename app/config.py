@@ -66,7 +66,7 @@ class Config:
     # --- Provider Configuration (NEW) ---
     TRANSCRIPTION_PROVIDERS = os.environ.get(
         'TRANSCRIPTION_PROVIDERS',
-        "assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe",
+        "assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe,openrouter",
     ).split(',')
     LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
     # Default providers
