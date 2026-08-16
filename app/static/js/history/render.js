@@ -1,6 +1,13 @@
 // app/static/js/history/render.js
 // Rendering helpers for transcription history panels and workflow UI additions.
 
+function formatApiLabel(apiUsed, apiModel) {
+    const base = (window.API_NAME_MAP_FRONTEND && window.API_NAME_MAP_FRONTEND[apiUsed]) || apiUsed || 'Unknown API';
+    return apiModel ? `${base} · ${apiModel}` : base;
+}
+
+window.formatApiLabel = formatApiLabel;
+
 (function initializeHistoryRender(window) {
     const History = window.History;
     const { historyLogger, historyLogPrefix } = History.logger;
@@ -70,7 +77,7 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
     }
 
 
-    const apiName = window.API_NAME_MAP_FRONTEND?.[transcription.api_used] || capitalizeFirstLetter(transcription.api_used || 'Unknown API');
+    const apiName = formatApiLabel(transcription.api_used, transcription.api_model);
     const detectedLanguage = typeof transcription.detected_language === 'string'
         ? transcription.detected_language.trim()
         : '';

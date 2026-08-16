@@ -49,6 +49,13 @@
                         {% if form.default_transcription_model.errors %}
                             <p class="form-error">{{ form.default_transcription_model.errors[0] }}</p>
                         {% endif %}
+                        <div id="defaultOpenrouterModelField" class="mt-3{% if form.default_transcription_model.data != 'openrouter' %} hidden{% endif %}">
+                            <label for="{{ form.default_openrouter_model.id }}" class="form-label">{{ form.default_openrouter_model.label.text }}</label>
+                            {{ form.default_openrouter_model(class="input-control" + (" border-red-500" if form.default_openrouter_model.errors else ""), placeholder="openai/gpt-transcribe", autocomplete="off", disabled=form.default_transcription_model.data != 'openrouter', id=form.default_openrouter_model.id) }}
+                            {% if form.default_openrouter_model.errors %}
+                                <p class="form-error">{{ form.default_openrouter_model.errors[0] }}</p>
+                            {% endif %}
+                        </div>
                     </div>
                     <div>
                         <label for="{{ form.default_title_generation_model.id }}" class="form-label">{{ form.default_title_generation_model.label.text }}</label>
@@ -91,6 +98,10 @@
                     <label class="flex items-center space-x-2 cursor-pointer">
                         {{ form.use_api_google_gemini(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
                         <span class="text-sm text-text-strong">{{ form.use_api_google_gemini.label.text }}</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        {{ form.use_api_openrouter(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
+                        <span class="text-sm text-text-strong">{{ form.use_api_openrouter.label.text }}</span>
                     </label>
                 </div>
 
@@ -222,5 +233,20 @@
 
 {% block admin_scripts %}
     {{ super() }}
-    {# No specific JS needed for this page beyond base admin scripts #}
+    <script nonce="{{ csp_nonce }}">
+        document.addEventListener('DOMContentLoaded', function() {
+            const defaultModel = document.getElementById('{{ form.default_transcription_model.id }}');
+            const openrouterField = document.getElementById('defaultOpenrouterModelField');
+            const openrouterInput = document.getElementById('{{ form.default_openrouter_model.id }}');
+            if (!defaultModel || !openrouterField || !openrouterInput) return;
+
+            const updateOpenrouterField = () => {
+                const enabled = defaultModel.value === 'openrouter';
+                openrouterField.classList.toggle('hidden', !enabled);
+                openrouterInput.disabled = !enabled;
+            };
+            defaultModel.addEventListener('change', updateOpenrouterField);
+            updateOpenrouterField();
+        });
+    </script>
 {% endblock %}

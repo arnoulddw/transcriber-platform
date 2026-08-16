@@ -13,6 +13,7 @@ from app.models import user_api_key as user_api_key_model
 from .model import User, _map_row_to_user
 
 logger = logging.getLogger(__name__)
+_DEFAULT_OPENROUTER_MODEL_UNSET = object()
 
 try:
     from app.models.role import Role, get_role_by_id, get_role_by_name
@@ -612,9 +613,10 @@ def update_user_preferences(
     default_model: Optional[str],
     enable_auto_title_generation: Optional[bool] = None,
     language: Optional[str] = None,
+    default_openrouter_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
 ) -> bool:
     """
-    Updates the user's default language, transcription model, and auto-title preferences.
+    Updates the user's default language, transcription model, OpenRouter model, and auto-title preferences.
     """
     log_prefix = f"[DB:User:{user_id}]"
     set_clauses = []
@@ -635,6 +637,10 @@ def update_user_preferences(
     if language is not None:
         set_clauses.append("language = %s")
         params.append(language if language else None)
+
+    if default_openrouter_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
+        set_clauses.append("default_openrouter_model = %s")
+        params.append(default_openrouter_model if default_openrouter_model else None)
 
     if not set_clauses:
         logger.debug(f"{log_prefix} No preference fields provided for update.")

@@ -58,6 +58,7 @@ def get_user_readiness():
                 'use_api_openai_gpt_4o_transcribe': role.has_permission('use_api_openai_gpt_4o_transcribe'),
                 'use_api_openai_live_transcribe': role.has_permission('use_api_openai_live_transcribe'),
                 'use_api_google_gemini': role.has_permission('use_api_google_gemini'),
+                'use_api_openrouter': role.has_permission('use_api_openrouter'),
                 'allow_large_files': role.has_permission('allow_large_files'),
                 'allow_context_prompt': role.has_permission('allow_context_prompt'),
                 'allow_download_transcript': role.has_permission('allow_download_transcript'),
@@ -266,7 +267,7 @@ def delete_api_key(service):
     user_id = current_user.id
     log_prefix = f"[API:UserKeys:{user_id}:DELETE:{service}]"
 
-    allowed_services = ['openai', 'assemblyai', 'gemini']
+    allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
     if service not in allowed_services:
         logging.warning(f"{log_prefix} Attempt to delete key for invalid service in URL: {service}")
         return jsonify({'error': _('Invalid service specified in URL.')}), 400
@@ -305,6 +306,7 @@ def get_profile():
             'last_name': user_obj.last_name,
             'default_content_language': user_obj.default_content_language,
             'default_transcription_model': user_obj.default_transcription_model,
+            'default_openrouter_model': user_obj.default_openrouter_model,
             'oauth_provider': user_obj.oauth_provider,
             'enable_auto_title_generation': user_obj.enable_auto_title_generation,
             'language': user_obj.language

@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.user_prompt import UserPrompt
 from app.models.template_prompt import TemplatePrompt
 from app.models import transcription as transcription_model
+from app.services.openrouter import normalize_openrouter_model
 
 # Import security service for encryption/decryption
 from .security_service import get_security_service, SecurityService
@@ -112,7 +113,7 @@ def save_user_api_key(user_id: int, service: str, api_key: str) -> bool:
         logger.error("Attempted to save empty service or API key.")
         raise ValueError("Service name and API key cannot be empty.")
 
-    allowed_services = ['openai', 'assemblyai', 'gemini']
+    allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
     if service not in allowed_services:
         logger.error(f"Attempted to save API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
@@ -198,7 +199,7 @@ def delete_user_api_key(user_id: int, service: str) -> None:
         logger.error("Attempted to delete API key for empty service.")
         raise ValueError("Service name cannot be empty.")
 
-    allowed_services = ['openai', 'assemblyai', 'gemini']
+    allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
     if service not in allowed_services:
         logger.error(f"Attempted to delete API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
@@ -234,6 +235,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         'openai': False,
         'assemblyai': False,
         'gemini': False,
+        'openrouter': False,
         'public_api': {
             'enabled': False,
             'last_four': None,
@@ -255,6 +257,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         status['openai'] = bool(key_map.get('openai'))
         status['assemblyai'] = bool(key_map.get('assemblyai'))
         status['gemini'] = bool(key_map.get('gemini'))
+        status['openrouter'] = bool(key_map.get('openrouter'))
 
         status['public_api'] = get_public_api_key_status(user_id) if allow_public else status['public_api']
 
@@ -427,7 +430,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         data: A dictionary containing the profile data, typically from a validated form.
               Expected keys: 'username', 'email', 'first_name', 'last_name',
                              'default_content_language', 'default_transcription_model',
-                             'enable_auto_title_generation', 'language'.
+                             'default_openrouter_model', 'enable_auto_title_generation', 'language'.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     logger.debug(f"Attempting to update profile with data: {data}")
@@ -442,6 +445,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     last_name = data.get('last_name')
     default_language = data.get('default_content_language')
     default_model = data.get('default_transcription_model')
+    default_openrouter_model_raw = data.get('default_openrouter_model')
     language = data.get('language')
     enable_auto_title_raw = data.get('enable_auto_title_generation')
     if isinstance(enable_auto_title_raw, bool):
@@ -452,7 +456,15 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     default_language = None if default_language == "" else default_language
     default_model = None if default_model == "" else default_model
     language = None if language == "" else language
-    logger.debug(f"Processed preferences - Lang: {default_language}, Model: {default_model}, AutoTitle: {enable_auto_title}, UI Lang: {language}")
+    if default_model == 'openrouter':
+        raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
+        default_openrouter_model = normalize_openrouter_model(raw_openrouter_model) if raw_openrouter_model else None
+    else:
+        default_openrouter_model = None
+    logger.debug(
+        f"Processed preferences - Lang: {default_language}, Model: {default_model}, "
+        f"OpenRouterModel: {default_openrouter_model}, AutoTitle: {enable_auto_title}, UI Lang: {language}"
+    )
 
 
     if not username or not email:
@@ -487,6 +499,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         prefs_changed = (
             default_language != current_user_obj.default_content_language or
             default_model != current_user_obj.default_transcription_model or
+            default_openrouter_model != getattr(current_user_obj, 'default_openrouter_model', None) or
             enable_auto_title != current_user_obj.enable_auto_title_generation or
             language != current_user_obj.language
         )
@@ -511,7 +524,14 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         prefs_update_performed = False
         if prefs_changed:
             logger.debug("Preferences changed, attempting update...")
-            if user_model.update_user_preferences(user_id, default_language, default_model, enable_auto_title, language):
+            if user_model.update_user_preferences(
+                user_id,
+                default_language,
+                default_model,
+                enable_auto_title,
+                language,
+                default_openrouter_model,
+            ):
                 prefs_update_performed = True
                 logger.debug("Preferences updated successfully in DB.")
             else:

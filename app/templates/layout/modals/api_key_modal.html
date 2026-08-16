@@ -21,6 +21,7 @@
                 <li><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">OpenAI</a></li>
                 <li><a href="https://www.assemblyai.com/dashboard/signup" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">AssemblyAI</a></li>
                 <li><a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Google</a></li>
+                <li><a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">OpenRouter</a></li>
             </ul>
         </p>
         <form id="apiKeyForm" class="space-y-4">
@@ -31,6 +32,7 @@
                     <option value="openai">{{ _('OpenAI (Whisper/GPT-4o)') }}</option>
                     <option value="assemblyai">{{ _('AssemblyAI (Universal)') }}</option>
                     <option value="gemini">{{ _('Google (Gemini)') }}</option>
+                    <option value="openrouter">{{ _('OpenRouter') }}</option>
                 </select>
             </div>
             <div>
@@ -68,6 +70,15 @@
                 <div class="flex items-center">
                     <span id="geminiKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
                     <span id="geminiKeyActions"></span>
+                </div>
+            </li>
+            {% endif %}
+            {% if user_permissions.use_api_openrouter %}
+            <li class="py-3 flex justify-between items-center">
+                <span class="text-sm text-text-strong">{{ _('OpenRouter') }}</span>
+                <div class="flex items-center">
+                    <span id="openrouterKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
+                    <span id="openrouterKeyActions"></span>
                 </div>
             </li>
             {% endif %}

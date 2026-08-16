@@ -24,6 +24,7 @@ from app.models import transcription_catalog as transcription_catalog_model
 from app.models import user as user_model
 from app.models.user import User # For type hinting
 from app.services.user_service import MissingApiKeyError
+from app.services.openrouter import resolve_openrouter_model
 from app.services.api_clients.exceptions import TranscriptionApiError
 from app.core.decorators import check_permission, check_usage_limits
 from app.extensions import limiter, build_user_limit_key, csrf
@@ -230,6 +231,16 @@ def transcribe_audio_public():
         logging.error(f"{log_prefix} No valid transcription provider available.")
         return jsonify({'error': _('No transcription provider is available for your account.')}), 400
 
+    try:
+        api_model = resolve_openrouter_model(
+            api_choice,
+            request.form.get("openrouter_model"),
+            getattr(user, "default_openrouter_model", None),
+        )
+    except ValueError as model_err:
+        logging.warning(f"{log_prefix} Invalid OpenRouter model: {model_err}")
+        return jsonify({'error': str(model_err)}), 400
+
     permission_key = model_lookup.get(api_choice, {}).get('permission_key')
     if permission_key and not check_permission(user, permission_key):
         logging.warning(f"{log_prefix} Permission check failed for provider '{api_choice}'.")
@@ -307,7 +318,8 @@ def transcribe_audio_public():
             pending_workflow_prompt_title=None,
             pending_workflow_prompt_color=None,
             pending_workflow_origin_prompt_id=None,
-            public_api_invocation=True
+            public_api_invocation=True,
+            api_model=api_model
         )
         logging.info(f"{job_log_prefix} Created initial job record in database.")
     except MySQLError as db_create_err:
@@ -337,6 +349,7 @@ def transcribe_audio_public():
             None,
             None,
             False,
+            api_model,
         )
         logging.info(f"{job_log_prefix} Background transcription job queued.")
 
@@ -524,6 +537,12 @@ def transcribe_audio():
             logging.error(f"{job_log_prefix} Invalid API choice '{api_choice}'. Allowed: {sorted(active_model_codes)}")
             raise ValueError(f"Invalid transcription provider selected: {api_choice}")
 
+        api_model = resolve_openrouter_model(
+            api_choice,
+            request.form.get("openrouter_model"),
+            getattr(user, "default_openrouter_model", None),
+        )
+
         price = pricing_service.get_price(item_type='transcription', item_key=api_choice)
         cost_to_add = 0.0
         if price is not None:
@@ -557,7 +576,8 @@ def transcribe_audio():
                 pending_workflow_prompt_text=pending_workflow_prompt_text if pending_workflow_prompt_text else None,
                 pending_workflow_prompt_title=pending_workflow_prompt_title if pending_workflow_prompt_title else None,
                 pending_workflow_prompt_color=pending_workflow_prompt_color if pending_workflow_prompt_color else None,
-                pending_workflow_origin_prompt_id=parsed_pending_workflow_origin_id # Pass the ID
+                pending_workflow_origin_prompt_id=parsed_pending_workflow_origin_id, # Pass the ID
+                api_model=api_model
             )
             # --- END MODIFIED ---
             logging.info(f"{job_log_prefix} Created initial job record in database (Context Used: {context_prompt_used_flag}).")
@@ -588,6 +608,7 @@ def transcribe_audio():
             pending_workflow_prompt_color,
             parsed_pending_workflow_origin_id,
             speaker_diarization_enabled,
+            api_model,
         )
         logging.info(f"{job_log_prefix} Background transcription job queued.")
 
@@ -682,6 +703,7 @@ def get_progress(job_id):
             'file_size_mb': job_data.get('file_size_mb', 0.0),
             'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
             'api_used': job_data.get('api_used', 'unknown'),
+            'api_model': job_data.get('api_model'),
             'filename': job_data.get('filename', 'unknown'),
             'created_at': _format_public_datetime(job_data.get('created_at')),
             'should_poll_title': should_poll_title,
@@ -695,6 +717,7 @@ def get_progress(job_id):
                 'detected_language': job_data.get('detected_language'),
                 'transcription_text': job_data.get('transcription_text'),
                 'api_used': job_data.get('api_used'),
+                'api_model': job_data.get('api_model'),
                 'created_at': job_data.get('created_at'),
                 'status': status,
                 'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
@@ -734,6 +757,7 @@ def get_active_transcriptions():
                 'status': job.get('status'),
                 'filename': job.get('filename'),
                 'api_used': job.get('api_used'),
+                'api_model': job.get('api_model'),
                 'file_size_mb': job.get('file_size_mb', 0.0),
                 'audio_length_minutes': job.get('audio_length_minutes', 0.0),
                 'created_at': _format_public_datetime(job.get('created_at')),

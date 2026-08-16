@@ -41,7 +41,8 @@
                         {% set model_descriptions = {
                             'gpt-4o-transcribe': _('Best accuracy for clear speech and a good default for most recordings.'),
                             'whisper': _('Best for long recordings and broad language support.'),
-                            'assemblyai': _('Supports speaker identification and works well for meetings and interviews.')
+                            'assemblyai': _('Supports speaker identification and works well for meetings and interviews.'),
+                            'openrouter': _('Routes the job through OpenRouter. Enter the upstream model slug in the field that appears below.'),
                         } %}
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
@@ -52,6 +53,15 @@
                     </select>
                     <p id="modelDescription" class="form-hint" aria-live="polite"></p>
                 </div>
+            </div>
+
+            <div id="openrouterModelField" class="mt-3 hidden">
+                <label for="openrouterModelInput" class="form-label">{{ _('OpenRouter model') }}</label>
+                <input id="openrouterModelInput" name="openrouter_model" type="text"
+                       class="input-control" autocomplete="off"
+                       placeholder="openai/gpt-transcribe"
+                       value="{{ current_user.default_openrouter_model or '' }}">
+                <p class="form-hint">{{ _('OpenRouter model slug. Examples: openai/gpt-transcribe, openai/whisper-1. Use a chat-completion slug such as google/gemini-3.7-flash only for titles and workflows, not for this transcription field.') }}</p>
             </div>
 
             {# Language Select #}
@@ -201,7 +211,7 @@
                                                 </b>
                                             </div>
                                             <p class="meta text-xs text-text-muted">
-                                                {% set api_name = API_NAME_MAP_FRONTEND.get(transcription.api_used, transcription.api_used | capitalize if transcription.api_used else 'Unknown API') %}
+                                                {% set api_name = API_NAME_MAP_FRONTEND.get(transcription.api_used, transcription.api_used) %}
                                                 {% set lang_code = transcription.detected_language.strip() if transcription.detected_language else '' %}
                                                 {% set language_available = lang_code and lang_code | lower not in ['unknown', 'und'] %}
                                                 {% if language_available %}
@@ -209,7 +219,7 @@
                                                 {% endif %}
                                                 {% set duration_minutes = transcription.audio_length_minutes %}
                                                 {% set formatted_duration = (duration_minutes | round(method='ceil') | int ~ ' min') if duration_minutes is not none else 'N/A' %}
-                                                {{ api_name | e }}{% if language_available %} | {{ lang_name | e }}{% endif %} | {{ formatted_duration | e }} | <time datetime="{{ transcription.created_at | datetime_tz }}">{{ transcription.created_at | datetime_tz }}</time>
+                                                {% if transcription.api_model %}{{ api_name }} · {{ transcription.api_model }}{% else %}{{ api_name }}{% endif %}{% if language_available %} | {{ lang_name | e }}{% endif %} | {{ formatted_duration | e }} | <time datetime="{{ transcription.created_at | datetime_tz }}">{{ transcription.created_at | datetime_tz }}</time>
                                                 {% if transcription.status == 'error' %}<span class="text-red-600"> {{ _('(Failed)') }}</span>{% endif %}
                                             </p>
                                         </div>

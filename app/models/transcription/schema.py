@@ -38,6 +38,7 @@ def init_db_command() -> None:
                 detected_language VARCHAR(10),
                 transcription_text MEDIUMTEXT,
                 api_used VARCHAR(50),
+                api_model VARCHAR(120) DEFAULT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP NULL DEFAULT NULL,
                 status VARCHAR(20) DEFAULT 'pending',
@@ -213,6 +214,14 @@ def init_db_command() -> None:
         if not is_pinned_col_exists:
             logger.info("Adding 'is_pinned' column (BOOLEAN).")
             cursor.execute("ALTER TABLE transcriptions ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT FALSE AFTER cost")
+
+        cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'api_model'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE transcriptions "
+                "ADD COLUMN api_model VARCHAR(120) DEFAULT NULL AFTER api_used"
+            )
+        cursor.fetchall()
 
         # --- Add/Check Indexes ---
         index_checks = {
