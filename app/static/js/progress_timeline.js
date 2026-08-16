@@ -12,11 +12,15 @@
     const HOLD_PROGRESS_AT = 95;
 
     function parseCreatedAtMs(value) {
-        if (value === null || value === undefined || value === '') {
+        if (typeof value !== 'string' || value.trim() === '') {
             return NaN;
         }
         const ms = Date.parse(value);
         return Number.isFinite(ms) ? ms : NaN;
+    }
+
+    function finiteOrFallback(value, fallback) {
+        return Number.isFinite(value) ? value : fallback;
     }
 
     function shouldReplayMarkers(status) {
@@ -88,34 +92,66 @@
         holdAt,
         minPhaseDuration,
     }) {
-        const hold = typeof holdAt === 'number' ? holdAt : HOLD_PROGRESS_AT;
-        const minDuration = typeof minPhaseDuration === 'number' ? minPhaseDuration : MIN_PHASE_DURATION_FOR_SMOOTHING;
+        const minDuration = finiteOrFallback(minPhaseDuration, MIN_PHASE_DURATION_FOR_SMOOTHING);
         const times = expectedTimes || {};
         const bounds = progressBoundaries || {};
-        const elapsedTimeInPhase = (nowMs - phaseStartTimeMs) / 1000;
-        const upBoundary = bounds.upload || 0;
-        const procBoundary = bounds.processing || 0;
-        const transStartBoundary = bounds.transcriptionStart || 0;
+        const upBoundary = Math.max(0, finiteOrFallback(bounds.upload, 0));
+        const procBoundary = Math.max(upBoundary, finiteOrFallback(bounds.processing, upBoundary));
+        const transStartBoundary = Math.max(0, finiteOrFallback(bounds.transcriptionStart, 0));
+        const hold = Math.max(transStartBoundary, finiteOrFallback(holdAt, HOLD_PROGRESS_AT));
+        const elapsedMs = Number.isFinite(nowMs) && Number.isFinite(phaseStartTimeMs)
+            ? nowMs - phaseStartTimeMs
+            : 0;
+        const elapsedTimeInPhase = Number.isFinite(elapsedMs)
+            ? Math.max(elapsedMs / 1000, 0)
+            : 0;
+        if (phase === 'upload' && elapsedMs < 0) {
+            return upBoundary;
+        }
         switch (phase) {
             case 'upload': {
                 const expectedUpload = times.upload;
-                return (expectedUpload < minDuration || expectedUpload <= 0)
-                    ? upBoundary
-                    : Math.min((elapsedTimeInPhase / expectedUpload) * upBoundary, upBoundary);
+                if (!Number.isFinite(expectedUpload)) {
+                    return upBoundary;
+                }
+                if (expectedUpload < minDuration || expectedUpload <= 0) {
+                    return upBoundary;
+                }
+                return Math.max(0, Math.min((elapsedTimeInPhase / expectedUpload) * upBoundary, upBoundary));
             }
             case 'processing': {
                 const expectedProcessing = times.processing;
                 const processingRange = procBoundary - upBoundary;
-                return (expectedProcessing < minDuration || expectedProcessing <= 0)
-                    ? procBoundary
-                    : upBoundary + Math.min((elapsedTimeInPhase / expectedProcessing) * processingRange, processingRange);
+                if (!Number.isFinite(expectedProcessing)) {
+                    return upBoundary;
+                }
+                if (expectedProcessing < minDuration || expectedProcessing <= 0) {
+                    return procBoundary;
+                }
+                return Math.max(
+                    upBoundary,
+                    Math.min(
+                        upBoundary + (elapsedTimeInPhase / expectedProcessing) * processingRange,
+                        procBoundary,
+                    ),
+                );
             }
             case 'transcribing': {
                 const expectedTranscription = times.transcription;
                 const transcriptionRange = hold - transStartBoundary;
-                return (expectedTranscription < minDuration || expectedTranscription <= 0)
-                    ? hold
-                    : transStartBoundary + Math.min((elapsedTimeInPhase / expectedTranscription) * transcriptionRange, transcriptionRange);
+                if (!Number.isFinite(expectedTranscription)) {
+                    return transStartBoundary;
+                }
+                if (expectedTranscription < minDuration || expectedTranscription <= 0) {
+                    return hold;
+                }
+                return Math.max(
+                    transStartBoundary,
+                    Math.min(
+                        transStartBoundary + (elapsedTimeInPhase / expectedTranscription) * transcriptionRange,
+                        hold,
+                    ),
+                );
             }
             default:
                 return 0;

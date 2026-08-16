@@ -26,6 +26,12 @@ test('parseCreatedAtMs rejects missing and invalid values', () => {
     assert.equal(Number.isFinite(parseCreatedAtMs('not-a-date')), false);
 });
 
+test('parseCreatedAtMs rejects non-string and whitespace-only values', () => {
+    for (const value of [0, false, {}, [], ' \t\n']) {
+        assert.equal(Number.isNaN(parseCreatedAtMs(value)), true);
+    }
+});
+
 test('shouldReplayMarkers is false while pending or cancelling', () => {
     assert.equal(shouldReplayMarkers('pending'), false);
     assert.equal(shouldReplayMarkers('cancelling'), false);
@@ -91,6 +97,25 @@ test('replay of a mid-transcription large-file log lands on the transcribing anc
     assert.equal(out.lastProgressKey, 'processing');
 });
 
+test('replay ignores out-of-order and duplicate phase markers', () => {
+    const out = replayMarkers({
+        phaseStartTimeMs: 0,
+        messages: [
+            'PHASE_MARKER:TRANSCRIPTION_START',
+            'PHASE_MARKER:UPLOAD_COMPLETE',
+            'PHASE_MARKER:UPLOAD_COMPLETE',
+            'PHASE_MARKER:TRANSCRIPTION_START',
+            'PHASE_MARKER:TRANSCRIPTION_START',
+        ],
+        expectedTimes: EXPECTED,
+        fileSizeMb: 40,
+        largeFileThresholdMb: 25,
+    });
+    assert.equal(out.phaseStartTimeMs, (30 + 90) * 1000);
+    assert.equal(out.phase, 'transcribing');
+    assert.equal(out.lastProgressKey, 'processing');
+});
+
 test('replay of a small-file log (no TRANSCRIPTION_START) skips processing', () => {
     const createdAtMs = 1_000;
     const out = replayMarkers({
@@ -145,4 +170,58 @@ test('estimateProgress reconstructs mid-transcription percent from created_at + 
         holdAt: HOLD_AT,
     });
     assert.equal(Math.round(raw), 62);
+});
+
+test('estimateProgress clamps clock skew and malformed timing inputs', () => {
+    const uploadBeforeAnchor = estimateProgress({
+        nowMs: 900,
+        phaseStartTimeMs: 1_000,
+        phase: 'upload',
+        expectedTimes: EXPECTED,
+        progressBoundaries: BOUNDARIES,
+        holdAt: HOLD_AT,
+    });
+    assert.equal(uploadBeforeAnchor, BOUNDARIES.upload);
+
+    const invalidProcessingDuration = estimateProgress({
+        nowMs: 2_000,
+        phaseStartTimeMs: 1_000,
+        phase: 'processing',
+        expectedTimes: { ...EXPECTED, processing: NaN },
+        progressBoundaries: BOUNDARIES,
+        holdAt: HOLD_AT,
+    });
+    assert.equal(invalidProcessingDuration, BOUNDARIES.upload);
+
+    const invalidTranscriptionDuration = estimateProgress({
+        nowMs: 2_000,
+        phaseStartTimeMs: 1_000,
+        phase: 'transcribing',
+        expectedTimes: { ...EXPECTED, transcription: undefined },
+        progressBoundaries: BOUNDARIES,
+        holdAt: HOLD_AT,
+    });
+    assert.equal(invalidTranscriptionDuration, BOUNDARIES.transcriptionStart);
+
+    const invalidNow = estimateProgress({
+        nowMs: NaN,
+        phaseStartTimeMs: 1_000,
+        phase: 'processing',
+        expectedTimes: EXPECTED,
+        progressBoundaries: BOUNDARIES,
+        holdAt: HOLD_AT,
+    });
+    assert.equal(invalidNow, BOUNDARIES.upload);
+    assert.equal(Number.isFinite(invalidNow), true);
+
+    const invalidPhaseAnchor = estimateProgress({
+        nowMs: 2_000,
+        phaseStartTimeMs: undefined,
+        phase: 'transcribing',
+        expectedTimes: EXPECTED,
+        progressBoundaries: BOUNDARIES,
+        holdAt: HOLD_AT,
+    });
+    assert.equal(invalidPhaseAnchor, BOUNDARIES.transcriptionStart);
+    assert.equal(Number.isFinite(invalidPhaseAnchor), true);
 });
