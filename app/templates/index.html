@@ -55,12 +55,13 @@
                 </div>
             </div>
 
-            <div id="openrouterModelField" class="mt-3 hidden">
+            <div id="openrouterModelField" class="mt-3 {{ 'hidden' if effective_default_api != 'openrouter' }}">
                 <label for="openrouterModelInput" class="form-label">{{ _('OpenRouter model') }}</label>
                 <input id="openrouterModelInput" name="openrouter_model" type="text"
                        class="input-control" autocomplete="off"
                        placeholder="openai/gpt-transcribe"
-                       value="{{ current_user.default_openrouter_model or '' }}">
+                       value="{{ effective_openrouter_model or '' }}"
+                       {% if effective_default_api != 'openrouter' %}disabled{% endif %}>
                 <p class="form-hint">{{ _('OpenRouter model slug. Examples: openai/gpt-transcribe, openai/whisper-1. Use a chat-completion slug such as google/gemini-3.7-flash only for titles and workflows, not for this transcription field.') }}</p>
             </div>
 

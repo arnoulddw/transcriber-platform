@@ -47,6 +47,20 @@ function initializeApiKeyModalElements() {
     return true;
 }
 
+function updateOpenRouterModelSettings(service) {
+    const settings = document.getElementById('openrouterModelSettings');
+    const modelInput = document.getElementById('apiKeyOpenrouterModel');
+    const purposeInputs = document.querySelectorAll('input[name="openrouter_model_purpose"]');
+    if (!settings || !modelInput) return;
+
+    const show = service === 'openrouter';
+    settings.classList.toggle('hidden', !show);
+    modelInput.disabled = !show;
+    purposeInputs.forEach(input => {
+        input.disabled = !show;
+    });
+}
+
 function openApiKeyModalDialog() {
     if (!apiKeyModal || !apiKeyModalOverlay || !apiKeyModalPanel) {
         window.logger.error(userSettingsLogPrefix, "Cannot open API Key modal: core elements missing.");
@@ -190,6 +204,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- API Key Form Submission Listener ---
     const apiKeyForm = document.getElementById('apiKeyForm');
+    const apiKeyServiceSelect = document.getElementById('apiKeyServiceSelect');
+    if (apiKeyServiceSelect) {
+        apiKeyServiceSelect.addEventListener('change', () => {
+            updateOpenRouterModelSettings(apiKeyServiceSelect.value);
+        });
+        updateOpenRouterModelSettings(apiKeyServiceSelect.value);
+    }
     if (apiKeyForm) {
         apiKeyForm.addEventListener('submit', handleApiKeySave);
         window.logger.debug(userSettingsLogPrefix, "API Key save form listener attached.");
@@ -594,6 +615,7 @@ function handleApiKeySave(event) {
     const form = event.target;
     const serviceSelect = document.getElementById('apiKeyServiceSelect');
     const keyInput = document.getElementById('apiKeyInput');
+    const openrouterModelInput = document.getElementById('apiKeyOpenrouterModel');
     const submitButton = form.querySelector('button[type="submit"]');
 
     const service = serviceSelect.value;
@@ -610,6 +632,10 @@ function handleApiKeySave(event) {
     if (apiKey.length < 10) {
          window.showNotification('API key seems too short.', 'warning', 4000, false);
          return;
+    }
+    if (service === 'openrouter' && (!openrouterModelInput || !openrouterModelInput.value.trim() || !openrouterModelInput.value.includes('/'))) {
+        window.showNotification('Please enter an OpenRouter model slug such as openai/gpt-4o-mini.', 'warning', 5000, false);
+        return;
     }
 
     const originalButtonHtml = submitButton.innerHTML;
@@ -642,6 +668,10 @@ function handleApiKeySave(event) {
         window.showNotification(data.message || 'API Key saved successfully!', 'success', 4000, false);
         keyInput.value = '';
         serviceSelect.value = '';
+        if (openrouterModelInput) openrouterModelInput.value = '';
+        const transcriptionPurpose = document.querySelector('input[name="openrouter_model_purpose"][value="transcription"]');
+        if (transcriptionPurpose) transcriptionPurpose.checked = true;
+        updateOpenRouterModelSettings(serviceSelect.value);
         // No M.FormSelect.init needed for Tailwind select if it's a basic HTML select
 
         return fetchApiKeyStatus();

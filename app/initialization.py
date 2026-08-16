@@ -123,7 +123,8 @@ def create_default_roles() -> None:
             'permissions': {
                 'use_api_assemblyai': True, 'use_api_openai_whisper': True, 'use_api_openai_gpt_4o_transcribe': True,
                 'use_api_openai_live_transcribe': True,
-                'use_api_google_gemini': True, 'access_admin_panel': True, 'allow_large_files': True, 'allow_context_prompt': True,
+                'use_api_google_gemini': True, 'use_api_openrouter': True,
+                'access_admin_panel': True, 'allow_large_files': True, 'allow_context_prompt': True,
                 'allow_api_key_management': True, 'allow_download_transcript': True,
                 'allow_workflows': True, 'manage_workflow_templates': True,
                 'allow_auto_title_generation': True, 'allow_speaker_diarization': True,
@@ -137,7 +138,7 @@ def create_default_roles() -> None:
             'description': 'Beta tester role with standard permissions',
             'permissions': {
                 'use_api_assemblyai': True, 'use_api_openai_whisper': True, 'use_api_openai_gpt_4o_transcribe': True,
-                'use_api_openai_live_transcribe': False,
+                'use_api_openai_live_transcribe': False, 'use_api_openrouter': True,
                 'access_admin_panel': False,
                 'allow_large_files': True, 'allow_context_prompt': True,
                 'allow_api_key_management': True, 'allow_download_transcript': True,
@@ -164,6 +165,15 @@ def create_default_roles() -> None:
                     logger.error(f"{log_prefix} Failed to create role '{name}'.")
             else:
                 logger.debug(f"{log_prefix} Role '{name}' already exists.")
+                # Repair unchanged built-in roles created before OpenRouter was
+                # added, without overwriting a deliberately customized role.
+                if (
+                    config['permissions'].get('use_api_openrouter')
+                    and not getattr(existing_role, 'use_api_openrouter', False)
+                    and existing_role.description == config['description']
+                ):
+                    if role_model.update_role(existing_role.id, {'use_api_openrouter': True}):
+                        logger.info(f"{log_prefix} Added OpenRouter permission to built-in role '{name}'.")
                 roles_existed_count += 1
         
         summary = f"Role creation check complete. Created: {roles_created_count}, Existed: {roles_existed_count}."

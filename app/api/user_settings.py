@@ -234,14 +234,25 @@ def save_api_key():
     """
     user_id = current_user.id
     log_prefix = f"[API:UserKeys:{user_id}:POST]"
-    form = ApiKeyForm()
+    if request.is_json:
+        form = ApiKeyForm(meta={'csrf': False}, data=request.get_json(silent=True) or {})
+        form_valid = form.validate()
+    else:
+        form = ApiKeyForm()
+        form_valid = form.validate_on_submit()
 
-    if form.validate_on_submit():
+    if form_valid:
         service = form.service.data
         api_key = form.api_key.data
         logging.info(f"{log_prefix} Attempting to save API key for service '{service}'.")
         try:
-            user_service.save_user_api_key(user_id, service, api_key)
+            user_service.save_user_api_key(
+                user_id,
+                service,
+                api_key,
+                openrouter_model=form.openrouter_model.data,
+                openrouter_model_purpose=form.openrouter_model_purpose.data,
+            )
             logging.info(f"{log_prefix} API key for service '{service}' saved successfully.")
             return jsonify({'message': _('API key for %(service)s saved successfully.', service=service)}), 200
         except (UserNotFoundError, ValueError, DatabaseUpdateError, ApiKeyManagementError) as e:
@@ -307,6 +318,7 @@ def get_profile():
             'default_content_language': user_obj.default_content_language,
             'default_transcription_model': user_obj.default_transcription_model,
             'default_openrouter_model': user_obj.default_openrouter_model,
+            'default_openrouter_llm_model': user_obj.default_openrouter_llm_model,
             'oauth_provider': user_obj.oauth_provider,
             'enable_auto_title_generation': user_obj.enable_auto_title_generation,
             'language': user_obj.language

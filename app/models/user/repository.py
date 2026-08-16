@@ -78,6 +78,17 @@ def _get_default_transcription_model_for_new_user(role: Role) -> Optional[str]:
     return fallback_provider
 
 
+def _get_default_openrouter_model_for_new_user(role: Role) -> Optional[str]:
+    """Returns a valid role-level OpenRouter transcription slug, if configured."""
+    raw_model = (getattr(role, 'default_openrouter_model', None) or '').strip() if role else ''
+    if not raw_model:
+        return None
+    if '/' not in raw_model or ' ' in raw_model or len(raw_model) > 120:
+        logger.warning("[DB:User] Ignoring invalid role OpenRouter model default '%s'.", raw_model)
+        return None
+    return raw_model
+
+
 def add_user(username: str, email: str, password_hash: str, role_name: str = 'beta-tester', language: Optional[str] = None) -> Optional[User]:
     if get_role_by_name is None:
         return None
@@ -95,6 +106,7 @@ def add_user(username: str, email: str, password_hash: str, role_name: str = 'be
     logger.info(f"[DB:User] Role ID to be inserted: {role_id}")
 
     default_model = _get_default_transcription_model_for_new_user(role)
+    default_openrouter_model = _get_default_openrouter_model_for_new_user(role)
     default_language = transcription_catalog_model.get_default_language_code() or current_app.config.get('DEFAULT_LANGUAGE', 'auto')
 
     default_auto_title_enabled = False
@@ -112,9 +124,10 @@ def add_user(username: str, email: str, password_hash: str, role_name: str = 'be
         INSERT INTO users (
             username, email, password_hash, role_id, created_at,
             enable_auto_title_generation, language,
-            default_content_language, default_transcription_model
+            default_content_language, default_transcription_model,
+            default_openrouter_model
         )
-        VALUES (%s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
         '''
     cursor = get_cursor()
     try:
@@ -129,6 +142,7 @@ def add_user(username: str, email: str, password_hash: str, role_name: str = 'be
                 language,
                 default_language,
                 default_model,
+                default_openrouter_model,
             ),
         )
         user_id = cursor.lastrowid
@@ -178,6 +192,7 @@ def add_oauth_user(
     role_id = role.id
 
     default_model = _get_default_transcription_model_for_new_user(role)
+    default_openrouter_model = _get_default_openrouter_model_for_new_user(role)
     default_language = transcription_catalog_model.get_default_language_code() or current_app.config.get('DEFAULT_LANGUAGE', 'auto')
 
     default_auto_title_enabled = False
@@ -199,9 +214,10 @@ def add_oauth_user(
             username, email, password_hash, role_id, created_at,
             first_name, last_name, oauth_provider, oauth_provider_id,
             enable_auto_title_generation, language,
-            default_content_language, default_transcription_model
+            default_content_language, default_transcription_model,
+            default_openrouter_model
         )
-        VALUES (%s, %s, NULL, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, NULL, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
         '''
     cursor = get_cursor()
     try:
@@ -219,6 +235,7 @@ def add_oauth_user(
                 language,
                 default_language,
                 default_model,
+                default_openrouter_model,
             ),
         )
         get_db().commit()
@@ -614,9 +631,10 @@ def update_user_preferences(
     enable_auto_title_generation: Optional[bool] = None,
     language: Optional[str] = None,
     default_openrouter_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
+    default_openrouter_llm_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
 ) -> bool:
     """
-    Updates the user's default language, transcription model, OpenRouter model, and auto-title preferences.
+    Updates the user's language, transcription model, OpenRouter model preferences, and auto-title setting.
     """
     log_prefix = f"[DB:User:{user_id}]"
     set_clauses = []
@@ -641,6 +659,10 @@ def update_user_preferences(
     if default_openrouter_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
         set_clauses.append("default_openrouter_model = %s")
         params.append(default_openrouter_model if default_openrouter_model else None)
+
+    if default_openrouter_llm_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
+        set_clauses.append("default_openrouter_llm_model = %s")
+        params.append(default_openrouter_llm_model if default_openrouter_llm_model else None)
 
     if not set_clauses:
         logger.debug(f"{log_prefix} No preference fields provided for update.")

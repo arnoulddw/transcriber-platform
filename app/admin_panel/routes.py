@@ -293,6 +293,7 @@ def edit_role(role_id):
                 'use_api_openai_gpt_4o_transcribe': temp_form.use_api_openai_gpt_4o_transcribe.data,
                 'use_api_openai_live_transcribe': temp_form.use_api_openai_live_transcribe.data,
                 'use_api_google_gemini': temp_form.use_api_google_gemini.data,
+                'use_api_openrouter': temp_form.use_api_openrouter.data,
                 'access_admin_panel': temp_form.access_admin_panel.data,
                 'allow_large_files': temp_form.allow_large_files.data,
                 'allow_context_prompt': temp_form.allow_context_prompt.data,

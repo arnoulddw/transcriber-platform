@@ -156,6 +156,8 @@ def test_save_and_delete_openrouter_api_key(logged_in_client_with_permissions):
     key_data = {
         'service': 'openrouter',
         'api_key': 'sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        'openrouter_model': 'openai/gpt-transcribe',
+        'openrouter_model_purpose': 'transcription',
     }
     response = logged_in_client_with_permissions.post(
         url_for('user_settings.save_api_key'), json=key_data

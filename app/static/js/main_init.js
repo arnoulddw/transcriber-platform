@@ -592,8 +592,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (apiSelect) {
         updateModelDescription(apiSelect);
+        updateOpenRouterModelField(apiSelect.value);
         apiSelect.addEventListener('change', function() {
             updateModelDescription(apiSelect);
+            updateOpenRouterModelField(apiSelect.value);
             checkTranscribeButtonState();
         });
     }
