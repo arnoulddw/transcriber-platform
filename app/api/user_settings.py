@@ -267,7 +267,7 @@ def delete_api_key(service):
     user_id = current_user.id
     log_prefix = f"[API:UserKeys:{user_id}:DELETE:{service}]"
 
-    allowed_services = ['openai', 'assemblyai', 'gemini']
+    allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
     if service not in allowed_services:
         logging.warning(f"{log_prefix} Attempt to delete key for invalid service in URL: {service}")
         return jsonify({'error': _('Invalid service specified in URL.')}), 400

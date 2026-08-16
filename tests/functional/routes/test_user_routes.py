@@ -115,7 +115,7 @@ def test_get_api_key_status(logged_in_client_with_permissions):
     response = logged_in_client_with_permissions.get(url_for('user_settings.get_api_key_status'))
     assert response.status_code == 200
     json_data = response.get_json()
-    assert {'openai', 'assemblyai', 'gemini'} <= set(json_data)
+    assert {'openai', 'assemblyai', 'gemini', 'openrouter'} <= set(json_data)
     assert json_data['openai'] is False
 
 
@@ -150,6 +150,31 @@ def test_save_and_delete_api_key(logged_in_client_with_permissions):
     response = logged_in_client_with_permissions.get(url_for('user_settings.get_api_key_status'))
     assert response.status_code == 200
     assert response.get_json()['openai'] is False
+
+
+def test_save_and_delete_openrouter_api_key(logged_in_client_with_permissions):
+    key_data = {
+        'service': 'openrouter',
+        'api_key': 'sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    }
+    response = logged_in_client_with_permissions.post(
+        url_for('user_settings.save_api_key'), json=key_data
+    )
+    assert response.status_code == 200
+
+    status = logged_in_client_with_permissions.get(
+        url_for('user_settings.get_api_key_status')
+    ).get_json()
+    assert status['openrouter'] is True
+
+    response = logged_in_client_with_permissions.delete(
+        url_for('user_settings.delete_api_key', service='openrouter')
+    )
+    assert response.status_code == 200
+    status = logged_in_client_with_permissions.get(
+        url_for('user_settings.get_api_key_status')
+    ).get_json()
+    assert status['openrouter'] is False
 
 # --- Test User Readiness Endpoint ---
 

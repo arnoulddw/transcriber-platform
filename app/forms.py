@@ -78,7 +78,8 @@ class ApiKeyForm(FlaskForm):
             ('', '-- Select Service --'),
             ('openai', 'OpenAI (Whisper/GPT-4o)'),
             ('assemblyai', 'AssemblyAI (Universal)'),
-            ('gemini', 'Google (Gemini)') # Added Gemini
+            ('gemini', 'Google (Gemini)'), # Added Gemini
+            ('openrouter', 'OpenRouter')
         ],
         validators=[DataRequired(message="Please select an API service.")]
     )

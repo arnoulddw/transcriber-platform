@@ -112,7 +112,7 @@ def save_user_api_key(user_id: int, service: str, api_key: str) -> bool:
         logger.error("Attempted to save empty service or API key.")
         raise ValueError("Service name and API key cannot be empty.")
 
-    allowed_services = ['openai', 'assemblyai', 'gemini']
+    allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
     if service not in allowed_services:
         logger.error(f"Attempted to save API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
@@ -198,7 +198,7 @@ def delete_user_api_key(user_id: int, service: str) -> None:
         logger.error("Attempted to delete API key for empty service.")
         raise ValueError("Service name cannot be empty.")
 
-    allowed_services = ['openai', 'assemblyai', 'gemini']
+    allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
     if service not in allowed_services:
         logger.error(f"Attempted to delete API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
@@ -234,6 +234,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         'openai': False,
         'assemblyai': False,
         'gemini': False,
+        'openrouter': False,
         'public_api': {
             'enabled': False,
             'last_four': None,
@@ -255,6 +256,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         status['openai'] = bool(key_map.get('openai'))
         status['assemblyai'] = bool(key_map.get('assemblyai'))
         status['gemini'] = bool(key_map.get('gemini'))
+        status['openrouter'] = bool(key_map.get('openrouter'))
 
         status['public_api'] = get_public_api_key_status(user_id) if allow_public else status['public_api']
 

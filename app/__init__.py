@@ -468,7 +468,8 @@ def create_app(config_class=Config) -> Flask:
              initial_key_status = {
                  'openai': bool(app.config.get('OPENAI_API_KEY')),
                  'assemblyai': bool(app.config.get('ASSEMBLYAI_API_KEY')),
-                 'gemini': bool(app.config.get('GEMINI_API_KEY'))
+                 'gemini': bool(app.config.get('GEMINI_API_KEY')),
+                 'openrouter': bool(app.config.get('OPENROUTER_API_KEY'))
              }
              user_permissions = {
                  'use_api_assemblyai': True, 'use_api_openai_whisper': True,
