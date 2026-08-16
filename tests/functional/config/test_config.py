@@ -14,6 +14,8 @@ class TestConfig:
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+    OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+    OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
     # Disable CSRF protection for tests
     WTF_CSRF_ENABLED = False
@@ -63,7 +65,8 @@ class TestConfig:
     
     # Simplified provider/language config for tests
     TRANSCRIPTION_PROVIDERS = ["assemblyai", "whisper", "gpt-4o-transcribe", "gpt-transcribe"]
-    LLM_PROVIDERS = ["GEMINI", "OPENAI"]
+    LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
+    OPENROUTER_MODELS = ['google/gemini-3.7-flash', 'openai/gpt-4o']
     DEFAULT_TRANSCRIPTION_PROVIDER = 'whisper'
     LLM_PROVIDER = 'GEMINI'
     API_PROVIDER_NAME_MAP = {
@@ -73,6 +76,8 @@ class TestConfig:
         "gpt-transcribe": "OpenAI GPT Transcribe",
         "GEMINI": "Google Gemini",
         "OPENAI": "OpenAI",
+        "openrouter": "OpenRouter",
+        "OPENROUTER": "OpenRouter",
     }
     SUPPORTED_LANGUAGES = ['en', 'es', 'fr', 'nl']
     SUPPORTED_LANGUAGE_NAMES = {

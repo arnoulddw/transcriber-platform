@@ -49,6 +49,10 @@ class Config:
     ASSEMBLYAI_API_KEY = os.environ.get('ASSEMBLYAI_API_KEY')
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') # Used for OpenAI transcription and LLM models
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') # Used for Gemini LLM
+    OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+    OPENROUTER_BASE_URL = os.environ.get(
+        'OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'
+    )
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') # Placeholder for future LLM
     OPENAI_HTTP_TIMEOUT = 120
     LIVE_TRANSCRIPTION_MODEL = os.environ.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
@@ -64,7 +68,7 @@ class Config:
         'TRANSCRIPTION_PROVIDERS',
         "assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe",
     ).split(',')
-    LLM_PROVIDERS = ["GEMINI", "OPENAI"]
+    LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
     # Default providers
     DEFAULT_TRANSCRIPTION_PROVIDER = os.environ.get('DEFAULT_TRANSCRIPTION_PROVIDER', 'gpt-4o-transcribe')
     LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'GEMINI').upper()
@@ -84,6 +88,10 @@ class Config:
     # --- NEW: Centralized model lists ---
     GEMINI_MODELS = os.environ.get('GEMINI_MODELS', 'gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it').split(',')
     OPENAI_MODELS = os.environ.get('OPENAI_MODELS', 'gpt-4o').split(',')
+    OPENROUTER_MODELS = os.environ.get(
+        'OPENROUTER_MODELS',
+        'google/gemini-3.7-flash,openai/gpt-4o',
+    ).split(',')
     # --- END NEW ---
 
     API_PROVIDER_NAME_MAP = {
@@ -96,11 +104,15 @@ class Config:
         # LLM Providers
         "GEMINI": "Google Gemini",
         "OPENAI": "OpenAI",
+        "openrouter": "OpenRouter",
+        "OPENROUTER": "OpenRouter",
         # Specific Models (add more as needed for display)
         "gemini-2.0-flash": "Gemini 2.0 Flash",
         "gemini-3.0-flash": "Gemini 3.0 Flash",
         "gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
         "gpt-4o": "OpenAI GPT-4o",
+        "google/gemini-3.7-flash": "Gemini 3.7 Flash (OpenRouter)",
+        "openai/gpt-4o": "OpenAI GPT-4o (OpenRouter)",
     }
     # --- END MODIFIED ---
 
@@ -232,6 +244,11 @@ class Config:
             'duration_s': None,
             'size_mb': None,
             'rate_limit_rpm': None  # Handled by SDK
+        },
+        'openrouter': {
+            'duration_s': None,
+            'size_mb': 25,
+            'rate_limit_rpm': None,
         }
     }
 
