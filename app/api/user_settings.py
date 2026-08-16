@@ -285,7 +285,12 @@ def delete_api_key(service):
 
     logging.info(f"{log_prefix} Attempting to delete API key.")
     try:
-        user_service.delete_user_api_key(user_id, service)
+        model_slug = request.args.get('model') if service == 'openrouter' else None
+        user_service.delete_user_api_key(
+            user_id,
+            service,
+            model_slug=model_slug,
+        )
         logging.info(f"{log_prefix} API key deleted successfully.")
         return jsonify({'message': _('API key for %(service)s deleted successfully.', service=service)}), 200
     except KeyNotFoundError as e:

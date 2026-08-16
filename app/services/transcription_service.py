@@ -279,7 +279,12 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             try:
                 if mode == 'multi':
                     key_service_name = 'openai' if api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe'] else api_choice
-                    api_key = get_decrypted_api_key(user_id, key_service_name)
+                    if api_choice == 'openrouter':
+                        api_key = get_decrypted_api_key(
+                            user_id, key_service_name, model_slug=api_model
+                        )
+                    else:
+                        api_key = get_decrypted_api_key(user_id, key_service_name)
 
                     if api_key:
                         logger.debug(f"Using user-specific API key for '{api_display_name}'.")
