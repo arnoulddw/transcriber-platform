@@ -122,7 +122,7 @@ The application is configured using environment variables in a `.env` file. The 
 | `OPENROUTER_API_KEY` | Your API key for OpenRouter (transcription and LLM operations). | (none) |
 | `ANTHROPIC_API_KEY` | Reserved for future Anthropic LLM support. | (none) |
 | **Provider, Model & Language Settings** | | |
-| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. Append `,openrouter` to opt in to OpenRouter; the default list remains unchanged. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe` |
+| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. Remove `openrouter` if you want to hide OpenRouter. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe,openrouter` |
 | `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription API on load (`gpt-transcribe`, `gpt-4o-transcribe`, `whisper`, `assemblyai`). | `gpt-4o-transcribe` |
 | `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`, `OPENROUTER`). | `GEMINI` |
 | `LLM_MODEL` | General fallback LLM model for direct or legacy LLM calls. | (none) |

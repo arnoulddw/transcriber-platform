@@ -47,7 +47,8 @@
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
                             {% if not required_perm or user_permissions.get(required_perm) %}
-                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                {% set model_display_name = effective_openrouter_model if model.code == 'openrouter' and effective_openrouter_model else model.display_name %}
+                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.code == 'openrouter' and effective_openrouter_model %} data-openrouter-model="{{ effective_openrouter_model }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model_display_name }}</option>
                             {% endif %}
                         {% endfor %}
                     </select>

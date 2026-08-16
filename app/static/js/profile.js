@@ -257,7 +257,10 @@ async function loadProfileData() {
     const userPermissions = window.USER_PERMISSIONS || {};
     catalogModels.forEach(model => {
         if (!model.permission_key || userPermissions[model.permission_key]) {
-            const opt = new Option(model.display_name, model.code);
+            const displayName = model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL
+                ? window.DEFAULT_OPENROUTER_MODEL
+                : (model.display_name || model.code);
+            const opt = new Option(displayName, model.code);
             modelSelect.appendChild(opt);
         }
     });
