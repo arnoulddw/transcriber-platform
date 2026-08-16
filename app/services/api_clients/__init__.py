@@ -17,6 +17,7 @@ from .transcription.assemblyai import AssemblyAITranscriptionAPI
 from .transcription.openai_whisper import OpenAIWhisperTranscriptionAPI
 from .transcription.openai_gpt_4o_transcribe import OpenAIGPT4OTranscribeClient
 from .transcription.openai_gpt_transcribe import OpenAIGPTTranscribeClient
+from .transcription.openrouter import OpenRouterTranscriptionClient
 from .llm.gemini_client import GeminiClient
 from .llm.openai_client import OpenAIClient
 
@@ -54,6 +55,8 @@ def get_transcription_client(provider_name: str, api_key: str, config: Dict[str,
             return OpenAIGPT4OTranscribeClient(api_key, config)
         elif provider_name == "gpt-transcribe":
             return OpenAIGPTTranscribeClient(api_key, config)
+        elif provider_name == "openrouter":
+            return OpenRouterTranscriptionClient(api_key, config)
         else:
             logging.error(f"[API Factory] Unsupported transcription provider requested: {provider_name}")
             raise ValueError(f"Unsupported transcription provider: {provider_name}")
@@ -92,6 +95,12 @@ def get_llm_client(provider_name: str, api_key: str, config: Dict[str, Any]) -> 
     try:
         # Allow for model specifics in provider name, e.g., "gemini-1.5-flash"
         provider_lower = provider_name.lower()
+        if provider_lower.startswith("openrouter"):
+            routed_config = dict(config)
+            routed_config["OPENAI_BASE_URL"] = config.get(
+                "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+            )
+            return OpenAIClient(api_key, routed_config)
         if provider_lower.startswith("gemini"):
             # Pass config to the client constructor
             return GeminiClient(api_key, config)

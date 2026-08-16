@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from app.services.api_clients import get_transcription_client
 from app.services.api_clients.transcription.openrouter import OpenRouterTranscriptionClient
 
 
@@ -48,3 +49,13 @@ def test_auto_language_omits_language_param():
         extra_options={"model": "openai/whisper-1"},
     )
     assert "language" not in params
+
+
+def test_transcription_factory_routes_openrouter():
+    config = {
+        "API_LIMITS": {"openrouter": {"size_mb": 25}},
+        "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+    }
+    with patch("app.services.api_clients.transcription.openai_base.OpenAI"):
+        client = get_transcription_client("openrouter", "sk-or-test", config)
+    assert isinstance(client, OpenRouterTranscriptionClient)
