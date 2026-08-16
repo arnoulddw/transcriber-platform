@@ -48,7 +48,11 @@ class OpenAIClient(BaseLLMClient):
         if not OPENAI_AVAILABLE:
             raise ValueError("OpenAI library not installed.")
         try:
-            self.client = OpenAI(api_key=api_key)
+            client_kwargs = {"api_key": api_key}
+            base_url = config.get("OPENAI_BASE_URL")
+            if base_url:
+                client_kwargs["base_url"] = base_url
+            self.client = OpenAI(**client_kwargs)
             # Allow overriding the default model via application config
             self.default_model = config.get("WORKFLOW_LLM_MODEL", self.DEFAULT_MODEL)
             self.logger.debug("OpenAI client initialized successfully.")
