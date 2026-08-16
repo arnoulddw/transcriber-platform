@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from flask import Flask
 
@@ -171,3 +171,37 @@ def test_api_key_modal_contract_contains_requested_copy_and_selected_state():
     assert "peer-checked:bg-primary/10" in template
     assert "openrouter_keys" in script
     assert "***${" in script
+
+
+def test_schema_creates_replacement_index_before_dropping_legacy_index():
+    cursor = Mock()
+    connection = Mock()
+    cursor.fetchone.side_effect = [
+        {"Type": "timestamp"},
+        {"Type": "timestamp"},
+        {"Field": "model_slug"},
+        {"Field": "last_used_at"},
+        None,
+        {"Key_name": "uq_user_provider"},
+        None,
+    ]
+    cursor.fetchall.return_value = []
+
+    with patch.object(user_api_key, "get_cursor", return_value=cursor), patch.object(
+        user_api_key, "get_db", return_value=connection
+    ):
+        user_api_key.init_db_command()
+
+    statements = [call.args[0] for call in cursor.execute.call_args_list]
+    replacement_index_position = next(
+        index
+        for index, statement in enumerate(statements)
+        if "ADD UNIQUE INDEX uq_user_provider_model" in statement
+    )
+    legacy_drop_position = next(
+        index
+        for index, statement in enumerate(statements)
+        if "DROP INDEX uq_user_provider" in statement
+    )
+
+    assert replacement_index_position < legacy_drop_position

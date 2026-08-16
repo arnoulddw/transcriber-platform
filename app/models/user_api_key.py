@@ -57,13 +57,10 @@ def init_db_command() -> None:
                     f"ALTER TABLE user_api_keys ADD COLUMN {col_name} {col_def} {position}"
                 )
 
-        cursor.execute("SHOW INDEX FROM user_api_keys WHERE Key_name = 'uq_user_provider'")
-        legacy_unique_exists = cursor.fetchone()
-        cursor.fetchall()
-        if legacy_unique_exists:
-            logging.info(f"{log_prefix} Replacing legacy uq_user_provider index.")
-            cursor.execute("ALTER TABLE user_api_keys DROP INDEX uq_user_provider")
-
+        # Create the replacement index before dropping the legacy one. The
+        # legacy index may be the only index currently supporting the foreign
+        # key on user_id, so MySQL rejects dropping it until another suitable
+        # index exists.
         cursor.execute("SHOW INDEX FROM user_api_keys WHERE Key_name = 'uq_user_provider_model'")
         scoped_unique_exists = cursor.fetchone()
         cursor.fetchall()
@@ -73,6 +70,13 @@ def init_db_command() -> None:
                 "ALTER TABLE user_api_keys ADD UNIQUE INDEX "
                 "uq_user_provider_model (user_id, provider_code, model_slug)"
             )
+
+        cursor.execute("SHOW INDEX FROM user_api_keys WHERE Key_name = 'uq_user_provider'")
+        legacy_unique_exists = cursor.fetchone()
+        cursor.fetchall()
+        if legacy_unique_exists:
+            logging.info(f"{log_prefix} Replacing legacy uq_user_provider index.")
+            cursor.execute("ALTER TABLE user_api_keys DROP INDEX uq_user_provider")
 
         cursor.execute("SHOW INDEX FROM user_api_keys WHERE Key_name = 'idx_user_api_key_last_used'")
         last_used_index_exists = cursor.fetchone()
