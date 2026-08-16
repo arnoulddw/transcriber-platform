@@ -509,6 +509,11 @@ def create_app(config_class=Config) -> Flask:
             user_service.resolve_effective_openrouter_model(user, initial_key_status)
             if user else None
         )
+        available_transcription_models = transcription_catalog_model.expand_models_for_ui(
+            catalog_models,
+            initial_key_status,
+            effective_openrouter_model,
+        )
 
         display_name = user.first_name if user and user.first_name else user.username if user else None
 
@@ -547,6 +552,7 @@ def create_app(config_class=Config) -> Flask:
             now=datetime.now(timezone.utc),
             initial_key_status=initial_key_status,
             effective_openrouter_model=effective_openrouter_model,
+            transcription_models=available_transcription_models,
             user_permissions=user_permissions,
             google_client_id=app.config.get('GOOGLE_CLIENT_ID'),
 
@@ -554,7 +560,7 @@ def create_app(config_class=Config) -> Flask:
             SUPPORTED_UI_LANGS_CONFIG=supported_ui_languages,
             API_NAME_MAP_FRONTEND=api_name_map_for_frontend_subset,
             API_PROVIDER_NAME_MAP=all_provider_names_from_config,
-            TRANSCRIPTION_MODEL_CATALOG=catalog_models,
+            TRANSCRIPTION_MODEL_CATALOG=available_transcription_models,
             LLM_MODEL_CATALOG=llm_model_catalog,
             COLOR_NAME_MAP=color_name_map,
             app_debug=app.debug,

@@ -264,32 +264,15 @@ async function loadProfileData() {
     catalogModels.forEach(model => {
         if (model.permission_key && !userPermissions[model.permission_key]) return;
 
+        const opt = new Option(model.display_name || model.code, model.code);
+        if (model.model_slug) opt.dataset.openrouterModel = model.model_slug;
         const requiredKey = model.required_api_key;
-        const appendOption = (displayName, modelSlug = '') => {
-            const opt = new Option(displayName, model.code);
-            if (modelSlug) opt.dataset.openrouterModel = modelSlug;
-            if (requiredKey && !apiKeyStatus[requiredKey]) {
-                opt.disabled = true;
-                opt.textContent += missingKeyMarker;
-            }
-            if (requiredKey) opt.dataset.keyRequired = requiredKey;
-            modelSelect.appendChild(opt);
-        };
-
-        if (model.code === 'openrouter') {
-            const openrouterModels = (apiKeyStatus.openrouter_keys || [])
-                .map(entry => String(entry?.model_slug || '').trim())
-                .filter(Boolean);
-            if (openrouterModels.length > 0) {
-                openrouterModels.forEach(modelSlug => appendOption(modelSlug, modelSlug));
-            } else if (window.DEFAULT_OPENROUTER_MODEL) {
-                appendOption(window.DEFAULT_OPENROUTER_MODEL, window.DEFAULT_OPENROUTER_MODEL);
-            } else {
-                appendOption(model.display_name || model.code);
-            }
-        } else {
-            appendOption(model.display_name || model.code);
+        if (requiredKey && !apiKeyStatus[requiredKey]) {
+            opt.disabled = true;
+            opt.textContent += missingKeyMarker;
         }
+        if (requiredKey) opt.dataset.keyRequired = requiredKey;
+        modelSelect.appendChild(opt);
     });
 
     populateProfileLlmModelSelect(workflowModelSelect);

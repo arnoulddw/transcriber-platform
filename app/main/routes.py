@@ -192,7 +192,6 @@ def index():
         effective_openrouter_model=effective_openrouter_model,
         effective_default_language=effective_default_language,
         supported_languages=supported_languages,
-        transcription_models=catalog_models,
         transcriptions=transcriptions,
         pagination=pagination
     )

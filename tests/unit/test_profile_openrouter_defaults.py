@@ -7,6 +7,7 @@ from flask import Flask
 
 from app.forms import AdminRoleForm, UserProfileForm
 from app.models import llm_catalog
+from app.models import transcription_catalog
 from app.models.user.model import _map_row_to_user
 from app.models.user.repository import update_user_preferences
 from app.services import user_service
@@ -275,16 +276,38 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
     assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
     assert "data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL" in profile_script
-    assert "openrouterModels.forEach(modelSlug => appendOption(modelSlug, modelSlug))" in profile_script
-    assert "option.dataset.openrouterModel === effectiveOpenrouterModel" in profile_script
-    assert "initial_key_status.get('openrouter_keys', [])" in index_template
-    assert "data-openrouter-model=\"{{ openrouter_slug }}\"" in index_template
+    assert "model_slug" in profile_script
+    assert "initial_key_status.get('openrouter_keys', [])" not in index_template
+    assert "model.model_slug" in index_template
+    assert "TRANSCRIPTION_MODEL_CATALOG=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
+    assert "transcription_models=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
     assert 'type="hidden" id="openrouterModelInput"' in index_template
     assert "updateSelectedOpenRouterModel" in main_init
     assert "openrouterModelField" not in main_init
     assert "const apiKeyStatus = window.API_KEY_STATUS || {};" in profile_script
     assert "opt.disabled = true;" in profile_script
     assert "missingKeyMarker" in profile_script
+
+
+def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
+    models = [
+        {"code": "whisper", "display_name": "Whisper", "permission_key": None, "required_api_key": None},
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {"openrouter_keys": [
+            {"model_slug": "x-ai/grok-stt-1.0"},
+            {"model_slug": "openai/gpt-transcribe"},
+        ]},
+    )
+
+    assert [(model["code"], model["display_name"], model.get("model_slug")) for model in expanded] == [
+        ("whisper", "Whisper", None),
+        ("openrouter", "x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
+        ("openrouter", "openai/gpt-transcribe", "openai/gpt-transcribe"),
+    ]
 
 
 def test_context_resolves_openrouter_label_after_loading_key_status():
