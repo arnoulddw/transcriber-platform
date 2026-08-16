@@ -274,9 +274,9 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "gpt-transcribe,openrouter" in config
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
     assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
-    assert "model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL" in profile_script
     assert "data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL" in profile_script
-    assert "openrouterOption.textContent = effectiveOpenrouterModel" in profile_script
+    assert "openrouterModels.forEach(modelSlug => appendOption(modelSlug, modelSlug))" in profile_script
+    assert "option.dataset.openrouterModel === effectiveOpenrouterModel" in profile_script
     assert "initial_key_status.get('openrouter_keys', [])" in index_template
     assert "data-openrouter-model=\"{{ openrouter_slug }}\"" in index_template
     assert 'type="hidden" id="openrouterModelInput"' in index_template

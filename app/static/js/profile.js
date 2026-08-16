@@ -102,6 +102,10 @@ function updateProfileOpenrouterField() {
     const enabled = modelSelect.value === 'openrouter';
     field.classList.toggle('hidden', !enabled);
     input.disabled = !enabled;
+    if (enabled) {
+        const selectedModel = modelSelect.selectedOptions[0]?.dataset.openrouterModel;
+        if (selectedModel) input.value = selectedModel;
+    }
 }
 
 function populateProfileLlmModelSelect(select) {
@@ -258,18 +262,33 @@ async function loadProfileData() {
     const apiKeyStatus = window.API_KEY_STATUS || {};
     const missingKeyMarker = ' (API Key Missing)';
     catalogModels.forEach(model => {
-        if (!model.permission_key || userPermissions[model.permission_key]) {
-            const displayName = model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL
-                ? window.DEFAULT_OPENROUTER_MODEL
-                : (model.display_name || model.code);
+        if (model.permission_key && !userPermissions[model.permission_key]) return;
+
+        const requiredKey = model.required_api_key;
+        const appendOption = (displayName, modelSlug = '') => {
             const opt = new Option(displayName, model.code);
-            const requiredKey = model.required_api_key;
+            if (modelSlug) opt.dataset.openrouterModel = modelSlug;
             if (requiredKey && !apiKeyStatus[requiredKey]) {
                 opt.disabled = true;
                 opt.textContent += missingKeyMarker;
             }
             if (requiredKey) opt.dataset.keyRequired = requiredKey;
             modelSelect.appendChild(opt);
+        };
+
+        if (model.code === 'openrouter') {
+            const openrouterModels = (apiKeyStatus.openrouter_keys || [])
+                .map(entry => String(entry?.model_slug || '').trim())
+                .filter(Boolean);
+            if (openrouterModels.length > 0) {
+                openrouterModels.forEach(modelSlug => appendOption(modelSlug, modelSlug));
+            } else if (window.DEFAULT_OPENROUTER_MODEL) {
+                appendOption(window.DEFAULT_OPENROUTER_MODEL, window.DEFAULT_OPENROUTER_MODEL);
+            } else {
+                appendOption(model.display_name || model.code);
+            }
+        } else {
+            appendOption(model.display_name || model.code);
         }
     });
 
@@ -303,14 +322,18 @@ async function loadProfileData() {
         lastNameInput.value = data.last_name || '';
         langSelect.value = data.default_content_language || '';
         const effectiveOpenrouterModel = data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL || '';
-        const openrouterOption = Array.from(modelSelect.options).find(option => option.value === 'openrouter');
-        if (openrouterOption && effectiveOpenrouterModel) {
-            openrouterOption.textContent = effectiveOpenrouterModel;
+        const matchingOpenrouterOption = Array.from(modelSelect.options).find(
+            option => option.value === 'openrouter'
+                && option.dataset.openrouterModel === effectiveOpenrouterModel
+        );
+        if (matchingOpenrouterOption) matchingOpenrouterOption.selected = true;
+        if (data.default_transcription_model !== 'openrouter') {
+            modelSelect.value = data.default_transcription_model || '';
         }
-        modelSelect.value = data.default_transcription_model || '';
         workflowModelSelect.value = data.default_workflow_model || '';
         auxiliaryModelSelect.value = data.default_title_generation_model || '';
-        openrouterModelInput.value = effectiveOpenrouterModel;
+        const selectedOpenrouterOption = modelSelect.selectedOptions[0];
+        openrouterModelInput.value = selectedOpenrouterOption?.dataset.openrouterModel || effectiveOpenrouterModel;
         updateProfileOpenrouterField();
         uiLangSelect.value = data.language || window.CURRENT_UI_LANGUAGE || 'en';
         autoTitleCheckbox.checked = data.enable_auto_title_generation === true;
