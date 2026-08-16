@@ -20,6 +20,7 @@ from app.models import llm_catalog as llm_catalog_model
 from app.models.user import User  # For type hinting
 
 from app.services import llm_service
+from app.services.openrouter import normalize_openrouter_model
 from app.services.api_clients.exceptions import LlmApiError, LlmConfigurationError, LlmGenerationError, LlmSafetyError, LlmRateLimitError
 
 # Import permission checking helpers
@@ -177,8 +178,19 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
         fallback_model = current_app.config.get('WORKFLOW_LLM_MODEL') or current_app.config.get('LLM_MODEL')
         config_model = catalog_default_model or fallback_model
         llm_model = role_model_override or config_model
+        user_openrouter_override = False
+        user_openrouter_model = getattr(user, 'default_openrouter_llm_model', None)
+        if user_openrouter_model and check_permission(user, 'use_api_openrouter'):
+            try:
+                llm_model = normalize_openrouter_model(user_openrouter_model)
+                user_openrouter_override = True
+                logger.info(f"Using user's OpenRouter LLM model override: {llm_model}")
+            except ValueError as model_err:
+                logger.warning(
+                    f"Ignoring invalid user's OpenRouter LLM model '{user_openrouter_model}': {model_err}"
+                )
 
-        provider_candidate = role_provider_override
+        provider_candidate = 'OPENROUTER' if user_openrouter_override else role_provider_override
         if not provider_candidate and llm_model:
             provider_candidate = llm_service.get_provider_for_model_code(llm_model)
         if not provider_candidate:

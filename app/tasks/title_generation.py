@@ -16,6 +16,7 @@ from app.models.user import User # For type hinting
 
 # Import services
 from app.services import llm_service
+from app.services.openrouter import normalize_openrouter_model
 # from app.services.user_service import get_decrypted_api_key # No longer needed here
 
 # Import exceptions
@@ -208,8 +209,23 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
 
             fallback_model = current_app.config.get('TITLE_GENERATION_LLM_MODEL') or current_app.config.get('LLM_MODEL')
             model_name = role_model_override or catalog_default_model or fallback_model
+            user_openrouter_override = False
+            user_openrouter_model = getattr(user, 'default_openrouter_llm_model', None)
+            if user_openrouter_model and check_permission(user, 'use_api_openrouter'):
+                try:
+                    model_name = normalize_openrouter_model(user_openrouter_model)
+                    user_openrouter_override = True
+                    logger.info(
+                        f"{log_prefix} Using user's OpenRouter LLM model override '{model_name}'.",
+                        extra=log_extra,
+                    )
+                except ValueError as model_err:
+                    logger.warning(
+                        f"{log_prefix} Ignoring invalid user's OpenRouter LLM model '{user_openrouter_model}': {model_err}",
+                        extra=log_extra,
+                    )
 
-            provider_config = role_provider_override
+            provider_config = 'OPENROUTER' if user_openrouter_override else role_provider_override
             if not provider_config and model_name:
                 provider_config = llm_service.get_provider_for_model_code(model_name)
             if not provider_config:

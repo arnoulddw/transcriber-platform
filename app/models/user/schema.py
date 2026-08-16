@@ -71,6 +71,7 @@ def init_db_command() -> None:
                 default_content_language VARCHAR(10),
                 default_transcription_model VARCHAR(50),
                 default_openrouter_model VARCHAR(120) DEFAULT NULL,
+                default_openrouter_llm_model VARCHAR(120) DEFAULT NULL,
                 enable_auto_title_generation BOOLEAN NOT NULL DEFAULT FALSE,
                 public_api_key_hash VARCHAR(128),
                 public_api_key_last_four VARCHAR(12),
@@ -127,6 +128,13 @@ def init_db_command() -> None:
         if not default_openrouter_model_exists:
             logger.info(f"{log_prefix} Adding 'default_openrouter_model' column to 'users' table.")
             cursor.execute("ALTER TABLE users ADD COLUMN default_openrouter_model VARCHAR(120) DEFAULT NULL AFTER default_transcription_model")
+
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'default_openrouter_llm_model'")
+        default_openrouter_llm_model_exists = cursor.fetchone()
+        cursor.fetchall()
+        if not default_openrouter_llm_model_exists:
+            logger.info(f"{log_prefix} Adding 'default_openrouter_llm_model' column to 'users' table.")
+            cursor.execute("ALTER TABLE users ADD COLUMN default_openrouter_llm_model VARCHAR(120) DEFAULT NULL AFTER default_openrouter_model")
 
         cursor.execute("SHOW COLUMNS FROM users LIKE 'enable_auto_title_generation'")
         auto_title_exists = cursor.fetchone()

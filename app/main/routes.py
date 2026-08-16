@@ -47,6 +47,7 @@ def index():
         transcription_catalog_model.get_default_model_code()
         or current_app.config.get('DEFAULT_TRANSCRIPTION_PROVIDER')
     )
+    effective_openrouter_model = None
 
     if current_user.is_authenticated:
         if current_user.default_content_language:
@@ -72,6 +73,11 @@ def index():
                 )
         else:
             logging.debug(f"{log_prefix} User has no model preference, using system default: {effective_default_api}")
+
+        effective_openrouter_model = (
+            getattr(current_user, 'default_openrouter_model', None)
+            or getattr(getattr(current_user, 'role', None), 'default_openrouter_model', None)
+        )
     else:
         logging.debug(f"{log_prefix} Using system defaults (Lang: {effective_default_language}, API: {effective_default_api})")
     # --- End Determine Effective Defaults ---
@@ -186,6 +192,7 @@ def index():
     return render_template(
         'index.html',
         effective_default_api=effective_default_api,
+        effective_openrouter_model=effective_openrouter_model,
         effective_default_language=effective_default_language,
         supported_languages=supported_languages,
         transcription_models=catalog_models,

@@ -236,6 +236,7 @@ def transcribe_audio_public():
             api_choice,
             request.form.get("openrouter_model"),
             getattr(user, "default_openrouter_model", None),
+            getattr(getattr(user, "role", None), "default_openrouter_model", None),
         )
     except ValueError as model_err:
         logging.warning(f"{log_prefix} Invalid OpenRouter model: {model_err}")
@@ -541,6 +542,7 @@ def transcribe_audio():
             api_choice,
             request.form.get("openrouter_model"),
             getattr(user, "default_openrouter_model", None),
+            getattr(getattr(user, "role", None), "default_openrouter_model", None),
         )
 
         price = pricing_service.get_price(item_type='transcription', item_key=api_choice)

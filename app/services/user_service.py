@@ -103,9 +103,16 @@ def _validate_gemini_api_key_format(api_key: str) -> bool:
         return True
     return False
 
-def save_user_api_key(user_id: int, service: str, api_key: str) -> bool:
+def save_user_api_key(
+    user_id: int,
+    service: str,
+    api_key: str,
+    openrouter_model: Optional[str] = None,
+    openrouter_model_purpose: str = 'transcription',
+) -> bool:
     """
     Encrypts and saves or updates an API key for a specific user and service.
+    For OpenRouter, also persists the model slug for transcription or LLM use.
     Uses MySQL backend via models.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
@@ -118,6 +125,12 @@ def save_user_api_key(user_id: int, service: str, api_key: str) -> bool:
         logger.error(f"Attempted to save API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
     service = service.lower()
+
+    normalized_openrouter_model = None
+    if service == 'openrouter':
+        if openrouter_model_purpose not in ('transcription', 'llm'):
+            raise ValueError("OpenRouter model purpose must be 'transcription' or 'llm'.")
+        normalized_openrouter_model = normalize_openrouter_model(openrouter_model)
 
     if service == 'gemini' and not _validate_gemini_api_key_format(api_key):
         logger.warning("Invalid Google Gemini API key format provided.")
@@ -137,6 +150,33 @@ def save_user_api_key(user_id: int, service: str, api_key: str) -> bool:
         if not success:
             logger.error(f"Failed to persist API key for service '{service}'.")
             raise DatabaseUpdateError("Failed to update API keys in the database.")
+
+        if service == 'openrouter':
+            if openrouter_model_purpose == 'transcription':
+                preference_field = 'default_openrouter_model'
+                preference_updated = user_model.update_user_preferences(
+                    user_id,
+                    None,
+                    None,
+                    default_openrouter_model=normalized_openrouter_model,
+                )
+            else:
+                preference_field = 'default_openrouter_llm_model'
+                preference_updated = user_model.update_user_preferences(
+                    user_id,
+                    None,
+                    None,
+                    default_openrouter_llm_model=normalized_openrouter_model,
+                )
+            if not preference_updated:
+                refreshed_user = user_model.get_user_by_id(user_id)
+                if not refreshed_user or getattr(refreshed_user, preference_field, None) != normalized_openrouter_model:
+                    raise DatabaseUpdateError("Failed to persist the OpenRouter model preference.")
+            logger.info(
+                "Saved OpenRouter model '%s' for purpose '%s'.",
+                normalized_openrouter_model,
+                openrouter_model_purpose,
+            )
 
         logger.debug(f"Successfully saved encrypted API key for service '{service}'.")
         return True
