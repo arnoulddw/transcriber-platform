@@ -420,9 +420,11 @@ function fetchApiKeyStatus() {
         const openaiStatusElem = document.getElementById('openaiKeyStatus');
         const assemblyaiStatusElem = document.getElementById('assemblyaiKeyStatus');
         const geminiStatusElem = document.getElementById('geminiKeyStatus');
+        const openrouterStatusElem = document.getElementById('openrouterKeyStatus');
         const openaiActionsElem = document.getElementById('openaiKeyActions');
         const assemblyaiActionsElem = document.getElementById('assemblyaiKeyActions'); // Corrected ID
         const geminiActionsElem = document.getElementById('geminiKeyActions');
+        const openrouterActionsElem = document.getElementById('openrouterKeyActions');
 
         const permissions = window.USER_PERMISSIONS || {};
         const canUseOpenAI = permissions.use_api_openai_whisper
@@ -430,6 +432,7 @@ function fetchApiKeyStatus() {
             || permissions.use_api_openai_live_transcribe;
         const canUseAssemblyAI = permissions.use_api_assemblyai;
         const canUseGemini = permissions.use_api_google_gemini;
+        const canUseOpenRouter = permissions.use_api_openrouter;
 
         if (canUseOpenAI && openaiStatusElem && openaiActionsElem) {
             updateStatusElement(openaiStatusElem, openaiActionsElem, null, 'openai', 'Checking...');
@@ -447,6 +450,12 @@ function fetchApiKeyStatus() {
             updateStatusElement(geminiStatusElem, geminiActionsElem, null, 'gemini', 'Checking...');
         } else if (canUseGemini) {
             window.logger.debug(userSettingsLogPrefix, "Gemini status elements not found (but permission exists), skipping initial reset.");
+        }
+
+        if (canUseOpenRouter && openrouterStatusElem && openrouterActionsElem) {
+            updateStatusElement(openrouterStatusElem, openrouterActionsElem, null, 'openrouter', 'Checking...');
+        } else if (canUseOpenRouter) {
+            window.logger.debug(userSettingsLogPrefix, "OpenRouter status elements not found (but permission exists), skipping initial reset.");
         }
 
 
@@ -480,6 +489,12 @@ function fetchApiKeyStatus() {
                 window.logger.debug(userSettingsLogPrefix, "Gemini status elements not found (but permission exists), skipping update.");
             }
 
+            if (canUseOpenRouter && openrouterStatusElem && openrouterActionsElem) {
+                updateStatusElement(openrouterStatusElem, openrouterActionsElem, data.openrouter, 'openrouter');
+            } else if (canUseOpenRouter) {
+                window.logger.debug(userSettingsLogPrefix, "OpenRouter status elements not found (but permission exists), skipping update.");
+            }
+
             window.API_KEY_STATUS = data || {};
             updatePublicApiKeySection(data.public_api);
 
@@ -503,6 +518,9 @@ function fetchApiKeyStatus() {
             }
             if (canUseGemini && geminiStatusElem && geminiActionsElem) {
                 updateStatusElement(geminiStatusElem, geminiActionsElem, false, 'gemini', 'Error');
+            }
+            if (canUseOpenRouter && openrouterStatusElem && openrouterActionsElem) {
+                updateStatusElement(openrouterStatusElem, openrouterActionsElem, false, 'openrouter', 'Error');
             }
             updatePublicApiKeySection(null);
 
@@ -674,6 +692,7 @@ function handleApiKeyDelete(button) {
     if (service === 'openai') serviceDisplayName = 'OpenAI';
     else if (service === 'assemblyai') serviceDisplayName = 'AssemblyAI (Universal)';
     else if (service === 'gemini') serviceDisplayName = 'Google Gemini';
+    else if (service === 'openrouter') serviceDisplayName = 'OpenRouter';
 
     if (!confirm(`Are you sure you want to delete the API key for ${serviceDisplayName}?`)) {
         window.logger.info(logPrefix, "Delete cancelled by user.");
