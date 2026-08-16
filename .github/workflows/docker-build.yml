@@ -1,12 +1,95 @@
 name: Build and Push Docker Image
 
 on:
+  pull_request:
   push:
     branches:
-      - "**"
+      - master
+
+permissions:
+  contents: read
 
 jobs:
+  test-javascript:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Run JavaScript tests
+        run: npm run test:js
+
+      - name: Check polling JavaScript syntax
+        run: node --check app/static/js/main_poll.js
+
+      - name: Check progress timeline JavaScript syntax
+        run: node --check app/static/js/progress_timeline.js
+
+  test-python:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql-test:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: test_db
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      SECRET_KEY: ci-only-test-secret-key
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: test
+      MYSQL_PASSWORD: test
+      MYSQL_DB: test_db
+      MYSQL_TEST_HOST: 127.0.0.1
+      MYSQL_TEST_PORT: "3306"
+      MYSQL_TEST_USER: test
+      MYSQL_TEST_PASSWORD: test
+      MYSQL_TEST_DB: test_db
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run progress and active transcription API tests
+        run: |
+          pytest -v \
+            tests/functional/api/test_transcriptions_api.py::test_get_progress_finished_job \
+            tests/functional/api/test_transcriptions_api.py::test_get_progress_processing_job \
+            tests/functional/api/test_transcriptions_api.py::test_get_progress_not_found \
+            tests/functional/api/test_transcriptions_api.py::test_get_active_transcriptions_returns_unfinished_jobs
+
   build-and-push:
+    needs: [test-javascript, test-python]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
 
     steps:
