@@ -403,6 +403,9 @@ function pollProgress(jobId, initialJobData = null) {
                 const serverCreatedAtMs = window.ProgressTimeline.parseCreatedAtMs(jobData.created_at);
                 if (Number.isFinite(serverCreatedAtMs)) {
                     jobStartTime = serverCreatedAtMs;
+                    if (lastMessageIndex === -1) {
+                        phaseStartTime = serverCreatedAtMs;
+                    }
                     jobAnchoredToServer = true;
                 }
             }
@@ -439,6 +442,7 @@ function pollProgress(jobId, initialJobData = null) {
                     expectedTimes,
                     fileSizeMb: currentJobFileSizeMB,
                     largeFileThresholdMb: typeof LARGE_FILE_THRESHOLD_MB !== 'undefined' ? LARGE_FILE_THRESHOLD_MB : 25,
+                    phase: currentPhase,
                 });
                 if (replayed.lastProgressKey === 'upload') {
                     window.logger.info(mainPollLogPrefix, "Phase transition: Upload -> Processing/Transcribing");

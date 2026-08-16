@@ -57,11 +57,14 @@
         expectedTimes,
         fileSizeMb,
         largeFileThresholdMb,
+        phase: initialPhase = 'upload',
     }) {
         const threshold = typeof largeFileThresholdMb === 'number' ? largeFileThresholdMb : 25;
         const size = typeof fileSizeMb === 'number' ? fileSizeMb : 0;
         let start = phaseStartTimeMs;
-        let phase = 'upload';
+        let phase = ['upload', 'processing', 'transcribing'].includes(initialPhase)
+            ? initialPhase
+            : 'upload';
         let lastProgressKey = null;
         const list = Array.isArray(messages) ? messages : [];
         for (let i = 0; i < list.length; i += 1) {

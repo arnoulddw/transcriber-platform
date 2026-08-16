@@ -116,6 +116,42 @@ test('replay ignores out-of-order and duplicate phase markers', () => {
     assert.equal(out.lastProgressKey, 'processing');
 });
 
+test('replay preserves phase across split poll responses', () => {
+    const createdAtMs = 5_000_000;
+    const afterUpload = replayMarkers({
+        phaseStartTimeMs: createdAtMs,
+        messages: ['PHASE_MARKER:UPLOAD_COMPLETE'],
+        expectedTimes: EXPECTED,
+        fileSizeMb: 40,
+        largeFileThresholdMb: 25,
+    });
+    assert.equal(afterUpload.phase, 'processing');
+    assert.equal(afterUpload.phaseStartTimeMs, createdAtMs + 30 * 1000);
+
+    const afterProcessing = replayMarkers({
+        phaseStartTimeMs: afterUpload.phaseStartTimeMs,
+        phase: afterUpload.phase,
+        messages: ['PHASE_MARKER:TRANSCRIPTION_START'],
+        expectedTimes: EXPECTED,
+        fileSizeMb: 40,
+        largeFileThresholdMb: 25,
+    });
+    assert.equal(afterProcessing.phaseStartTimeMs, createdAtMs + (30 + 90) * 1000);
+    assert.equal(afterProcessing.phase, 'transcribing');
+    assert.equal(afterProcessing.lastProgressKey, 'processing');
+
+    const afterLaterMessage = replayMarkers({
+        phaseStartTimeMs: afterProcessing.phaseStartTimeMs,
+        phase: afterProcessing.phase,
+        messages: ['Transcribing chunk 2 of 4...'],
+        expectedTimes: EXPECTED,
+        fileSizeMb: 40,
+        largeFileThresholdMb: 25,
+    });
+    assert.equal(afterLaterMessage.phaseStartTimeMs, afterProcessing.phaseStartTimeMs);
+    assert.equal(afterLaterMessage.phase, 'transcribing');
+});
+
 test('replay of a small-file log (no TRANSCRIPTION_START) skips processing', () => {
     const createdAtMs = 1_000;
     const out = replayMarkers({
