@@ -120,7 +120,14 @@ def generate_text_via_llm(
 
             if key_service_name:
                 try:
-                    effective_api_key = user_service.get_decrypted_api_key(user_id, key_service_name)
+                    if key_service_name == "openrouter":
+                        effective_api_key = user_service.get_decrypted_api_key(
+                            user_id, key_service_name, kwargs.get('model')
+                        )
+                    else:
+                        effective_api_key = user_service.get_decrypted_api_key(
+                            user_id, key_service_name
+                        )
                     if effective_api_key:
                         logger.debug(f"Using user-specific API key for '{key_service_name}'.")
                     else:

@@ -88,7 +88,6 @@ class ApiKeyForm(FlaskForm):
         _('API Key'),
         validators=[
             DataRequired(message="API Key is required."),
-            Length(min=10, message="API Key seems too short.") # Basic length check
         ]
     )
     openrouter_model = StringField(
@@ -116,6 +115,15 @@ class ApiKeyForm(FlaskForm):
     def validate_openrouter_model_purpose(self, field):
         if self.service.data != 'openrouter':
             field.data = 'transcription'
+
+    def validate_api_key(self, field):
+        value = str(field.data or '').strip()
+        if self.service.data == 'openrouter' and value.startswith('***') and len(value) == 6:
+            field.data = value
+            return
+        if len(value) < 10:
+            raise ValidationError("API Key seems too short.")
+        field.data = value
 
     submit = SubmitField(_('Save API Key'))
 

@@ -19,6 +19,7 @@ let publicApiCopyBtn = null;
 let publicApiCreateBtn = null;
 let publicApiKeyListEl = null;
 let lastGeneratedPublicApiKey = null;
+let openRouterSuggestedMask = '';
 
 function initializeApiKeyModalElements() {
     apiKeyModal = document.getElementById('apiKeyModal');
@@ -47,9 +48,32 @@ function initializeApiKeyModalElements() {
     return true;
 }
 
+function getOpenRouterKeyEntries() {
+    const status = window.API_KEY_STATUS || {};
+    return Array.isArray(status.openrouter_keys) ? status.openrouter_keys : [];
+}
+
+function setOpenRouterApiKeySuggestion(force = false) {
+    const serviceSelect = document.getElementById('apiKeyServiceSelect');
+    const keyInput = document.getElementById('apiKeyInput');
+    const modelInput = document.getElementById('apiKeyOpenrouterModel');
+    if (!serviceSelect || !keyInput || !modelInput || serviceSelect.value !== 'openrouter') return;
+
+    const requestedSlug = modelInput.value.trim();
+    const entries = getOpenRouterKeyEntries();
+    const suggestion = entries.find(entry => requestedSlug && entry.model_slug === requestedSlug) || entries[0];
+    const mask = suggestion && suggestion.last_three ? `***${suggestion.last_three}` : '';
+
+    if (!force && keyInput.value && keyInput.value !== openRouterSuggestedMask) return;
+    openRouterSuggestedMask = mask;
+    keyInput.type = mask ? 'text' : 'password';
+    keyInput.value = mask;
+}
+
 function updateOpenRouterModelSettings(service) {
     const settings = document.getElementById('openrouterModelSettings');
     const modelInput = document.getElementById('apiKeyOpenrouterModel');
+    const keyInput = document.getElementById('apiKeyInput');
     const purposeInputs = document.querySelectorAll('input[name="openrouter_model_purpose"]');
     if (!settings || !modelInput) return;
 
@@ -59,6 +83,16 @@ function updateOpenRouterModelSettings(service) {
     purposeInputs.forEach(input => {
         input.disabled = !show;
     });
+
+    if (show) {
+        setOpenRouterApiKeySuggestion(true);
+    } else {
+        openRouterSuggestedMask = '';
+        if (keyInput) {
+            keyInput.type = 'password';
+            keyInput.value = '';
+        }
+    }
 }
 
 function openApiKeyModalDialog() {
@@ -210,6 +244,21 @@ document.addEventListener('DOMContentLoaded', function() {
             updateOpenRouterModelSettings(apiKeyServiceSelect.value);
         });
         updateOpenRouterModelSettings(apiKeyServiceSelect.value);
+    }
+
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const openrouterModelInput = document.getElementById('apiKeyOpenrouterModel');
+    if (openrouterModelInput) {
+        openrouterModelInput.addEventListener('input', () => {
+            setOpenRouterApiKeySuggestion();
+        });
+    }
+    if (apiKeyInput) {
+        apiKeyInput.addEventListener('input', () => {
+            if (apiKeyInput.value !== openRouterSuggestedMask) {
+                apiKeyInput.type = 'password';
+            }
+        });
     }
     if (apiKeyForm) {
         apiKeyForm.addEventListener('submit', handleApiKeySave);
@@ -430,6 +479,62 @@ function handleRevokePublicApiKey(button) {
 }
 
 
+function renderOpenRouterKeyRows(keys) {
+    const container = document.getElementById('openrouterKeyRows');
+    if (!container) return;
+
+    const entries = Array.isArray(keys) ? keys : [];
+    container.innerHTML = '';
+    container.classList.remove('hidden');
+    container.className = 'py-3 space-y-3';
+
+    if (entries.length === 0) {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center';
+        const label = document.createElement('span');
+        label.className = 'text-sm text-text-strong';
+        label.textContent = 'OpenRouter';
+        const status = document.createElement('span');
+        status.className = 'text-sm text-orange-500';
+        status.textContent = 'Not Configured';
+        row.append(label, status);
+        container.appendChild(row);
+        return;
+    }
+
+    entries.forEach(entry => {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center gap-3';
+
+        const label = document.createElement('span');
+        label.className = 'text-sm text-text-strong';
+        const modelSlug = entry.model_slug || 'OpenRouter';
+        label.textContent = modelSlug === 'OpenRouter' ? modelSlug : `${modelSlug} (OpenRouter)`;
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center';
+        const status = document.createElement('span');
+        status.className = 'text-sm text-green-600 mr-3';
+        status.textContent = 'Configured';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'delete-key-btn p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500';
+        deleteBtn.dataset.service = 'openrouter';
+        if (entry.model_slug && entry.model_slug !== 'OpenRouter') {
+            deleteBtn.dataset.modelSlug = entry.model_slug;
+        }
+        deleteBtn.setAttribute('aria-label', `Delete ${label.textContent} key`);
+        const deleteIcon = document.createElement('i');
+        deleteIcon.className = 'material-icons text-base';
+        deleteIcon.textContent = 'delete';
+        deleteBtn.appendChild(deleteIcon);
+        actions.append(status, deleteBtn);
+        row.append(label, actions);
+        container.appendChild(row);
+    });
+}
+
 /**
  * Fetches the current status of configured API keys from the backend API.
  * Updates the status display within the modal.
@@ -441,11 +546,9 @@ function fetchApiKeyStatus() {
         const openaiStatusElem = document.getElementById('openaiKeyStatus');
         const assemblyaiStatusElem = document.getElementById('assemblyaiKeyStatus');
         const geminiStatusElem = document.getElementById('geminiKeyStatus');
-        const openrouterStatusElem = document.getElementById('openrouterKeyStatus');
         const openaiActionsElem = document.getElementById('openaiKeyActions');
         const assemblyaiActionsElem = document.getElementById('assemblyaiKeyActions'); // Corrected ID
         const geminiActionsElem = document.getElementById('geminiKeyActions');
-        const openrouterActionsElem = document.getElementById('openrouterKeyActions');
 
         const permissions = window.USER_PERMISSIONS || {};
         const canUseOpenAI = permissions.use_api_openai_whisper
@@ -471,12 +574,6 @@ function fetchApiKeyStatus() {
             updateStatusElement(geminiStatusElem, geminiActionsElem, null, 'gemini', 'Checking...');
         } else if (canUseGemini) {
             window.logger.debug(userSettingsLogPrefix, "Gemini status elements not found (but permission exists), skipping initial reset.");
-        }
-
-        if (canUseOpenRouter && openrouterStatusElem && openrouterActionsElem) {
-            updateStatusElement(openrouterStatusElem, openrouterActionsElem, null, 'openrouter', 'Checking...');
-        } else if (canUseOpenRouter) {
-            window.logger.debug(userSettingsLogPrefix, "OpenRouter status elements not found (but permission exists), skipping initial reset.");
         }
 
 
@@ -510,13 +607,12 @@ function fetchApiKeyStatus() {
                 window.logger.debug(userSettingsLogPrefix, "Gemini status elements not found (but permission exists), skipping update.");
             }
 
-            if (canUseOpenRouter && openrouterStatusElem && openrouterActionsElem) {
-                updateStatusElement(openrouterStatusElem, openrouterActionsElem, data.openrouter, 'openrouter');
-            } else if (canUseOpenRouter) {
-                window.logger.debug(userSettingsLogPrefix, "OpenRouter status elements not found (but permission exists), skipping update.");
+            if (canUseOpenRouter) {
+                renderOpenRouterKeyRows(data.openrouter_keys);
             }
 
             window.API_KEY_STATUS = data || {};
+            setOpenRouterApiKeySuggestion();
             updatePublicApiKeySection(data.public_api);
 
             if (typeof window.updateApiKeyNotificationVisibility === 'function') {
@@ -540,8 +636,8 @@ function fetchApiKeyStatus() {
             if (canUseGemini && geminiStatusElem && geminiActionsElem) {
                 updateStatusElement(geminiStatusElem, geminiActionsElem, false, 'gemini', 'Error');
             }
-            if (canUseOpenRouter && openrouterStatusElem && openrouterActionsElem) {
-                updateStatusElement(openrouterStatusElem, openrouterActionsElem, false, 'openrouter', 'Error');
+            if (canUseOpenRouter) {
+                renderOpenRouterKeyRows([]);
             }
             updatePublicApiKeySection(null);
 
@@ -619,7 +715,8 @@ function handleApiKeySave(event) {
     const submitButton = form.querySelector('button[type="submit"]');
 
     const service = serviceSelect.value;
-    const apiKey = keyInput.value;
+    const apiKey = keyInput.value.trim();
+    const isMaskedOpenRouterKey = service === 'openrouter' && /^\*{3}.{3}$/.test(apiKey);
 
     if (!service) {
         window.showNotification('Please select an API service.', 'warning', 4000, false);
@@ -629,7 +726,7 @@ function handleApiKeySave(event) {
         window.showNotification('Please enter an API key.', 'warning', 4000, false);
         return;
     }
-    if (apiKey.length < 10) {
+    if (apiKey.length < 10 && !isMaskedOpenRouterKey) {
          window.showNotification('API key seems too short.', 'warning', 4000, false);
          return;
     }
@@ -639,6 +736,7 @@ function handleApiKeySave(event) {
     }
 
     const originalButtonHtml = submitButton.innerHTML;
+    keyInput.value = apiKey;
     submitButton.disabled = true;
     submitButton.innerHTML = 'Saving... <span class="spinner ml-2 inline-block" style="width: 1em; height: 1em; border-width: .15em;"></span>';
 
@@ -667,6 +765,8 @@ function handleApiKeySave(event) {
         window.logger.info(logPrefix, "API Key save response:", data);
         window.showNotification(data.message || 'API Key saved successfully!', 'success', 4000, false);
         keyInput.value = '';
+        keyInput.type = 'password';
+        openRouterSuggestedMask = '';
         serviceSelect.value = '';
         if (openrouterModelInput) openrouterModelInput.value = '';
         const transcriptionPurpose = document.querySelector('input[name="openrouter_model_purpose"][value="transcription"]');
@@ -709,6 +809,7 @@ function handleApiKeySave(event) {
  */
 function handleApiKeyDelete(button) {
     const service = button.dataset.service;
+    const modelSlug = button.dataset.modelSlug;
     const logPrefix = `[UserSettingsJS:handleApiKeyDelete:${service}]`;
     window.logger.info(logPrefix, `Delete key requested.`);
 
@@ -722,7 +823,9 @@ function handleApiKeyDelete(button) {
     if (service === 'openai') serviceDisplayName = 'OpenAI';
     else if (service === 'assemblyai') serviceDisplayName = 'AssemblyAI (Universal)';
     else if (service === 'gemini') serviceDisplayName = 'Google Gemini';
-    else if (service === 'openrouter') serviceDisplayName = 'OpenRouter';
+    else if (service === 'openrouter') {
+        serviceDisplayName = modelSlug ? `${modelSlug} (OpenRouter)` : 'OpenRouter';
+    }
 
     if (!confirm(`Are you sure you want to delete the API key for ${serviceDisplayName}?`)) {
         window.logger.info(logPrefix, "Delete cancelled by user.");
@@ -734,7 +837,10 @@ function handleApiKeyDelete(button) {
     button.innerHTML = '<span class="spinner inline-block" style="width: 0.8em; height: 0.8em; border-width: .15em;"></span>';
 
 
-    fetch(`/api/user/keys/${service}`, {
+    const deleteUrl = modelSlug
+        ? `/api/user/keys/${service}?model=${encodeURIComponent(modelSlug)}`
+        : `/api/user/keys/${service}`;
+    fetch(deleteUrl, {
         method: 'DELETE',
         headers: {
             'X-CSRFToken': window.csrfToken,

@@ -45,18 +45,18 @@
                     <input id="apiKeyOpenrouterModel" type="text" name="openrouter_model"
                            class="input-control" autocomplete="off"
                            placeholder="openai/gpt-4o-mini" disabled>
-                    <p class="form-hint">{{ _('Enter the vendor/model slug exactly as shown in OpenRouter, for example openai/gpt-4o-mini or google/gemini-2.5-flash.') }}</p>
+                    <p class="form-hint">{{ _('Enter the model slug exactly as shown in OpenRouter, for ex. openai/gpt-4o-mini ') }}</p>
                 </div>
                 <fieldset>
                     <legend class="form-label">{{ _('Use this model for') }}</legend>
                     <div id="openrouterModelPurpose" class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="{{ _('OpenRouter model purpose') }}">
                         <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
                             <input class="peer sr-only" type="radio" name="openrouter_model_purpose" value="transcription" checked disabled>
-                            <span class="w-full text-center peer-checked:font-semibold peer-checked:text-primary">{{ _('Transcription') }}</span>
+                            <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Transcription') }}</span>
                         </label>
                         <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
                             <input class="peer sr-only" type="radio" name="openrouter_model_purpose" value="llm" disabled>
-                            <span class="w-full text-center peer-checked:font-semibold peer-checked:text-primary">{{ _('LLM') }}</span>
+                            <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('LLM') }}</span>
                         </label>
                     </div>
                     <p class="form-hint">{{ _('Choose whether this model should handle audio transcription or titles and workflows.') }}</p>
@@ -97,13 +97,7 @@
             </li>
             {% endif %}
             {% if user_permissions.use_api_openrouter %}
-            <li class="py-3 flex justify-between items-center">
-                <span class="text-sm text-text-strong">{{ _('OpenRouter') }}</span>
-                <div class="flex items-center">
-                    <span id="openrouterKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
-                    <span id="openrouterKeyActions"></span>
-                </div>
-            </li>
+            <li id="openrouterKeyRows" class="hidden py-3"></li>
             {% endif %}
         </ul>
         {% if user_permissions.allow_public_api_access %}

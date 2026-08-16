@@ -112,12 +112,18 @@ def save_user_api_key(
 ) -> bool:
     """
     Encrypts and saves or updates an API key for a specific user and service.
-    For OpenRouter, also persists the model slug for transcription or LLM use.
+    For OpenRouter, the key is scoped to the submitted model slug and the
+    model preference is persisted for transcription or LLM use.
     Uses MySQL backend via models.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     if not service or not api_key:
         logger.error("Attempted to save empty service or API key.")
+        raise ValueError("Service name and API key cannot be empty.")
+
+    api_key = str(api_key).strip()
+    if not api_key:
+        logger.error("Attempted to save an empty API key after trimming whitespace.")
         raise ValueError("Service name and API key cannot be empty.")
 
     allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
@@ -142,11 +148,30 @@ def save_user_api_key(
             logger.error("User not found when trying to save API key.")
             raise UserNotFoundError(f"User with ID {user_id} not found.")
 
+        if service == 'openrouter' and api_key.startswith('***'):
+            existing_key = get_decrypted_api_key(
+                user_id, service, normalized_openrouter_model
+            )
+            if (
+                not existing_key
+                or len(api_key) != 6
+                or api_key[3:] != existing_key[-3:]
+            ):
+                raise ValueError(
+                    "Enter a complete OpenRouter API key or use the suggested saved key."
+                )
+            api_key = existing_key
+
         security_svc: SecurityService = get_security_service()
         encrypted_key = security_svc.encrypt_data(api_key)
         logger.debug(f"API key for service '{service}' encrypted.")
 
-        success = user_api_key_model.upsert_api_key(user_id, service, encrypted_key)
+        success = user_api_key_model.upsert_api_key(
+            user_id,
+            service,
+            encrypted_key,
+            normalized_openrouter_model,
+        )
         if not success:
             logger.error(f"Failed to persist API key for service '{service}'.")
             raise DatabaseUpdateError("Failed to update API keys in the database.")
@@ -190,9 +215,16 @@ def save_user_api_key(
         logger.error(f"Unexpected error saving API key for service '{service}': {e}", exc_info=True)
         raise ApiKeyManagementError(f"An unexpected error occurred while saving the API key for {service}.") from e
 
-def get_decrypted_api_key(user_id: int, service: str) -> Optional[str]:
+def get_decrypted_api_key(
+    user_id: int,
+    service: str,
+    model_slug: Optional[str] = None,
+) -> Optional[str]:
     """
-    Retrieves and decrypts a specific API key for a user. Uses MySQL backend via models.
+    Retrieves and decrypts a user's API key.
+
+    OpenRouter lookups prefer an exact model slug and fall back to the most
+    recently used saved OpenRouter key, including legacy provider-only rows.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     if not service:
@@ -200,24 +232,50 @@ def get_decrypted_api_key(user_id: int, service: str) -> Optional[str]:
         return None
     service = service.lower()
 
+    normalized_model_slug = None
+    if service == "openrouter" and model_slug:
+        try:
+            normalized_model_slug = normalize_openrouter_model(model_slug)
+        except ValueError as err:
+            logger.warning(f"Invalid OpenRouter model slug while fetching API key: {err}")
+            return None
+
     try:
         user = user_model.get_user_by_id(user_id)
         if not user:
             logger.debug("User not found when fetching encrypted API keys.")
             return None
 
-        encrypted_key = user_api_key_model.get_api_key(user_id, service)
+        record = user_api_key_model.get_api_key_record(
+            user_id, service, normalized_model_slug
+        )
+        if not record:
+            logger.debug(
+                f"API key for service '{service}' and model '{normalized_model_slug}' "
+                "not found in stored keys."
+            )
+            return None
+
+        encrypted_key = record.get("encrypted_key")
         if not encrypted_key:
-            logger.debug(f"API key for service '{service}' not found in stored keys.")
             return None
 
         security_svc: SecurityService = get_security_service()
         try:
             decrypted_key = security_svc.decrypt_data(encrypted_key)
-            logger.debug(f"Successfully decrypted API key for service '{service}'.")
+            key_id = record.get("id")
+            if key_id is not None:
+                user_api_key_model.mark_api_key_used(user_id, key_id)
+            logger.debug(
+                f"Successfully decrypted API key for service '{service}' "
+                f"and model '{normalized_model_slug}'."
+            )
             return decrypted_key
         except InvalidToken:
-            logger.error(f"Decryption failed for service '{service}': Invalid Token. Key might be corrupted or SECRET_KEY changed.")
+            logger.error(
+                f"Decryption failed for service '{service}': Invalid Token. "
+                "Key might be corrupted or SECRET_KEY changed."
+            )
             return None
         except ValueError as ve:
             logger.error(f"Decryption error for service '{service}': {ve}", exc_info=True)
@@ -230,9 +288,14 @@ def get_decrypted_api_key(user_id: int, service: str) -> Optional[str]:
         logger.error(f"Unexpected error getting API key for service '{service}': {e}", exc_info=True)
         return None
 
-def delete_user_api_key(user_id: int, service: str) -> None:
+def delete_user_api_key(
+    user_id: int,
+    service: str,
+    model_slug: Optional[str] = None,
+) -> None:
     """
-    Deletes a specific API key for a user. Uses MySQL backend via models.
+    Deletes a user's API key. OpenRouter can target one model slug; omitting
+    the slug preserves the legacy behavior of deleting all OpenRouter keys.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     if not service:
@@ -244,13 +307,17 @@ def delete_user_api_key(user_id: int, service: str) -> None:
         logger.error(f"Attempted to delete API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
     service = service.lower()
+    if service == 'openrouter' and model_slug is not None:
+        model_slug = normalize_openrouter_model(model_slug)
 
     try:
         user = user_model.get_user_by_id(user_id)
         if not user:
             raise UserNotFoundError(f"User with ID {user_id} not found.")
 
-        removed = user_api_key_model.delete_api_key(user_id, service)
+        removed = user_api_key_model.delete_api_key(
+            user_id, service, model_slug=model_slug
+        )
         if not removed:
             logger.warning(f"API key for service '{service}' not found or could not be removed.")
             raise KeyNotFoundError(f"API key for service '{service}' not found.")
@@ -267,8 +334,9 @@ def delete_user_api_key(user_id: int, service: str) -> None:
 
 def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
     """
-    Checks which API keys are configured (present and non-empty) for the user.
-    Uses MySQL backend via models.
+    Checks which API keys are configured and returns safe OpenRouter metadata.
+    OpenRouter entries contain model slugs and only the final three key
+    characters; plaintext keys never leave the service layer.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     status: Dict[str, Any] = {
@@ -276,6 +344,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         'assemblyai': False,
         'gemini': False,
         'openrouter': False,
+        'openrouter_keys': [],
         'public_api': {
             'enabled': False,
             'last_four': None,
@@ -297,8 +366,46 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         status['openai'] = bool(key_map.get('openai'))
         status['assemblyai'] = bool(key_map.get('assemblyai'))
         status['gemini'] = bool(key_map.get('gemini'))
-        status['openrouter'] = bool(key_map.get('openrouter'))
 
+        openrouter_entries = []
+        seen_slugs = set()
+        security_svc: SecurityService = get_security_service()
+        for record in user_api_key_model.get_api_key_records_by_user(
+            user_id, 'openrouter'
+        ):
+            encrypted_key = record.get('encrypted_key')
+            if not isinstance(encrypted_key, str) or not encrypted_key:
+                continue
+            try:
+                decrypted_key = security_svc.decrypt_data(encrypted_key)
+            except (InvalidToken, ValueError, TypeError):
+                logger.warning("Skipping an unreadable OpenRouter API key status entry.")
+                continue
+
+            if not decrypted_key:
+                continue
+            model_slug = str(record.get('model_slug') or '').strip()
+            if model_slug:
+                model_slugs = [model_slug]
+            else:
+                model_slugs = [
+                    getattr(user, 'default_openrouter_model', None),
+                    getattr(user, 'default_openrouter_llm_model', None),
+                ]
+                model_slugs = [slug for slug in model_slugs if slug]
+                if not model_slugs:
+                    model_slugs = ['OpenRouter']
+
+            for model_slug in model_slugs:
+                if model_slug in seen_slugs:
+                    continue
+                seen_slugs.add(model_slug)
+                openrouter_entries.append(
+                    {'model_slug': model_slug, 'last_three': decrypted_key[-3:]}
+                )
+
+        status['openrouter_keys'] = openrouter_entries
+        status['openrouter'] = bool(openrouter_entries)
         status['public_api'] = get_public_api_key_status(user_id) if allow_public else status['public_api']
 
         logger.debug(f"API Key status checked: {status}")
