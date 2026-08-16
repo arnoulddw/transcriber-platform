@@ -306,6 +306,7 @@ def get_profile():
             'last_name': user_obj.last_name,
             'default_content_language': user_obj.default_content_language,
             'default_transcription_model': user_obj.default_transcription_model,
+            'default_openrouter_model': user_obj.default_openrouter_model,
             'oauth_provider': user_obj.oauth_provider,
             'enable_auto_title_generation': user_obj.enable_auto_title_generation,
             'language': user_obj.language

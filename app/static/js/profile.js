@@ -93,6 +93,17 @@ function closeProfileModalDialog() {
     window.logger.info(profileLogPrefix, "Profile modal closed.");
 }
 
+function updateProfileOpenrouterField() {
+    const modelSelect = document.getElementById('profileDefaultModel');
+    const field = document.getElementById('profileOpenrouterModelField');
+    const input = document.getElementById('profileDefaultOpenrouterModel');
+    if (!modelSelect || !field || !input) return;
+
+    const enabled = modelSelect.value === 'openrouter';
+    field.classList.toggle('hidden', !enabled);
+    input.disabled = !enabled;
+}
+
 
 document.addEventListener('DOMContentLoaded', function() {
     if (!initializeProfileModalElements()) {
@@ -154,6 +165,12 @@ document.addEventListener('DOMContentLoaded', function() {
         window.logger.warn(profileLogPrefix, "User settings form element (#profileForm) not found.");
     }
 
+    const profileDefaultModel = document.getElementById('profileDefaultModel');
+    if (profileDefaultModel) {
+        profileDefaultModel.addEventListener('change', updateProfileOpenrouterField);
+        updateProfileOpenrouterField();
+    }
+
     const changePasswordToggleBtn = document.getElementById('changePasswordToggleBtn');
     const changePasswordSection = document.getElementById('changePasswordSection');
     const passwordToggleIconDisplay = document.getElementById('passwordToggleIconDisplay');
@@ -184,10 +201,11 @@ async function loadProfileData() {
     const lastNameInput = document.getElementById('profileLastName');
     const langSelect = document.getElementById('profileDefaultLanguage');
     const modelSelect = document.getElementById('profileDefaultModel');
+    const openrouterModelInput = document.getElementById('profileDefaultOpenrouterModel');
     const autoTitleCheckbox = document.getElementById('enable_auto_title_generation');
     const uiLangSelect = document.getElementById('profileLanguage');
 
-    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !autoTitleCheckbox || !uiLangSelect) {
+    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !openrouterModelInput || !autoTitleCheckbox || !uiLangSelect) {
         window.logger.error(profileLogPrefix, "One or more profile form elements not found.");
         window.showNotification('Error loading profile form.', 'error', 4000, false);
         return;
@@ -199,6 +217,8 @@ async function loadProfileData() {
     lastNameInput.value = '';
     langSelect.value = '';
     modelSelect.value = '';
+    openrouterModelInput.value = '';
+    updateProfileOpenrouterField();
     uiLangSelect.value = '';
     autoTitleCheckbox.checked = false;
     clearProfileErrors();
@@ -252,6 +272,8 @@ async function loadProfileData() {
         lastNameInput.value = data.last_name || '';
         langSelect.value = data.default_content_language || '';
         modelSelect.value = data.default_transcription_model || '';
+        openrouterModelInput.value = data.default_openrouter_model || '';
+        updateProfileOpenrouterField();
         uiLangSelect.value = data.language || window.CURRENT_UI_LANGUAGE || 'en';
         autoTitleCheckbox.checked = data.enable_auto_title_generation === true;
 
@@ -409,9 +431,14 @@ function displayProfileErrors(errors) {
     clearProfileErrors();
     for (const field in errors) {
         const errorMsg = Array.isArray(errors[field]) ? errors[field][0] : errors[field];
-        const errorSpanId = `profile${field.charAt(0).toUpperCase() + field.slice(1)}Error`;
+        const errorSpanId = field === 'default_openrouter_model'
+            ? 'profileDefaultOpenrouterModelError'
+            : `profile${field.charAt(0).toUpperCase() + field.slice(1)}Error`;
+        const inputId = field === 'default_openrouter_model'
+            ? 'profileDefaultOpenrouterModel'
+            : `profile${field.charAt(0).toUpperCase() + field.slice(1)}`;
         const errorSpan = document.getElementById(errorSpanId);
-        const inputElement = document.getElementById(`profile${field.charAt(0).toUpperCase() + field.slice(1)}`);
+        const inputElement = document.getElementById(inputId);
 
         if (errorSpan) {
             errorSpan.textContent = errorMsg;

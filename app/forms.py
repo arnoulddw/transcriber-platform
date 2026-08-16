@@ -14,6 +14,7 @@ from flask import current_app
 
 from app.models import transcription_catalog as transcription_catalog_model
 from app.models import llm_catalog as llm_catalog_model
+from app.services.openrouter import normalize_openrouter_model
 try:
     from .models.user import get_user_by_username, get_user_by_email
     from .models.role import get_role_by_name
@@ -147,6 +148,10 @@ class UserProfileForm(FlaskForm):
         _('Default Transcription Model'),
         validators=[] # Optional handled by form processing
     )
+    default_openrouter_model = StringField(
+        _('Default OpenRouter Model'),
+        validators=[Length(max=120)],
+    )
     # --- NEW: Add UI language field ---
     language = SelectField(_('Interface Language'), validators=[])
     # --- END NEW ---
@@ -221,6 +226,21 @@ class UserProfileForm(FlaskForm):
                 import logging
                 logging.error("[FORMS] Cannot validate email uniqueness because get_user_by_email failed to import.")
 
+    def validate_default_openrouter_model(self, field):
+        if self.default_transcription_model.data != 'openrouter':
+            field.data = None
+            return
+
+        value = (field.data or '').strip()
+        if not value:
+            field.data = None
+            return
+
+        try:
+            field.data = normalize_openrouter_model(value)
+        except ValueError as err:
+            raise ValidationError(str(err)) from err
+
 
 class ChangePasswordForm(FlaskForm):
     current_password = PasswordField(
@@ -262,6 +282,10 @@ class AdminRoleForm(FlaskForm):
         validators=[],
         choices=[],
         validate_choice=False
+    )
+    default_openrouter_model = StringField(
+        _('Default OpenRouter Model'),
+        validators=[Length(max=120)],
     )
     default_title_generation_model = SelectField(
         _('Default Title Generation Model'),
@@ -384,6 +408,21 @@ class AdminRoleForm(FlaskForm):
         else:
             import logging
             logging.error("[FORMS] Cannot validate role name uniqueness because get_role_by_name failed to import.")
+
+    def validate_default_openrouter_model(self, field):
+        if self.default_transcription_model.data != 'openrouter':
+            field.data = None
+            return
+
+        value = (field.data or '').strip()
+        if not value:
+            field.data = None
+            return
+
+        try:
+            field.data = normalize_openrouter_model(value)
+        except ValueError as err:
+            raise ValidationError(str(err)) from err
 
 
 class AdminTemplateWorkflowForm(FlaskForm):

@@ -79,6 +79,16 @@
                             </div>
                         </div>
                     </div>
+                    <div id="profileOpenrouterModelField" class="mt-4 hidden">
+                        <label for="profileDefaultOpenrouterModel" class="form-label">{{ _('Default OpenRouter Model') }}</label>
+                        <div class="mt-1">
+                            <input id="profileDefaultOpenrouterModel" name="default_openrouter_model" type="text"
+                                   class="input-control" autocomplete="off"
+                                   placeholder="openai/gpt-transcribe"
+                                   value="{{ current_user.default_openrouter_model or '' }}" disabled>
+                        </div>
+                        <span id="profileDefaultOpenrouterModelError" class="form-error"></span>
+                    </div>
                     <div class="mt-4">
                          <label class="flex items-center">
                             <input type="checkbox" id="enable_auto_title_generation" name="enable_auto_title_generation"
