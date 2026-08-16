@@ -302,10 +302,15 @@ async function loadProfileData() {
         firstNameInput.value = data.first_name || '';
         lastNameInput.value = data.last_name || '';
         langSelect.value = data.default_content_language || '';
+        const effectiveOpenrouterModel = data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL || '';
+        const openrouterOption = Array.from(modelSelect.options).find(option => option.value === 'openrouter');
+        if (openrouterOption && effectiveOpenrouterModel) {
+            openrouterOption.textContent = effectiveOpenrouterModel;
+        }
         modelSelect.value = data.default_transcription_model || '';
         workflowModelSelect.value = data.default_workflow_model || '';
         auxiliaryModelSelect.value = data.default_title_generation_model || '';
-        openrouterModelInput.value = data.default_openrouter_model || '';
+        openrouterModelInput.value = effectiveOpenrouterModel;
         updateProfileOpenrouterField();
         uiLangSelect.value = data.language || window.CURRENT_UI_LANGUAGE || 'en';
         autoTitleCheckbox.checked = data.enable_auto_title_generation === true;
