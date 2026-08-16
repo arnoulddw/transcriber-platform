@@ -99,6 +99,94 @@ def test_process_transcription_success(
             mock_title_task.assert_called_once()
 
 
+def test_process_transcription_forwards_openrouter_model(tmp_path):
+    """Ensure the selected OpenRouter model reaches the transcription client."""
+    app = Flask(__name__)
+    app.config.update(TESTING=True, DEPLOYMENT_MODE='multi')
+    audio_file = tmp_path / 'test.mp3'
+    audio_file.write_bytes(b'test audio data')
+    mock_audio_file = str(audio_file)
+    user = MagicMock(id=42, enable_auto_title_generation=False)
+    user._role = MagicMock()
+    job_id = str(uuid.uuid4())
+    model_slug = 'openai/gpt-transcribe'
+
+    with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
+         patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')), \
+         patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
+         patch('app.services.transcription_service.generate_title_task'), \
+         patch('app.services.transcription_service.file_service.remove_files', return_value=1), \
+         patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'), \
+         patch('app.services.transcription_service.check_permission', return_value=True), \
+         patch('app.services.transcription_service.get_pricing_service_price', return_value=None), \
+         patch(
+             'app.services.transcription_service.transcription_catalog_model.get_model_by_code',
+             return_value={'display_name': 'OpenRouter', 'permission_key': 'use_api_openrouter'},
+         ):
+        mock_transcription_model.get_transcription_by_id.return_value = None
+        mock_client = MagicMock()
+        mock_client.transcribe.return_value = ('OpenRouter transcript', 'en')
+        mock_get_client.return_value = mock_client
+
+        with patch('app.services.transcription_service.user_model.get_user_by_id', return_value=user):
+            transcription_service.process_transcription(
+                app=app,
+                job_id=job_id,
+                user_id=user.id,
+                temp_filename=mock_audio_file,
+                language_code='en',
+                api_choice='openrouter',
+                original_filename='test.mp3',
+                api_model=model_slug,
+            )
+
+        mock_get_client.assert_called_once()
+        mock_client.transcribe.assert_called_once()
+        assert mock_client.transcribe.call_args.kwargs['extra_options'] == {'model': model_slug}
+
+
+def test_process_transcription_rejects_openrouter_without_model_before_client_creation(tmp_path):
+    """Ensure a missing OpenRouter model is recorded without constructing a client."""
+    app = Flask(__name__)
+    app.config.update(TESTING=True, DEPLOYMENT_MODE='multi')
+    audio_file = tmp_path / 'test.mp3'
+    audio_file.write_bytes(b'test audio data')
+    mock_audio_file = str(audio_file)
+    user = MagicMock(id=42, enable_auto_title_generation=False)
+    user._role = MagicMock()
+    job_id = str(uuid.uuid4())
+
+    with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
+         patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
+         patch('app.services.transcription_service.role_model.reserve_usage_if_allowed', return_value=(True, '')), \
+         patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
+         patch('app.services.transcription_service.file_service.remove_files', return_value=1), \
+         patch('app.services.transcription_service.check_permission', return_value=True), \
+         patch('app.services.transcription_service.get_pricing_service_price', return_value=None), \
+         patch(
+             'app.services.transcription_service.transcription_catalog_model.get_model_by_code',
+             return_value={'display_name': 'OpenRouter', 'permission_key': 'use_api_openrouter'},
+         ):
+        mock_transcription_model.get_transcription_by_id.return_value = None
+
+        with patch('app.services.transcription_service.user_model.get_user_by_id', return_value=user):
+            transcription_service.process_transcription(
+                app=app,
+                job_id=job_id,
+                user_id=user.id,
+                temp_filename=mock_audio_file,
+                language_code='en',
+                api_choice='openrouter',
+                original_filename='test.mp3',
+            )
+
+        mock_get_client.assert_not_called()
+        mock_transcription_model.set_job_error.assert_called_once_with(
+            job_id, 'ERROR: OpenRouter model is required.'
+        )
+
+
 def test_process_transcription_with_speaker_diarization(
     app: Flask, logged_in_client_with_permissions, mock_audio_file
 ):

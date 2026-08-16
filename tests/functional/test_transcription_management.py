@@ -171,3 +171,59 @@ class TestTranscriptionManagement:
 
         assert response.status_code == 202
         mock_submit_transcription_job.assert_called_once()
+
+    def test_openrouter_upload_forwards_model_to_job_and_queue(
+        self, app, logged_in_client_with_permissions, tmp_path
+    ):
+        """An authenticated OpenRouter upload persists and queues its model slug."""
+        model_slug = "openai/gpt-transcribe"
+        app.config["TEMP_UPLOADS_DIR"] = str(tmp_path)
+
+        with patch(
+            "app.api.transcriptions.transcription_catalog_model.get_active_models",
+            return_value=[
+                {
+                    "code": "openrouter",
+                    "display_name": "OpenRouter",
+                    "permission_key": "use_api_openrouter",
+                    "required_api_key": "openrouter",
+                    "is_default": False,
+                }
+            ],
+        ), patch(
+            "app.api.transcriptions.transcription_catalog_model.get_active_languages",
+            return_value=[{"code": "en", "display_name": "English", "is_default": True}],
+        ), patch(
+            "app.api.transcriptions.file_service.get_audio_duration",
+            return_value=(60.0, 1.0),
+        ), patch(
+            "app.api.transcriptions.pricing_service.get_price",
+            return_value=None,
+        ), patch(
+            "app.api.transcriptions.check_usage_limits",
+            return_value=(True, ""),
+        ), patch(
+            "app.api.transcriptions.transcription_model.create_transcription_job"
+        ) as mock_create_job, patch(
+            "app.api.transcriptions.submit_transcription_job"
+        ) as mock_submit_transcription_job:
+            response = logged_in_client_with_permissions.post(
+                url_for("transcriptions.transcribe_audio"),
+                data={
+                    "api_choice": "openrouter",
+                    "openrouter_model": model_slug,
+                    "language_code": "en",
+                    "audio_file": (io.BytesIO(b"test audio data"), SUCCESS_TEST_FILENAME),
+                },
+                content_type="multipart/form-data",
+            )
+
+        assert response.status_code == 202
+        mock_create_job.assert_called_once()
+        assert mock_create_job.call_args.kwargs["api_used"] == "openrouter"
+        assert mock_create_job.call_args.kwargs["api_model"] == model_slug
+
+        mock_submit_transcription_job.assert_called_once()
+        queued_args = mock_submit_transcription_job.call_args.args
+        assert queued_args[7] == "openrouter"
+        assert queued_args[-1] == model_slug
