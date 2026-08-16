@@ -431,10 +431,6 @@ def create_app(config_class=Config) -> Flask:
             _ctx_logger.error(f"Failed to load LLM models from catalog: {llm_catalog_err}", exc_info=True)
             llm_model_catalog = []
 
-        effective_openrouter_model = (
-            user_service.resolve_effective_openrouter_model(user, initial_key_status)
-            if user else None
-        )
         supported_ui_languages = app.config.get('SUPPORTED_LANGUAGES', [])
 
         all_provider_names_from_config = app.config.get('API_PROVIDER_NAME_MAP', {})
@@ -508,6 +504,11 @@ def create_app(config_class=Config) -> Flask:
             llm_model_catalog = llm_catalog_model.filter_models_by_api_key_status(
                 llm_model_catalog, effective_key_status
             )
+
+        effective_openrouter_model = (
+            user_service.resolve_effective_openrouter_model(user, initial_key_status)
+            if user else None
+        )
 
         display_name = user.first_name if user and user.first_name else user.username if user else None
 
