@@ -111,7 +111,8 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                           pending_workflow_prompt_title: Optional[str] = None,
                           pending_workflow_prompt_color: Optional[str] = None,
                           pending_workflow_origin_prompt_id: Optional[int] = None,
-                          speaker_diarization_enabled: bool = False
+                          speaker_diarization_enabled: bool = False,
+                          api_model: Optional[str] = None
                           ) -> None:
     """
     Handles the audio transcription process in a background thread.
@@ -259,6 +260,20 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             if _check_for_cancellation(app, job_id):
                 was_cancelled = True; cancel_event.set(); raise InterruptedError("Job cancelled by user before API call.")
 
+            extra_transcription_options = None
+            if api_choice == 'assemblyai' and speaker_diarization_enabled:
+                if user and check_permission(user, 'allow_speaker_diarization'):
+                    extra_transcription_options = {'speaker_diarization_enabled': True}
+                    logger.info("Speaker diarization enabled for AssemblyAI job.")
+                else:
+                    speaker_diarization_enabled = False
+                    logger.warning("Speaker diarization flag ignored due to missing permission.")
+            if api_choice == "openrouter":
+                if not api_model:
+                    raise ValueError("OpenRouter model is required.")
+                extra_transcription_options = extra_transcription_options or {}
+                extra_transcription_options["model"] = api_model
+
             api_key: Optional[str] = None
             mode = current_app.config['DEPLOYMENT_MODE']
             try:
@@ -313,15 +328,6 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                     raise InterruptedError("Job cancelled by user (detected via DB status).")
                 if is_err: last_error_message_from_callback = msg
                 _update_progress(app, job_id, msg, is_error=is_err, user_id=user_id, log_message=False)
-
-            extra_transcription_options = None
-            if api_choice == 'assemblyai' and speaker_diarization_enabled:
-                if user and check_permission(user, 'allow_speaker_diarization'):
-                    extra_transcription_options = {'speaker_diarization_enabled': True}
-                    logger.info("Speaker diarization enabled for AssemblyAI job.")
-                else:
-                    speaker_diarization_enabled = False
-                    logger.warning("Speaker diarization flag ignored due to missing permission.")
 
             transcribe_args = {
                 "audio_file_path": temp_filename, "language_code": language_code,
