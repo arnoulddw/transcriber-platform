@@ -673,10 +673,24 @@ async function resumeActiveTranscription() {
         jobFilename = job.filename || 'unknown';
         jobApiName = window.API_NAME_MAP_FRONTEND?.[job.api_used] || job.api_used || 'unknown';
         if (typeof calculateExpectedProgressData === 'function') {
-            const scenario = (job.file_size_mb || 0) > 25 ? 'parallel' : 'no_split';
-            calculateExpectedProgressData(job.api_used, job.file_size_mb || 0, job.audio_length_minutes || 0, scenario);
+            const threshold = typeof LARGE_FILE_THRESHOLD_MB !== 'undefined' ? LARGE_FILE_THRESHOLD_MB : 25;
+            const fileSizeMB = job.file_size_mb || 0;
+            let scenario = 'no_split';
+            if (fileSizeMB > threshold) {
+                scenario = job.context_prompt_used ? 'series' : 'parallel';
+            }
+            calculateExpectedProgressData(job.api_used, fileSizeMB, job.audio_length_minutes || 0, scenario);
         }
-        pollProgress(job.job_id);
+        const progressBar = document.getElementById('progressBar');
+        const progressPercentage = document.getElementById('progressPercentage');
+        const resumeFloor = (job.status === 'processing' && progressBoundaries && progressBoundaries.upload)
+            ? progressBoundaries.upload
+            : 0;
+        if (progressBar && progressPercentage) {
+            setProgressBarWidth(progressBar, resumeFloor);
+            progressPercentage.textContent = `${resumeFloor}%`;
+        }
+        pollProgress(job.job_id, job);
         currentJobIdForStop = job.job_id;
         updateProgressActivity(
             job.status === 'cancelling' ? 'cancel' : (job.status === 'pending' ? 'hourglass_empty' : 'record_voice_over'),
