@@ -278,6 +278,14 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL" in profile_script
 
 
+def test_context_resolves_openrouter_label_after_loading_key_status():
+    app_source = open("app/__init__.py", encoding="utf-8").read()
+    key_status_call = "initial_key_status = user_service.get_user_api_key_status(user.id)"
+    effective_model_call = "user_service.resolve_effective_openrouter_model(user, initial_key_status)"
+
+    assert app_source.index(key_status_call) < app_source.index(effective_model_call)
+
+
 def test_resolve_effective_openrouter_model_uses_saved_key_slug():
     user = SimpleNamespace(
         id=7,
