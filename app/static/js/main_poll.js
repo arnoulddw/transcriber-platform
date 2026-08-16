@@ -395,7 +395,7 @@ function pollProgress(jobId) {
             }
 
             const currentJobFileSizeMB = jobData.file_size_mb || 0.0;
-            const currentJobApiName = (typeof API_NAME_MAP_FRONTEND !== 'undefined' ? API_NAME_MAP_FRONTEND[jobData.api_used] : null) || jobData.api_used || 'unknown';
+            const currentJobApiName = formatApiLabel(jobData.api_used, jobData.api_model);
             const currentJobFilename = jobData.filename || 'unknown';
 
             const transcriptionStatus = jobData.status;
@@ -652,7 +652,7 @@ async function resumeActiveTranscription() {
         }
 
         jobFilename = job.filename || 'unknown';
-        jobApiName = window.API_NAME_MAP_FRONTEND?.[job.api_used] || job.api_used || 'unknown';
+        jobApiName = formatApiLabel(job.api_used, job.api_model);
         if (typeof calculateExpectedProgressData === 'function') {
             const scenario = (job.file_size_mb || 0) > 25 ? 'parallel' : 'no_split';
             calculateExpectedProgressData(job.api_used, job.file_size_mb || 0, job.audio_length_minutes || 0, scenario);

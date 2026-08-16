@@ -703,6 +703,7 @@ def get_progress(job_id):
             'file_size_mb': job_data.get('file_size_mb', 0.0),
             'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
             'api_used': job_data.get('api_used', 'unknown'),
+            'api_model': job_data.get('api_model'),
             'filename': job_data.get('filename', 'unknown'),
             'should_poll_title': should_poll_title,
             '_llm_status_note': str(_('LLM/Workflow status must be polled separately.'))
@@ -715,6 +716,7 @@ def get_progress(job_id):
                 'detected_language': job_data.get('detected_language'),
                 'transcription_text': job_data.get('transcription_text'),
                 'api_used': job_data.get('api_used'),
+                'api_model': job_data.get('api_model'),
                 'created_at': job_data.get('created_at'),
                 'status': status,
                 'audio_length_minutes': job_data.get('audio_length_minutes', 0.0),
@@ -754,6 +756,7 @@ def get_active_transcriptions():
                 'status': job.get('status'),
                 'filename': job.get('filename'),
                 'api_used': job.get('api_used'),
+                'api_model': job.get('api_model'),
                 'file_size_mb': job.get('file_size_mb', 0.0),
                 'audio_length_minutes': job.get('audio_length_minutes', 0.0),
                 'created_at': job.get('created_at'),
