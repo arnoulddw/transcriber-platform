@@ -106,11 +106,58 @@ def test_user_row_mapping_includes_default_openrouter_model():
             "email": "test@example.com",
             "created_at": "2026-08-16T00:00:00",
             "default_openrouter_model": "openai/gpt-transcribe",
+            "default_title_generation_model": "gemma-4-26b-a4b-it",
+            "default_workflow_model": "google/gemini-3.7-flash",
         }
     )
 
     assert user is not None
     assert user.default_openrouter_model == "openai/gpt-transcribe"
+    assert user.default_title_generation_model == "gemma-4-26b-a4b-it"
+    assert user.default_workflow_model == "google/gemini-3.7-flash"
+
+
+def test_profile_form_exposes_permitted_llm_model_choices(form_context):
+    llm_models = [
+        {
+            "code": "gemini-3.0-flash",
+            "display_name": "Gemini 3.0 Flash",
+            "permission_key": "use_api_google_gemini",
+        },
+        {
+            "code": "gpt-4o",
+            "display_name": "OpenAI GPT-4o",
+            "permission_key": None,
+        },
+        {
+            "code": "restricted-model",
+            "display_name": "Restricted Model",
+            "permission_key": "use_restricted_model",
+        },
+    ]
+    authenticated_user = SimpleNamespace(
+        is_authenticated=True,
+        username="testuser",
+        email="test@example.com",
+        has_permission=lambda permission: permission == "use_api_google_gemini",
+    )
+
+    with patch("app.forms.current_user", authenticated_user), patch(
+        "app.forms.llm_catalog_model.get_active_models", return_value=llm_models
+    ):
+        form = UserProfileForm(data=_form_data(UserProfileForm))
+
+    expected_model_choices = [
+        ("gemini-3.0-flash", "Gemini 3.0 Flash"),
+        ("gpt-4o", "OpenAI GPT-4o"),
+    ]
+    workflow_choices = list(form.default_workflow_model.choices or [])
+    auxiliary_choices = list(form.default_title_generation_model.choices or [])
+    assert workflow_choices[0][0] == ""
+    assert workflow_choices[1:] == expected_model_choices
+    assert auxiliary_choices[0][0] == ""
+    assert auxiliary_choices[1:] == expected_model_choices
+    assert form.validate() is True
 
 
 class _Cursor:
@@ -156,6 +203,32 @@ def test_repository_old_call_shape_does_not_clear_new_preference():
         assert update_user_preferences(7, None, None, True, None) is True
 
     assert "default_openrouter_model = %s" not in cursor.calls[0][0]
+
+
+def test_repository_persists_new_llm_model_preferences():
+    cursor = _Cursor()
+    connection = _Connection()
+
+    with patch("app.models.user.repository.get_cursor", return_value=cursor), patch(
+        "app.models.user.repository.get_db", return_value=connection
+    ):
+        assert update_user_preferences(
+            7,
+            None,
+            None,
+            None,
+            None,
+            default_title_generation_model="gemma-4-26b-a4b-it",
+            default_workflow_model="google/gemini-3.7-flash",
+        ) is True
+
+    assert "default_title_generation_model = %s" in cursor.calls[0][0]
+    assert "default_workflow_model = %s" in cursor.calls[0][0]
+    assert cursor.calls[0][1] == (
+        "gemma-4-26b-a4b-it",
+        "google/gemini-3.7-flash",
+        7,
+    )
 
 
 def test_service_normalizes_and_passes_openrouter_default():
@@ -228,3 +301,51 @@ def test_service_clears_stale_openrouter_default_for_non_openrouter_model():
         )
 
     update_preferences.assert_called_once_with(7, "auto", "whisper", False, "en", None)
+
+
+def test_service_passes_new_llm_model_preferences():
+    current_user = SimpleNamespace(
+        username="testuser",
+        email="test@example.com",
+        first_name=None,
+        last_name=None,
+        default_content_language="auto",
+        default_transcription_model="whisper",
+        default_title_generation_model=None,
+        default_workflow_model=None,
+        default_openrouter_model=None,
+        enable_auto_title_generation=False,
+        language="en",
+    )
+    update_preferences = Mock(return_value=True)
+
+    with patch.object(user_service.user_model, "get_user_by_id", return_value=current_user), patch.object(
+        user_service.user_model, "update_user_preferences", update_preferences
+    ):
+        user_service.update_profile(
+            7,
+            {
+                "username": "testuser",
+                "email": "test@example.com",
+                "first_name": None,
+                "last_name": None,
+                "default_content_language": "auto",
+                "default_transcription_model": "whisper",
+                "default_title_generation_model": " gemma-4-26b-a4b-it ",
+                "default_workflow_model": " google/gemini-3.7-flash ",
+                "default_openrouter_model": None,
+                "enable_auto_title_generation": False,
+                "language": "en",
+            },
+        )
+
+    update_preferences.assert_called_once_with(
+        7,
+        "auto",
+        "whisper",
+        False,
+        "en",
+        None,
+        default_title_generation_model="gemma-4-26b-a4b-it",
+        default_workflow_model="google/gemini-3.7-flash",
+    )

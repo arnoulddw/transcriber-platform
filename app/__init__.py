@@ -410,6 +410,7 @@ def create_app(config_class=Config) -> Flask:
         initial_key_status = {}
         user_permissions = {}
         from app.models import transcription_catalog as transcription_catalog_model
+        from app.models import llm_catalog as llm_catalog_model
 
         _ctx_logger = get_logger(__name__, component="Context")
         try:
@@ -423,6 +424,12 @@ def create_app(config_class=Config) -> Flask:
         except Exception as lang_err:
             _ctx_logger.error(f"Failed to load transcription languages from catalog: {lang_err}", exc_info=True)
             supported_languages = app.config.get('SUPPORTED_LANGUAGE_NAMES', {})
+
+        try:
+            llm_model_catalog = llm_catalog_model.get_active_models()
+        except Exception as llm_catalog_err:
+            _ctx_logger.error(f"Failed to load LLM models from catalog: {llm_catalog_err}", exc_info=True)
+            llm_model_catalog = []
 
         supported_ui_languages = app.config.get('SUPPORTED_LANGUAGES', [])
 
@@ -528,6 +535,7 @@ def create_app(config_class=Config) -> Flask:
             API_NAME_MAP_FRONTEND=api_name_map_for_frontend_subset,
             API_PROVIDER_NAME_MAP=all_provider_names_from_config,
             TRANSCRIPTION_MODEL_CATALOG=catalog_models,
+            LLM_MODEL_CATALOG=llm_model_catalog,
             COLOR_NAME_MAP=color_name_map,
             app_debug=app.debug,
             # --- MODIFIED: Provide both UI language and formatting locale ---

@@ -48,6 +48,11 @@ _DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "provider": "GEMINI",
         "sort_order": 20,
     },
+    "gemma-4-26b-a4b-it": {
+        "display_name": "Gemma 4 26B A4B",
+        "provider": "GEMINI",
+        "sort_order": 30,
+    },
     "gpt-4o": {
         "display_name": "OpenAI GPT-4o",
         "provider": "OPENAI",

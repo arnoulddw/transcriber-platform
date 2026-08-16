@@ -79,6 +79,26 @@
                             </div>
                         </div>
                     </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                        <div>
+                            <label for="profileDefaultWorkflowModel" class="form-label">{{ _('Default Workflow LLM Model') }}</label>
+                            <div class="mt-1">
+                                <select id="profileDefaultWorkflowModel" name="default_workflow_model"
+                                        class="input-select">
+                                </select>
+                            </div>
+                            <span id="profileDefaultWorkflowModelError" class="form-error"></span>
+                        </div>
+                        <div>
+                            <label for="profileDefaultAuxiliaryModel" class="form-label">{{ _('Default Auxiliary LLM Model') }}</label>
+                            <div class="mt-1">
+                                <select id="profileDefaultAuxiliaryModel" name="default_title_generation_model"
+                                        class="input-select">
+                                </select>
+                            </div>
+                            <span id="profileDefaultAuxiliaryModelError" class="form-error"></span>
+                        </div>
+                    </div>
                     <div id="profileOpenrouterModelField" class="mt-4 hidden">
                         <label for="profileDefaultOpenrouterModel" class="form-label">{{ _('Default OpenRouter Model') }}</label>
                         <div class="mt-1">

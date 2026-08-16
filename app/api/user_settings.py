@@ -317,6 +317,8 @@ def get_profile():
             'last_name': user_obj.last_name,
             'default_content_language': user_obj.default_content_language,
             'default_transcription_model': user_obj.default_transcription_model,
+            'default_title_generation_model': getattr(user_obj, 'default_title_generation_model', None),
+            'default_workflow_model': getattr(user_obj, 'default_workflow_model', None),
             'default_openrouter_model': user_obj.default_openrouter_model,
             'default_openrouter_llm_model': user_obj.default_openrouter_llm_model,
             'oauth_provider': user_obj.oauth_provider,
@@ -339,12 +341,24 @@ def update_profile():
 
     logging.debug(f"{log_prefix} Received profile update data: {form_data}")
     form = UserProfileForm(data=form_data)
-    logging.debug(f"{log_prefix} Form data after instantiation: Lang='{form.default_content_language.data}', Model='{form.default_transcription_model.data}', AutoTitle='{form.enable_auto_title_generation.data}'")
+    logging.debug(
+        f"{log_prefix} Form data after instantiation: Lang='{form.default_content_language.data}', "
+        f"Model='{form.default_transcription_model.data}', "
+        f"AuxiliaryModel='{form.default_title_generation_model.data}', "
+        f"WorkflowModel='{form.default_workflow_model.data}', "
+        f"AutoTitle='{form.enable_auto_title_generation.data}'"
+    )
 
     if form.validate():
         logging.info(f"{log_prefix} Profile update request validated.")
         try:
-            user_service.update_profile(user_id, form.data)
+            validated_profile_data = dict(form.data)
+            # Preserve older API clients: an omitted new preference should not
+            # clear a value that was previously saved for the user.
+            for preference_field in ('default_title_generation_model', 'default_workflow_model'):
+                if preference_field not in (form_data or {}):
+                    validated_profile_data.pop(preference_field, None)
+            user_service.update_profile(user_id, validated_profile_data)
             logging.info(f"{log_prefix} Profile updated successfully.")
             return jsonify({'message': _('Profile updated successfully.')}), 200
         except UsernameTakenError as e:

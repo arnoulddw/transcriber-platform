@@ -125,11 +125,11 @@ The application is configured using environment variables in a `.env` file. The 
 | `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. Append `,openrouter` to opt in to OpenRouter; the default list remains unchanged. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe` |
 | `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription API on load (`gpt-transcribe`, `gpt-4o-transcribe`, `whisper`, `assemblyai`). | `gpt-4o-transcribe` |
 | `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`, `OPENROUTER`). | `GEMINI` |
-| `LLM_MODEL` | General default LLM model. | (none) |
+| `LLM_MODEL` | General fallback LLM model for direct or legacy LLM calls. | (none) |
 | `TITLE_GENERATION_LLM_PROVIDER` | Provider used for generated transcript titles. | `GEMINI` |
-| `TITLE_GENERATION_LLM_MODEL` | Model used for generated transcript titles. | `gemma-4-26b-a4b-it` |
-| `WORKFLOW_LLM_PROVIDER` | Provider used for workflow runs. | `LLM_PROVIDER` |
-| `WORKFLOW_LLM_MODEL` | Model used for workflow runs. | `LLM_MODEL` |
+| `TITLE_GENERATION_LLM_MODEL` | Auxiliary model used for generated transcript titles and other auxiliary tasks when a user has no preference. | `gemma-4-26b-a4b-it` |
+| `WORKFLOW_LLM_PROVIDER` | Provider used for workflow runs when the model catalog cannot infer it. | `OPENROUTER` |
+| `WORKFLOW_LLM_MODEL` | Model used for workflow runs when a user has no preference. | `google/gemini-3.7-flash` |
 | `GEMINI_MODELS` | Comma-separated Gemini models to seed into the LLM catalog. | `gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it` |
 | `OPENAI_MODELS` | Comma-separated OpenAI LLM models to seed into the LLM catalog. | `gpt-4o` |
 | `OPENROUTER_MODELS` | Comma-separated OpenRouter model slugs to seed into the LLM catalog for title/workflow model defaults. | `google/gemini-3.7-flash,openai/gpt-4o` |
@@ -225,7 +225,7 @@ The application is configured using environment variables in a `.env` file. The 
 2.  **Authentication (Multi-User Mode):**
     *   Register for an account or log in.
     *   Navigate to "Manage API Keys" to add your personal API keys for OpenAI, AssemblyAI and Gemini if your role can manage keys. Otherwise, the app uses configured global fallback keys.
-    *   Use profile settings to choose your interface language, default transcription language, default transcription model and automatic title generation preference.
+    *   Use profile settings to choose your interface language, default transcription language and model, workflow LLM model, auxiliary LLM model and automatic title generation preference.
 3.  **Upload Audio:** Click the "File" button to select an audio file.
 4.  **Configure Transcription:**
     *   Select your preferred API (GPT-4o Transcribe, Whisper, AssemblyAI, etc.).

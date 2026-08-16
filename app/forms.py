@@ -174,6 +174,14 @@ class UserProfileForm(FlaskForm):
         _('Default Transcription Model'),
         validators=[] # Optional handled by form processing
     )
+    default_title_generation_model = SelectField(
+        _('Default Auxiliary LLM Model'),
+        validators=[] # Optional handled by form processing
+    )
+    default_workflow_model = SelectField(
+        _('Default Workflow LLM Model'),
+        validators=[] # Optional handled by form processing
+    )
     default_openrouter_model = StringField(
         _('Default OpenRouter Model'),
         validators=[Length(max=120)],
@@ -222,6 +230,30 @@ class UserProfileForm(FlaskForm):
                 model_choices.append((model['code'], model['display_name']))
         # --- MODIFICATION END ---
         self.default_transcription_model.choices = model_choices
+
+        # Populate the two user-level LLM model preferences from the active
+        # catalog, retaining an empty choice so users can fall back to system
+        # defaults.
+        llm_choices = [('', _('-- Use System Default --'))]
+        try:
+            catalog_llm_models = llm_catalog_model.get_active_models()
+        except Exception as catalog_err:
+            logging.warning(f"[FORMS] Failed to load LLM models from catalog: {catalog_err}", exc_info=True)
+            catalog_llm_models = []
+        for model in catalog_llm_models:
+            model_code = (model.get('code') or '').strip()
+            if not model_code:
+                continue
+            permission_key = model.get('permission_key')
+            if permission_key and current_user.is_authenticated and not current_user.has_permission(permission_key):
+                continue
+            llm_choices.append((model_code, model.get('display_name') or model_code))
+        self.default_title_generation_model.choices = list(llm_choices)
+        self.default_workflow_model.choices = list(llm_choices)
+        if self.default_title_generation_model.data is None:
+            self.default_title_generation_model.data = ''
+        if self.default_workflow_model.data is None:
+            self.default_workflow_model.data = ''
 
         # --- NEW: Populate UI language choices ---
         ui_lang_choices = []

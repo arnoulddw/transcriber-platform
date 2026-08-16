@@ -29,6 +29,8 @@ class User(UserMixin):
     oauth_provider_id: Optional[str]
     default_content_language: Optional[str]
     default_transcription_model: Optional[str]
+    default_title_generation_model: Optional[str]
+    default_workflow_model: Optional[str]
     default_openrouter_model: Optional[str]
     default_openrouter_llm_model: Optional[str]
     enable_auto_title_generation: bool
@@ -53,6 +55,8 @@ class User(UserMixin):
         oauth_provider_id: Optional[str] = None,
         default_content_language: Optional[str] = None,
         default_transcription_model: Optional[str] = None,
+        default_title_generation_model: Optional[str] = None,
+        default_workflow_model: Optional[str] = None,
         enable_auto_title_generation: bool = False,
         language: Optional[str] = None,
         public_api_key_hash: Optional[str] = None,
@@ -74,6 +78,8 @@ class User(UserMixin):
         self.oauth_provider_id = oauth_provider_id
         self.default_content_language = default_content_language
         self.default_transcription_model = default_transcription_model
+        self.default_title_generation_model = default_title_generation_model
+        self.default_workflow_model = default_workflow_model
         self.default_openrouter_model = default_openrouter_model
         self.default_openrouter_llm_model = default_openrouter_llm_model
         self.enable_auto_title_generation = enable_auto_title_generation
@@ -155,6 +161,8 @@ def _map_row_to_user(row: Dict[str, Any]) -> Optional[User]:
             oauth_provider_id=row.get('oauth_provider_id'),
             default_content_language=row.get('default_content_language'),
             default_transcription_model=row.get('default_transcription_model'),
+            default_title_generation_model=row.get('default_title_generation_model'),
+            default_workflow_model=row.get('default_workflow_model'),
             enable_auto_title_generation=bool(row.get('enable_auto_title_generation', False)),
             language=row.get('language'),
             public_api_key_hash=row.get('public_api_key_hash'),
