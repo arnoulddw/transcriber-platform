@@ -269,13 +269,17 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
         "app/templates/layout/scripts/base_bootstrap.html", encoding="utf-8"
     ).read()
     profile_script = open("app/static/js/profile.js", encoding="utf-8").read()
+    main_init = open("app/static/js/main_init.js", encoding="utf-8").read()
 
     assert "gpt-transcribe,openrouter" in config
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
-    assert "model_display_name = effective_openrouter_model" in index_template
-    assert "data-openrouter-model=\"{{ effective_openrouter_model }}\"" in index_template
     assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
     assert "model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL" in profile_script
+    assert "initial_key_status.get('openrouter_keys', [])" in index_template
+    assert "data-openrouter-model=\"{{ openrouter_slug }}\"" in index_template
+    assert 'type="hidden" id="openrouterModelInput"' in index_template
+    assert "updateSelectedOpenRouterModel" in main_init
+    assert "openrouterModelField" not in main_init
     assert "const apiKeyStatus = window.API_KEY_STATUS || {};" in profile_script
     assert "opt.disabled = true;" in profile_script
     assert "missingKeyMarker" in profile_script

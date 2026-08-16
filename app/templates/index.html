@@ -42,28 +42,32 @@
                             'gpt-4o-transcribe': _('Best accuracy for clear speech and a good default for most recordings.'),
                             'whisper': _('Best for long recordings and broad language support.'),
                             'assemblyai': _('Supports speaker identification and works well for meetings and interviews.'),
-                            'openrouter': _('Routes the job through OpenRouter. Enter the upstream model slug in the field that appears below.'),
+                            'openrouter': _('Routes the job through the selected OpenRouter transcription model.'),
                         } %}
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
                             {% if not required_perm or user_permissions.get(required_perm) %}
-                                {% set model_display_name = effective_openrouter_model if model.code == 'openrouter' and effective_openrouter_model else model.display_name %}
-                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.code == 'openrouter' and effective_openrouter_model %} data-openrouter-model="{{ effective_openrouter_model }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model_display_name }}</option>
+                                {% if model.code == 'openrouter' %}
+                                    {% set openrouter_models = initial_key_status.get('openrouter_keys', []) if initial_key_status else [] %}
+                                    {% if openrouter_models %}
+                                        {% for openrouter_entry in openrouter_models %}
+                                            {% set openrouter_slug = openrouter_entry.get('model_slug') %}
+                                            <option value="openrouter" data-openrouter-model="{{ openrouter_slug }}" data-description="{{ model_descriptions.get('openrouter', _('General-purpose transcription model.')) }}" {% if effective_default_api == 'openrouter' and openrouter_slug == effective_openrouter_model %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ openrouter_slug }}</option>
+                                        {% endfor %}
+                                    {% elif effective_openrouter_model %}
+                                        <option value="openrouter" data-openrouter-model="{{ effective_openrouter_model }}" data-description="{{ model_descriptions.get('openrouter', _('General-purpose transcription model.')) }}" {% if effective_default_api == 'openrouter' %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ effective_openrouter_model }}</option>
+                                    {% else %}
+                                        <option value="openrouter" data-description="{{ model_descriptions.get('openrouter', _('General-purpose transcription model.')) }}" {% if effective_default_api == 'openrouter' %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                    {% endif %}
+                                {% else %}
+                                    <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                {% endif %}
                             {% endif %}
                         {% endfor %}
                     </select>
+                    <input type="hidden" id="openrouterModelInput" name="openrouter_model" value="{{ effective_openrouter_model or '' }}">
                     <p id="modelDescription" class="form-hint" aria-live="polite"></p>
                 </div>
-            </div>
-
-            <div id="openrouterModelField" class="mt-3 {{ 'hidden' if effective_default_api != 'openrouter' }}">
-                <label for="openrouterModelInput" class="form-label">{{ _('OpenRouter model') }}</label>
-                <input id="openrouterModelInput" name="openrouter_model" type="text"
-                       class="input-control" autocomplete="off"
-                       placeholder="openai/gpt-transcribe"
-                       value="{{ effective_openrouter_model or '' }}"
-                       {% if effective_default_api != 'openrouter' %}disabled{% endif %}>
-                <p class="form-hint">{{ _('OpenRouter model slug. Examples: openai/gpt-transcribe, openai/whisper-1. Use a chat-completion slug such as google/gemini-3.7-flash only for titles and workflows, not for this transcription field.') }}</p>
             </div>
 
             {# Language Select #}

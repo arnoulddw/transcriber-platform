@@ -198,13 +198,10 @@ async function fetchReadinessData() {
 }
 window.fetchReadinessData = fetchReadinessData;
 
-function updateOpenRouterModelField(selectedApi) {
-    const field = document.getElementById('openrouterModelField');
+function updateSelectedOpenRouterModel(selectedOption) {
     const input = document.getElementById('openrouterModelInput');
-    if (!field || !input) return;
-    const show = selectedApi === 'openrouter';
-    field.classList.toggle('hidden', !show);
-    input.disabled = !show;
+    if (!input) return;
+    input.value = selectedOption?.dataset.openrouterModel || '';
 }
 
 async function checkTranscribeButtonState() {
@@ -272,8 +269,8 @@ async function checkTranscribeButtonState() {
     const selectedApiOption = apiSelect.selectedOptions[0];
     const apiKeyRequired = selectedApiOption ? selectedApiOption.dataset.keyRequired : null;
     const isFileSelected = fileInput.files.length > 0;
+    updateSelectedOpenRouterModel(selectedApiOption);
     updateSpeakerDiarizationVisibility(selectedApiValue, permissions);
-    updateOpenRouterModelField(selectedApiValue);
 
     if (toggleContextPromptBtn) {
         const currentPermissions = readinessData.permissions || {};
@@ -335,9 +332,9 @@ async function checkTranscribeButtonState() {
     }
 
     if (!disableReason && selectedApiValue === 'openrouter') {
-        const openrouterModelInput = document.getElementById('openrouterModelInput');
-        if (!openrouterModelInput || !openrouterModelInput.value.includes('/')) {
-            disableReason = "Enter an OpenRouter model (e.g. openai/gpt-transcribe).";
+        const openrouterModel = selectedApiOption?.dataset.openrouterModel || '';
+        if (!openrouterModel.includes('/')) {
+            disableReason = "Select an OpenRouter transcription model.";
         }
     }
 
@@ -576,7 +573,6 @@ window.validateSelectedAudioFile = validateSelectedAudioFile;
 document.addEventListener('DOMContentLoaded', function() {
     const apiSelect = document.getElementById('apiSelect');
     const contextPromptInput = document.getElementById('contextPrompt');
-    const openrouterModelInput = document.getElementById('openrouterModelInput');
     const fileInput = document.getElementById('audioFile');
     const transcribeBtn = document.getElementById('transcribeBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -592,18 +588,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (apiSelect) {
         updateModelDescription(apiSelect);
-        updateOpenRouterModelField(apiSelect.value);
+        updateSelectedOpenRouterModel(apiSelect.selectedOptions[0]);
         apiSelect.addEventListener('change', function() {
             updateModelDescription(apiSelect);
-            updateOpenRouterModelField(apiSelect.value);
+            updateSelectedOpenRouterModel(apiSelect.selectedOptions[0]);
             checkTranscribeButtonState();
         });
     }
     if (contextPromptInput) {
         contextPromptInput.addEventListener('input', validateContextPrompt);
-    }
-    if (openrouterModelInput) {
-        openrouterModelInput.addEventListener('input', checkTranscribeButtonState);
     }
     if (fileInput) {
         fileInput.addEventListener('change', function() {
