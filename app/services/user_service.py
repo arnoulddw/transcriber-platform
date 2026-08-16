@@ -417,6 +417,38 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
     return status
 
 
+def resolve_effective_openrouter_model(
+    user: Any,
+    key_status: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    """Return the model slug that should label OpenRouter in the UI.
+
+    A saved user or role preference takes precedence. When neither exists,
+    fall back to the model slug attached to the user's most recently saved
+    OpenRouter key so the selector reflects the configured transcription
+    model instead of the generic provider name.
+    """
+    if not user:
+        return None
+
+    for candidate in (
+        getattr(user, 'default_openrouter_model', None),
+        getattr(getattr(user, 'role', None), 'default_openrouter_model', None),
+    ):
+        normalized = str(candidate or '').strip()
+        if normalized:
+            return normalized
+
+    if key_status is None:
+        key_status = get_user_api_key_status(user.id)
+
+    for entry in key_status.get('openrouter_keys', []) or []:
+        model_slug = str(entry.get('model_slug') or '').strip()
+        if model_slug and model_slug.lower() != 'openrouter':
+            return model_slug
+    return None
+
+
 def get_public_api_key_status(user_id: int) -> Dict[str, Optional[str]]:
     """
     Returns metadata about the user's public API key used for authenticated API access.

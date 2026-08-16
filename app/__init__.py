@@ -431,6 +431,10 @@ def create_app(config_class=Config) -> Flask:
             _ctx_logger.error(f"Failed to load LLM models from catalog: {llm_catalog_err}", exc_info=True)
             llm_model_catalog = []
 
+        effective_openrouter_model = (
+            user_service.resolve_effective_openrouter_model(user, initial_key_status)
+            if user else None
+        )
         supported_ui_languages = app.config.get('SUPPORTED_LANGUAGES', [])
 
         all_provider_names_from_config = app.config.get('API_PROVIDER_NAME_MAP', {})
@@ -527,6 +531,7 @@ def create_app(config_class=Config) -> Flask:
             display_name=display_name,
             now=datetime.now(timezone.utc),
             initial_key_status=initial_key_status,
+            effective_openrouter_model=effective_openrouter_model,
             user_permissions=user_permissions,
             google_client_id=app.config.get('GOOGLE_CLIENT_ID'),
 

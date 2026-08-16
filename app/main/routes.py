@@ -74,10 +74,7 @@ def index():
         else:
             logging.debug(f"{log_prefix} User has no model preference, using system default: {effective_default_api}")
 
-        effective_openrouter_model = (
-            getattr(current_user, 'default_openrouter_model', None)
-            or getattr(getattr(current_user, 'role', None), 'default_openrouter_model', None)
-        )
+        effective_openrouter_model = user_service.resolve_effective_openrouter_model(current_user)
     else:
         logging.debug(f"{log_prefix} Using system defaults (Lang: {effective_default_language}, API: {effective_default_api})")
     # --- End Determine Effective Defaults ---

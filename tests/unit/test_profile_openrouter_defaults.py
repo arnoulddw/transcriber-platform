@@ -248,6 +248,34 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL" in profile_script
 
 
+def test_resolve_effective_openrouter_model_uses_saved_key_slug():
+    user = SimpleNamespace(
+        id=7,
+        default_openrouter_model=None,
+        role=SimpleNamespace(default_openrouter_model=None),
+    )
+
+    with patch.object(
+        user_service,
+        "get_user_api_key_status",
+        return_value={"openrouter_keys": [{"model_slug": "x-ai/grok-stt-1.0"}]},
+    ):
+        assert user_service.resolve_effective_openrouter_model(user) == "x-ai/grok-stt-1.0"
+
+
+def test_resolve_effective_openrouter_model_prefers_user_and_role_defaults():
+    role = SimpleNamespace(default_openrouter_model="role/model")
+    user = SimpleNamespace(id=7, default_openrouter_model=None, role=role)
+    assert user_service.resolve_effective_openrouter_model(
+        user, {"openrouter_keys": [{"model_slug": "key/model"}]}
+    ) == "role/model"
+
+    user.default_openrouter_model = "user/model"
+    assert user_service.resolve_effective_openrouter_model(
+        user, {"openrouter_keys": [{"model_slug": "key/model"}]}
+    ) == "user/model"
+
+
 def test_service_normalizes_and_passes_openrouter_default():
     current_user = SimpleNamespace(
         username="testuser",
