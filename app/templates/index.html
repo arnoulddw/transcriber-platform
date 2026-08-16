@@ -47,21 +47,7 @@
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
                             {% if not required_perm or user_permissions.get(required_perm) %}
-                                {% if model.code == 'openrouter' %}
-                                    {% set openrouter_models = initial_key_status.get('openrouter_keys', []) if initial_key_status else [] %}
-                                    {% if openrouter_models %}
-                                        {% for openrouter_entry in openrouter_models %}
-                                            {% set openrouter_slug = openrouter_entry.get('model_slug') %}
-                                            <option value="openrouter" data-openrouter-model="{{ openrouter_slug }}" data-description="{{ model_descriptions.get('openrouter', _('General-purpose transcription model.')) }}" {% if effective_default_api == 'openrouter' and openrouter_slug == effective_openrouter_model %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ openrouter_slug }}</option>
-                                        {% endfor %}
-                                    {% elif effective_openrouter_model %}
-                                        <option value="openrouter" data-openrouter-model="{{ effective_openrouter_model }}" data-description="{{ model_descriptions.get('openrouter', _('General-purpose transcription model.')) }}" {% if effective_default_api == 'openrouter' %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ effective_openrouter_model }}</option>
-                                    {% else %}
-                                        <option value="openrouter" data-description="{{ model_descriptions.get('openrouter', _('General-purpose transcription model.')) }}" {% if effective_default_api == 'openrouter' %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
-                                    {% endif %}
-                                {% else %}
-                                    <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api %}selected{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
-                                {% endif %}
+                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api and (not model.model_slug or model.model_slug == effective_openrouter_model) %}selected{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
                             {% endif %}
                         {% endfor %}
                     </select>

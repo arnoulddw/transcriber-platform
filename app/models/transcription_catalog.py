@@ -3,7 +3,7 @@
 # Provides a single source of truth backed by MySQL tables.
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app
 from mysql.connector import Error as MySQLError
@@ -127,6 +127,31 @@ def get_active_models() -> List[Dict[str, Optional[str]]]:
             }
         )
     return models
+
+
+def expand_models_for_ui(
+    models: List[Dict[str, Optional[str]]],
+    key_status: Optional[Dict[str, Any]] = None,
+    fallback_openrouter_model: Optional[str] = None,
+) -> List[Dict[str, Optional[str]]]:
+    """Expand provider-level catalog entries into selectable UI model entries."""
+    status = key_status or {}
+    openrouter_slugs = [
+        str(entry.get("model_slug") or "").strip()
+        for entry in (status.get("openrouter_keys", []) or [])
+        if isinstance(entry, dict) and str(entry.get("model_slug") or "").strip()
+    ]
+    if not openrouter_slugs and fallback_openrouter_model:
+        openrouter_slugs = [fallback_openrouter_model.strip()]
+
+    expanded: List[Dict[str, Optional[str]]] = []
+    for model in models:
+        if model.get("code") != "openrouter" or not openrouter_slugs:
+            expanded.append(dict(model))
+            continue
+        for slug in openrouter_slugs:
+            expanded.append({**model, "model_slug": slug, "display_name": slug})
+    return expanded
 
 
 def get_model_by_code(code: str) -> Optional[Dict[str, Optional[str]]]:
