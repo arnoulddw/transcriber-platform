@@ -153,6 +153,22 @@ def test_generate_text_fallback_to_global_key_when_permission_missing(client, mo
     mock_dependencies['user_service'].get_decrypted_api_key.assert_not_called()
     mock_dependencies['get_llm_client'].assert_called_with('openai', 'global_openai_key', mock_dependencies['config'])
 
+
+def test_generate_text_uses_global_openrouter_key_when_user_cannot_manage_keys(client, mock_dependencies, mock_user):
+    mock_dependencies['user_model'].get_user_by_id.return_value = mock_user
+    mock_dependencies['config']['OPENROUTER_API_KEY'] = 'global_openrouter_key'
+
+    with client.application.app_context():
+        result = llm_service.generate_text_via_llm(
+            provider_name='OPENROUTER', prompt='Hi', user_id=mock_user.id
+        )
+
+    assert result == "Mocked LLM response"
+    mock_dependencies['get_llm_client'].assert_called_with(
+        'OPENROUTER', 'global_openrouter_key', mock_dependencies['config']
+    )
+
+
 def test_no_api_key_configured_raises_error(client, mock_dependencies):
     """
     GIVEN no global or user API key is available

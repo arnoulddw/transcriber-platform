@@ -110,7 +110,9 @@ def generate_text_via_llm(
             # --- END MODIFICATION ---
             key_service_name: Optional[str] = None
             logger.debug(f"Checking for user-specific key for provider: {provider_name}")
-            if provider_name.upper().startswith("GEMINI"):
+            if provider_name.upper().startswith("OPENROUTER"):
+                key_service_name = "openrouter"
+            elif provider_name.upper().startswith("GEMINI"):
                 key_service_name = "gemini"
             elif provider_name.upper().startswith("OPENAI") or provider_name.upper().startswith("GPT"):
                 key_service_name = "openai"
@@ -138,6 +140,8 @@ def generate_text_via_llm(
             logger.debug(f"Checking for global key for provider: {provider_name}")
             if provider_name.upper().startswith("GEMINI"):
                 effective_api_key = current_app.config.get('GEMINI_API_KEY')
+            elif provider_name.upper().startswith("OPENROUTER"):
+                effective_api_key = current_app.config.get('OPENROUTER_API_KEY')
             elif provider_name.upper().startswith("OPENAI") or provider_name.upper().startswith("GPT"):
                 effective_api_key = current_app.config.get('OPENAI_API_KEY')
             # Add other providers...

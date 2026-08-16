@@ -47,7 +47,8 @@ _API_DISPLAY_NAME_FALLBACKS = {
     'gpt-transcribe': 'OpenAI GPT Transcribe',
     'gpt-4o-transcribe': 'OpenAI GPT-4o Transcribe',
     'whisper': 'OpenAI Whisper',
-    'assemblyai': 'AssemblyAI Universal'
+    'assemblyai': 'AssemblyAI Universal',
+    'openrouter': 'OpenRouter'
 }
 
 
@@ -278,6 +279,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             key_env_var = None
                             if api_choice == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                             elif api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe']: key_env_var = 'OPENAI_API_KEY'
+                            elif api_choice == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'
                             
                             if key_env_var:
                                 api_key = current_app.config.get(key_env_var)
@@ -289,6 +291,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                     key_env_var = None
                     if api_choice == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                     elif api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe']: key_env_var = 'OPENAI_API_KEY'
+                    elif api_choice == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'
                     if key_env_var: api_key = current_app.config.get(key_env_var)
                     if not api_key:
                         raise ValueError(f"ERROR: Global {api_display_name} API key ({key_env_var}) is not configured.")
