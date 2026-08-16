@@ -24,11 +24,11 @@ Use it as a simple personal transcription app in `single` mode, or run it as a t
 ## ✨ Key Features
 
 ### Core Functionality
--   **Multiple Transcription APIs:** Choose from OpenAI GPT-4o Transcribe, OpenAI Whisper or AssemblyAI Universal.
+-   **Multiple Transcription APIs:** Choose from OpenAI GPT-4o Transcribe, OpenAI Whisper, AssemblyAI Universal or the optional OpenRouter provider (bring your own model slug, e.g. `openai/gpt-transcribe`).
 -   **Speaker Diarization (AssemblyAI):** Toggle speaker labels to identify who said what on supported jobs.
 -   **Large File Handling:** Enforces a 200MB upload limit and automatically splits OpenAI-bound files over provider limits into chunks for processing.
 -   **AI-Powered Title Generation:** Automatically generates a concise title for each transcription.
--   **Custom AI Workflows:** Execute custom prompts (ex. summarize, extract action items) on transcribed text using LLMs like OpenAI models or Google Gemini; save reusable workflows from the UI and edit or delete workflow results.
+-   **Custom AI Workflows:** Execute custom prompts (ex. summarize, extract action items) on transcribed text using LLMs like OpenAI models, Google Gemini or OpenRouter; save reusable workflows from the UI and edit or delete workflow results.
 -   **Pre-Applied Workflows:** Select a saved workflow before upload so the transcript and AI analysis are produced together.
 -   **Public Transcription API:** Submit audio programmatically using per-user public API keys with permission checks and rate limiting.
 -   **Flexible Language Options:** Select the audio language manually or use automatic detection, backed by an active language catalog.
@@ -74,7 +74,7 @@ Get the platform running in under 5 minutes. This is the recommended method.
     cp .env.example .env
     nano .env 
     ```
-    -   **Crucially, you must set:** `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_USER`, `MYSQL_DB` and the API keys for the providers you want to use (`OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY`).
+    -   **Crucially, you must set:** `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_USER`, `MYSQL_DB` and the API keys for the providers you want to use (`OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`).
     -   For multi-user mode, also set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to create your admin account.
 
 3.  **Build and Run**
@@ -95,6 +95,7 @@ This section provides more detailed setup instructions.
     -   [OpenAI](https://platform.openai.com/) (for Whisper, GPT-4o Transcribe and LLM workflows)
     -   [AssemblyAI (Universal model)](https://www.assemblyai.com/)
     -   [Google Gemini](https://ai.google.dev/) (for title generation and LLM workflows)
+    -   [OpenRouter](https://openrouter.ai/) (optional; provide your own model slug for transcription and LLM operations)
 -   **Docker & Docker Compose:** Required for the recommended installation method.
 -   **Google Client ID (Optional):** Required for Google Sign-In in `multi` user mode.
 -   **Python 3.9+:** Required for local development without Docker.
@@ -118,11 +119,12 @@ The application is configured using environment variables in a `.env` file. The 
 | `OPENAI_API_KEY` | Your API key for OpenAI (Whisper, GPT-4o Transcribe, LLMs). | (none) |
 | `ASSEMBLYAI_API_KEY` | Your API key for AssemblyAI. | (none) |
 | `GEMINI_API_KEY` | Your API key for Google Gemini (Title Generation, LLMs). | (none) |
+| `OPENROUTER_API_KEY` | Your API key for OpenRouter (transcription and LLM operations). | (none) |
 | `ANTHROPIC_API_KEY` | Reserved for future Anthropic LLM support. | (none) |
 | **Provider, Model & Language Settings** | | |
-| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe` |
+| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. Append `,openrouter` to opt in to OpenRouter; the default list remains unchanged. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe` |
 | `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription API on load (`gpt-transcribe`, `gpt-4o-transcribe`, `whisper`, `assemblyai`). | `gpt-4o-transcribe` |
-| `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`). | `GEMINI` |
+| `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`, `OPENROUTER`). | `GEMINI` |
 | `LLM_MODEL` | General default LLM model. | (none) |
 | `TITLE_GENERATION_LLM_PROVIDER` | Provider used for generated transcript titles. | `GEMINI` |
 | `TITLE_GENERATION_LLM_MODEL` | Model used for generated transcript titles. | `gemma-4-26b-a4b-it` |
@@ -130,6 +132,7 @@ The application is configured using environment variables in a `.env` file. The 
 | `WORKFLOW_LLM_MODEL` | Model used for workflow runs. | `LLM_MODEL` |
 | `GEMINI_MODELS` | Comma-separated Gemini models to seed into the LLM catalog. | `gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it` |
 | `OPENAI_MODELS` | Comma-separated OpenAI LLM models to seed into the LLM catalog. | `gpt-4o` |
+| `OPENROUTER_MODELS` | Comma-separated OpenRouter model slugs to seed into the LLM catalog for title/workflow model defaults. | `google/gemini-3.7-flash,openai/gpt-4o` |
 | `DEFAULT_LANGUAGE` | Default transcription language on load (`auto`, `en`, `es`, etc.). | `auto` |
 | `SUPPORTED_LANGUAGE_CODES` | Comma-separated language codes to seed into the active language catalog (ex. `en,nl,fr,es`). | `en,nl,fr,es` |
 | **Database (MySQL)** | | |
