@@ -53,6 +53,26 @@ def test_get_progress_finished_job(app, logged_in_client_with_permissions):
     assert payload["finished"] is True
     assert payload["should_poll_title"] is True
     assert payload["result"]["status"] == "finished"
+    assert payload["created_at"] is not None
+    assert isinstance(payload["created_at"], str)
+    assert payload["created_at"].endswith("Z")
+
+
+def test_get_progress_processing_job(app, logged_in_client_with_permissions):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    job_id = _create_transcription(app, user.id, status="processing")
+
+    response = logged_in_client_with_permissions.get(f"/api/progress/{job_id}")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["job_id"] == job_id
+    assert payload["finished"] is False
+    assert payload["status"] == "processing"
+    assert payload["created_at"] is not None
+    assert isinstance(payload["created_at"], str)
+    assert payload["created_at"].endswith("Z")
 
 
 def test_get_progress_not_found(logged_in_client_with_permissions):
@@ -76,6 +96,9 @@ def test_get_active_transcriptions_returns_unfinished_jobs(app, logged_in_client
     payload = response.get_json()
     assert [job["job_id"] for job in payload] == [processing_job_id, pending_job_id]
     assert all(job["status"] in {"pending", "processing", "cancelling"} for job in payload)
+    assert all(isinstance(job["created_at"], str) and job["created_at"].endswith("Z") for job in payload)
+    assert all("context_prompt_used" in job for job in payload)
+    assert all(job["context_prompt_used"] is False for job in payload)
 
 
 def test_interrupted_job_is_a_finished_error_state(app, logged_in_client_with_permissions):
