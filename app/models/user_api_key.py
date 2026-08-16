@@ -145,13 +145,12 @@ def get_api_key_record(
             FROM user_api_keys
             WHERE user_id = %s
               AND provider_code = %s
-              AND (model_slug = %s OR model_slug = '')
             ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END,
                      COALESCE(last_used_at, updated_at, created_at) DESC,
                      id DESC
             LIMIT 1
         """
-        params = (user_id, provider, stored_model_slug, stored_model_slug)
+        params = (user_id, provider, stored_model_slug)
     elif provider == "openrouter":
         sql = """
             SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at

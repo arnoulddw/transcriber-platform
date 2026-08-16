@@ -157,6 +157,19 @@ def get_active_models() -> List[Dict[str, Optional[str]]]:
     return models
 
 
+def filter_models_by_api_key_status(
+    models: List[Dict[str, Optional[str]]],
+    api_key_status: Dict[str, bool],
+) -> List[Dict[str, Optional[str]]]:
+    """Return only models whose required provider key is available."""
+    return [
+        model
+        for model in models
+        if not model.get("required_api_key")
+        or bool(api_key_status.get(str(model["required_api_key"]).lower()))
+    ]
+
+
 def get_model_by_code(code: str) -> Optional[Dict[str, Optional[str]]]:
     if not code:
         return None
