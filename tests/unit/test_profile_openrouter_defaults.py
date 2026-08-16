@@ -276,6 +276,9 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "data-openrouter-model=\"{{ effective_openrouter_model }}\"" in index_template
     assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
     assert "model.code === 'openrouter' && window.DEFAULT_OPENROUTER_MODEL" in profile_script
+    assert "const apiKeyStatus = window.API_KEY_STATUS || {};" in profile_script
+    assert "opt.disabled = true;" in profile_script
+    assert "missingKeyMarker" in profile_script
 
 
 def test_context_resolves_openrouter_label_after_loading_key_status():
