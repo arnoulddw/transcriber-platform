@@ -42,6 +42,12 @@ _DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "required_api_key": "assemblyai",
         "sort_order": 40,
     },
+    "openrouter": {
+        "display_name": "OpenRouter",
+        "permission_key": "use_api_openrouter",
+        "required_api_key": "openrouter",
+        "sort_order": 50,
+    },
 }
 
 

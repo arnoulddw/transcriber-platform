@@ -28,6 +28,12 @@ _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "required_api_key": "openai",
         "sort_order": 20,
     },
+    "OPENROUTER": {
+        "display_name": "OpenRouter",
+        "permission_key": "use_api_openrouter",
+        "required_api_key": "openrouter",
+        "sort_order": 30,
+    },
 }
 
 # Default metadata for known models. Extend this mapping as new models are added.
@@ -46,6 +52,16 @@ _DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "display_name": "OpenAI GPT-4o",
         "provider": "OPENAI",
         "sort_order": 10,
+    },
+    "google/gemini-3.7-flash": {
+        "display_name": "Gemini 3.7 Flash (OpenRouter)",
+        "provider": "OPENROUTER",
+        "sort_order": 10,
+    },
+    "openai/gpt-4o": {
+        "display_name": "OpenAI GPT-4o (OpenRouter)",
+        "provider": "OPENROUTER",
+        "sort_order": 20,
     },
 }
 
