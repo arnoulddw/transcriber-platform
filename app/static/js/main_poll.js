@@ -319,19 +319,24 @@ if (!window.transcriptionErrorActionsBound) {
 /**
 * Polls the backend for transcription job progress and updates the UI accordingly.
 */
-function pollProgress(jobId) {
+function pollProgress(jobId, initialJobData = null) {
     const progressBar = document.getElementById('progressBar');
     const progressPercentage = document.getElementById('progressPercentage');
     let pollIntervalMs = 1000;
+    let jobAnchoredToServer = false;
     let errorCount = 0;
     const maxErrors = 5;
 
     if (currentPollIntervalId) clearTimeout(currentPollIntervalId);
 
     if (currentJobId !== jobId || !jobStartTime) {
-        resetPollingState(); 
+        resetPollingState();
         currentJobId = jobId;
-        jobStartTime = Date.now();
+        const createdAtMs = window.ProgressTimeline.parseCreatedAtMs(
+            initialJobData && initialJobData.created_at
+        );
+        jobStartTime = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+        jobAnchoredToServer = Number.isFinite(createdAtMs);
         phaseStartTime = jobStartTime;
         jobIsFinishedOrErrored = false;
         currentPhase = 'upload';
@@ -394,6 +399,14 @@ function pollProgress(jobId) {
                 return;
             }
 
+            if (!jobAnchoredToServer && jobData.created_at) {
+                const serverCreatedAtMs = window.ProgressTimeline.parseCreatedAtMs(jobData.created_at);
+                if (Number.isFinite(serverCreatedAtMs)) {
+                    jobStartTime = serverCreatedAtMs;
+                    jobAnchoredToServer = true;
+                }
+            }
+
             const currentJobFileSizeMB = jobData.file_size_mb || 0.0;
             const currentJobApiName = (typeof API_NAME_MAP_FRONTEND !== 'undefined' ? API_NAME_MAP_FRONTEND[jobData.api_used] : null) || jobData.api_used || 'unknown';
             const currentJobFilename = jobData.filename || 'unknown';
@@ -410,28 +423,39 @@ function pollProgress(jobId) {
             if (currentPhase === 'waiting' && transcriptionStatus === 'processing') {
                 currentPhase = 'upload';
                 phaseStartTime = now;
+                lastMessageIndex = -1;
             }
 
-            if (!jobIsFinishedOrErrored && !isCancellationPending && progressLog.length > lastMessageIndex + 1) {
+            if (
+                !jobIsFinishedOrErrored
+                && !isCancellationPending
+                && window.ProgressTimeline.shouldReplayMarkers(transcriptionStatus)
+                && progressLog.length > lastMessageIndex + 1
+            ) {
                 const newMessages = progressLog.slice(lastMessageIndex + 1);
-                newMessages.forEach(msg => {
-                    const upperMsg = msg.toUpperCase();
-                    if (currentPhase === 'upload' && upperMsg.includes("PHASE_MARKER:UPLOAD_COMPLETE")) {
-                        window.logger.info(mainPollLogPrefix, "Phase transition: Upload -> Processing/Transcribing");
-                        uploadPhaseActualEndTime = now;
-                        const threshold = typeof LARGE_FILE_THRESHOLD_MB !== 'undefined' ? LARGE_FILE_THRESHOLD_MB : 25;
-                        const needsProcessing = (currentJobFileSizeMB > threshold);
-                        currentPhase = needsProcessing ? 'processing' : 'transcribing';
-                        phaseStartTime = now;
-                        lastProgressValue = progressBoundaries.upload;
-                    } else if (currentPhase === 'processing' && upperMsg.includes("PHASE_MARKER:TRANSCRIPTION_START")) {
-                        window.logger.info(mainPollLogPrefix, "Phase transition: Processing -> Transcribing");
-                        processingPhaseActualEndTime = now;
-                        currentPhase = 'transcribing';
-                        phaseStartTime = now;
-                        lastProgressValue = progressBoundaries.processing;
-                    }
+                const replayed = window.ProgressTimeline.replayMarkers({
+                    phaseStartTimeMs: phaseStartTime,
+                    messages: newMessages,
+                    expectedTimes,
+                    fileSizeMb: currentJobFileSizeMB,
+                    largeFileThresholdMb: typeof LARGE_FILE_THRESHOLD_MB !== 'undefined' ? LARGE_FILE_THRESHOLD_MB : 25,
                 });
+                if (replayed.lastProgressKey === 'upload') {
+                    window.logger.info(mainPollLogPrefix, "Phase transition: Upload -> Processing/Transcribing");
+                    uploadPhaseActualEndTime = replayed.phaseStartTimeMs;
+                    lastProgressValue = progressBoundaries.upload;
+                }
+                if (replayed.lastProgressKey === 'processing') {
+                    window.logger.info(mainPollLogPrefix, "Phase transition: Processing -> Transcribing");
+                    processingPhaseActualEndTime = replayed.phaseStartTimeMs;
+                    lastProgressValue = progressBoundaries.processing;
+                }
+                if (replayed.phase !== 'upload') {
+                    currentPhase = replayed.phase;
+                    phaseStartTime = replayed.phaseStartTimeMs;
+                } else if (replayed.phaseStartTimeMs !== phaseStartTime) {
+                    phaseStartTime = replayed.phaseStartTimeMs;
+                }
                 lastMessageIndex = progressLog.length - 1;
             }
 
@@ -448,24 +472,15 @@ function pollProgress(jobId) {
             } else if (transcriptionStatus === 'error' || transcriptionStatus === 'cancelled' || transcriptionStatus === 'interrupted') {
                 progress = lastProgressValue; currentPhase = transcriptionStatus;
             } else {
-                const elapsedTimeInPhase = (now - phaseStartTime) / 1000;
-                switch (currentPhase) {
-                    case 'upload':
-                        const expectedUpload = expectedTimes.upload;
-                        progress = (expectedUpload < MIN_PHASE_DURATION_FOR_SMOOTHING || expectedUpload <= 0) ? upBoundary : Math.min((elapsedTimeInPhase / expectedUpload) * upBoundary, upBoundary);
-                        break;
-                    case 'processing':
-                        const expectedProcessing = expectedTimes.processing;
-                        const processingRange = procBoundary - upBoundary;
-                        progress = (expectedProcessing < MIN_PHASE_DURATION_FOR_SMOOTHING || expectedProcessing <= 0) ? procBoundary : upBoundary + Math.min((elapsedTimeInPhase / expectedProcessing) * processingRange, processingRange);
-                        break;
-                    case 'transcribing':
-                        const expectedTranscription = expectedTimes.transcription;
-                        const transcriptionRange = HOLD_PROGRESS_AT - transStartBoundary;
-                        progress = (expectedTranscription < MIN_PHASE_DURATION_FOR_SMOOTHING || expectedTranscription <= 0) ? HOLD_PROGRESS_AT : transStartBoundary + Math.min((elapsedTimeInPhase / expectedTranscription) * transcriptionRange, transcriptionRange);
-                        break;
-                    default: progress = lastProgressValue;
-                }
+                progress = window.ProgressTimeline.estimateProgress({
+                    nowMs: now,
+                    phaseStartTimeMs: phaseStartTime,
+                    phase: currentPhase,
+                    expectedTimes,
+                    progressBoundaries,
+                    holdAt: HOLD_PROGRESS_AT,
+                    minPhaseDuration: MIN_PHASE_DURATION_FOR_SMOOTHING,
+                });
             }
             progress = Math.max(0, Math.min(100, Math.round(progress)));
             jobIsFinishedOrErrored = isTerminalStatus;
