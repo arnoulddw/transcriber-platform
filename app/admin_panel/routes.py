@@ -217,6 +217,7 @@ def create_role():
                 'use_api_openai_gpt_4o_transcribe': form.use_api_openai_gpt_4o_transcribe.data,
                 'use_api_openai_live_transcribe': form.use_api_openai_live_transcribe.data,
                 'use_api_google_gemini': form.use_api_google_gemini.data, # Added
+                'use_api_openrouter': form.use_api_openrouter.data,
                 'access_admin_panel': form.access_admin_panel.data,
                 'allow_large_files': form.allow_large_files.data,
                 'allow_context_prompt': form.allow_context_prompt.data,
@@ -341,6 +342,7 @@ def edit_role(role_id):
                 'use_api_openai_gpt_4o_transcribe': form.use_api_openai_gpt_4o_transcribe.data,
                 'use_api_openai_live_transcribe': form.use_api_openai_live_transcribe.data,
                 'use_api_google_gemini': form.use_api_google_gemini.data, # Added
+                'use_api_openrouter': form.use_api_openrouter.data,
                 'access_admin_panel': form.access_admin_panel.data,
                 'allow_large_files': form.allow_large_files.data,
                 'allow_context_prompt': form.allow_context_prompt.data,

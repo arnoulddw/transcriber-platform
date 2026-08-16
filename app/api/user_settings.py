@@ -58,6 +58,7 @@ def get_user_readiness():
                 'use_api_openai_gpt_4o_transcribe': role.has_permission('use_api_openai_gpt_4o_transcribe'),
                 'use_api_openai_live_transcribe': role.has_permission('use_api_openai_live_transcribe'),
                 'use_api_google_gemini': role.has_permission('use_api_google_gemini'),
+                'use_api_openrouter': role.has_permission('use_api_openrouter'),
                 'allow_large_files': role.has_permission('allow_large_files'),
                 'allow_context_prompt': role.has_permission('allow_context_prompt'),
                 'allow_download_transcript': role.has_permission('allow_download_transcript'),

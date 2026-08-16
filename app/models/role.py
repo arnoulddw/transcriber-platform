@@ -159,6 +159,7 @@ class Role:
     use_api_openai_gpt_4o_transcribe: bool
     use_api_openai_live_transcribe: bool
     use_api_google_gemini: bool
+    use_api_openrouter: bool
     # Feature Permissions
     access_admin_panel: bool
     allow_large_files: bool
@@ -200,6 +201,7 @@ class Role:
             'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
             'use_api_openai_live_transcribe',
             'use_api_google_gemini',
+            'use_api_openrouter',
             'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
             'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript', 'allow_workflows',
             'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization'
@@ -253,6 +255,8 @@ def _map_row_to_role(row: Dict[str, Any]) -> Optional[Role]:
         # --- MODIFIED: Ensure use_api_google_gemini is present ---
         if 'use_api_google_gemini' not in row:
             row['use_api_google_gemini'] = 0
+        if 'use_api_openrouter' not in row:
+            row['use_api_openrouter'] = 0
         if 'use_api_openai_live_transcribe' not in row:
             row['use_api_openai_live_transcribe'] = 0
         # --- END MODIFIED ---
@@ -291,6 +295,7 @@ def init_roles_table() -> None:
                 use_api_openai_gpt_4o_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_live_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_google_gemini BOOLEAN NOT NULL DEFAULT FALSE,
+                use_api_openrouter BOOLEAN NOT NULL DEFAULT FALSE,
                 access_admin_panel BOOLEAN NOT NULL DEFAULT FALSE,
                 allow_large_files BOOLEAN NOT NULL DEFAULT FALSE,
                 allow_context_prompt BOOLEAN NOT NULL DEFAULT FALSE,
@@ -361,6 +366,12 @@ def init_roles_table() -> None:
         # --- MODIFIED: Add use_api_google_gemini column idempotently ---
         _ensure_column(cursor, "roles", None, "use_api_google_gemini",
                        "BOOLEAN NOT NULL DEFAULT FALSE", after="use_api_openai_live_transcribe", log_prefix=log_prefix)
+        _ensure_column(
+            cursor, "roles", None, "use_api_openrouter",
+            "BOOLEAN NOT NULL DEFAULT FALSE",
+            after="use_api_google_gemini",
+            log_prefix=log_prefix,
+        )
         # --- END MODIFIED ---
 
         # Normalize timestamp columns
@@ -407,6 +418,7 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
         'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
         'use_api_openai_live_transcribe',
         'use_api_google_gemini', # Added
+        'use_api_openrouter',
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
@@ -666,6 +678,7 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
         'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
         'use_api_openai_live_transcribe',
         'use_api_google_gemini', # Added
+        'use_api_openrouter',
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',

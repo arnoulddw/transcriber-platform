@@ -282,6 +282,7 @@ class AdminRoleForm(FlaskForm):
     use_api_openai_live_transcribe = BooleanField(_('Use OpenAI Live Transcription'))
     # --- MODIFIED: Add use_api_google_gemini field ---
     use_api_google_gemini = BooleanField(_('Use Google Gemini API'))
+    use_api_openrouter = BooleanField(_('Use OpenRouter API'))
     # --- END MODIFIED ---
     access_admin_panel = BooleanField(_('Access Admin Panel'))
     allow_large_files = BooleanField(_('Allow Large Files (>25MB)'))
