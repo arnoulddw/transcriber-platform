@@ -313,3 +313,24 @@ def test_effective_key_status_aggregates_for_admins_but_not_users(monkeypatch):
         assert user_service.get_effective_key_status(regular) == {"own": True}
         aggregate.assert_called_once_with()
         own.assert_called_once_with(2)
+
+
+def test_all_jinja_templates_parse_without_escaping_artifacts():
+    """Every template must compile under Jinja2.
+
+    Guards against raw JSON-style escaped quotes (\\") being written into
+    templates (previously broke forgot_password.html at parse time).
+    """
+    import re
+
+    from jinja2 import Environment
+
+    env = Environment()
+    templates = sorted(Path("app/templates").rglob("*.html"))
+    assert templates, "no templates found"
+    for path in templates:
+        source = path.read_text(encoding="utf-8")
+        env.parse(source)  # raises TemplateSyntaxError on invalid syntax
+        # No stray JSON-escape backslashes before quotes may appear anywhere
+        # (they are both a Jinja parse hazard and invalid HTML).
+        assert not re.search(r"\\\"", source), f"escaped-quote artifact in {path}"
