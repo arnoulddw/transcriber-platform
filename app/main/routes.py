@@ -216,6 +216,7 @@ def live():
             {
                 'code': model_code,
                 'display_name': current_app.config.get('API_PROVIDER_NAME_MAP', {}).get(model_code, model_code),
+                'provider': current_app.config.get('LIVE_TRANSCRIPTION_PROVIDERS', {}).get(model_code, 'openai'),
             }
             for model_code in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', [])
         ],

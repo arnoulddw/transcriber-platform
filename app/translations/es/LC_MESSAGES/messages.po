@@ -175,14 +175,13 @@ msgstr "Apellidos"
 msgid "Description"
 msgstr "Modelo de transcripción"
 
-#: app/forms.py:266
-msgid "Default Title Generation Model"
-msgstr "Modelo predeterminado para generación de títulos"
+#: app/forms.py:418
+msgid "Default Auxiliary LLM Model"
+msgstr "Modelo LLM auxiliar predeterminado"
 
-#: app/forms.py:272
-#, fuzzy
-msgid "Default Workflow Model"
-msgstr "Modelo predeterminado de flujos de trabajo"
+#: app/forms.py:424
+msgid "Default Workflow LLM Model"
+msgstr "Modelo LLM de workflow predeterminado"
 
 #: app/forms.py:279
 #, fuzzy

@@ -327,6 +327,32 @@ def get_api_key_records_by_user(
         return []
 
 
+def get_distinct_model_names() -> List[str]:
+    """Return the non-empty model names configured in user-managed API keys."""
+    cursor = get_cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT model_slug
+            FROM user_api_keys
+            WHERE model_slug IS NOT NULL AND TRIM(model_slug) <> ''
+            ORDER BY model_slug
+            """
+        )
+        rows = cursor.fetchall() or []
+    except MySQLError as err:
+        logging.error("[DB:UserApiKey] Error fetching distinct configured model names: %s", err, exc_info=True)
+        return []
+
+    model_names = []
+    for row in rows:
+        raw_name = row.get("model_slug") if isinstance(row, dict) else row[0]
+        model_name = str(raw_name or "").strip()
+        if model_name and model_name not in model_names:
+            model_names.append(model_name)
+    return model_names
+
+
 def get_api_keys_by_user(user_id: int) -> Dict[str, str]:
     keys: Dict[str, str] = {}
     for row in get_api_key_records_by_user(user_id):

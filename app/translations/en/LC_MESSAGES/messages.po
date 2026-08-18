@@ -168,13 +168,13 @@ msgstr "Role Name"
 msgid "Description"
 msgstr "Description"
 
-#: app/forms.py:266
-msgid "Default Title Generation Model"
-msgstr "Default Title Generation Model"
+#: app/forms.py:418
+msgid "Default Auxiliary LLM Model"
+msgstr "Default Auxiliary LLM Model"
 
-#: app/forms.py:272
-msgid "Default Workflow Model"
-msgstr "Default Workflow Model"
+#: app/forms.py:424
+msgid "Default Workflow LLM Model"
+msgstr "Default Workflow LLM Model"
 
 #: app/forms.py:279
 msgid "Use AssemblyAI API"
