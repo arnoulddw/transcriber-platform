@@ -55,7 +55,14 @@ def csrf_token():
     """Return a fresh CSRF token for long-lived pages before retrying AJAX requests."""
     if not current_user.is_authenticated:
         return jsonify({'error': _('Authentication required.')}), 401
-    return jsonify({'csrf_token': generate_csrf()})
+
+    response = jsonify({'csrf_token': generate_csrf()})
+    response.headers.update({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+    })
+    return response
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
