@@ -352,7 +352,10 @@ def manage_pricing():
         if not data:
             return jsonify(error="Invalid JSON payload"), 400
         try:
-            pricing_service.update_prices(data)
+            if {'item_type', 'item_key', 'price'} <= set(data):
+                pricing_service.update_price(data['item_type'], data['item_key'], data['price'])
+            else:
+                pricing_service.update_prices(data)
             return jsonify(success=True, message="Pricing updated successfully.")
         except PricingServiceError as e:
             logging.error(f"{log_prefix} Error updating pricing: {e}", exc_info=True)

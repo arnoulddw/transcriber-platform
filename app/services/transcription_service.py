@@ -268,23 +268,22 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 else:
                     speaker_diarization_enabled = False
                     logger.warning("Speaker diarization flag ignored due to missing permission.")
-            if api_choice == "openrouter":
-                if not api_model:
-                    raise ValueError("OpenRouter model is required.")
+            if api_model:
                 extra_transcription_options = extra_transcription_options or {}
                 extra_transcription_options["model"] = api_model
+            elif api_choice == 'openrouter':
+                raise ValueError("OpenRouter model is required.")
 
             api_key: Optional[str] = None
             mode = current_app.config['DEPLOYMENT_MODE']
             try:
                 if mode == 'multi':
                     key_service_name = 'openai' if api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe'] else api_choice
-                    if api_choice == 'openrouter':
-                        api_key = get_decrypted_api_key(
-                            user_id, key_service_name, model_slug=api_model
-                        )
-                    else:
-                        api_key = get_decrypted_api_key(user_id, key_service_name)
+                    api_key = get_decrypted_api_key(
+                        user_id,
+                        key_service_name,
+                        model_slug=api_model,
+                    )
 
                     if api_key:
                         logger.debug(f"Using user-specific API key for '{api_display_name}'.")
@@ -299,6 +298,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             key_env_var = None
                             if api_choice == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                             elif api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe']: key_env_var = 'OPENAI_API_KEY'
+                            elif api_choice.startswith('gpt-live-'): key_env_var = 'OPENAI_API_KEY'
                             elif api_choice == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'
                             
                             if key_env_var:
@@ -310,7 +310,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 elif mode == 'single':
                     key_env_var = None
                     if api_choice == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
-                    elif api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe']: key_env_var = 'OPENAI_API_KEY'
+                    elif api_choice in ['whisper', 'gpt-4o-transcribe', 'gpt-transcribe'] or api_choice.startswith('gpt-live-'): key_env_var = 'OPENAI_API_KEY'
                     elif api_choice == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'
                     if key_env_var: api_key = current_app.config.get(key_env_var)
                     if not api_key:

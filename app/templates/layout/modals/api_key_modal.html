@@ -29,89 +29,80 @@
                 <label for="apiKeyServiceSelect" class="form-label">{{ _('API Service') }}</label>
                 <select id="apiKeyServiceSelect" name="service" class="input-select">
                     <option value="" disabled selected>{{ _('Choose service') }}</option>
-                    <option value="openai">{{ _('OpenAI (Whisper/GPT-4o)') }}</option>
-                    <option value="assemblyai">{{ _('AssemblyAI (Universal)') }}</option>
-                    <option value="gemini">{{ _('Google (Gemini)') }}</option>
+                    <option value="openai">{{ _('OpenAI') }}</option>
+                    <option value="assemblyai">{{ _('AssemblyAI') }}</option>
+                    <option value="gemini">{{ _('Google') }}</option>
                     <option value="openrouter">{{ _('OpenRouter') }}</option>
                 </select>
+            </div>
+            <div>
+                <label for="apiKeyOpenrouterModel" class="form-label">{{ _('Model Name') }}</label>
+                <input id="apiKeyOpenrouterModel" type="text" name="model_name"
+                       class="input-control" autocomplete="off"
+                       placeholder="{{ _('gpt-4o-transcribe') }}">
+                <p class="form-hint">{{ _('Use the provider model name. Leave it blank to manage a legacy provider-wide key. OpenRouter models must use the vendor/model format.') }}</p>
+                <p id="openrouterModelHint" class="form-hint hidden">{{ _('Enter the model slug exactly as shown in OpenRouter, for ex. openai/gpt-4o-mini ') }}</p>
             </div>
             <div>
                 <label for="apiKeyInput" class="form-label">{{ _('API Key') }}</label>
                 <input id="apiKeyInput" type="password" name="api_key" class="input-control" autocomplete="off">
             </div>
-            <div id="openrouterModelSettings" class="space-y-3 hidden">
-                <div>
-                    <label for="apiKeyOpenrouterModel" class="form-label">{{ _('OpenRouter model slug') }}</label>
-                    <input id="apiKeyOpenrouterModel" type="text" name="openrouter_model"
-                           class="input-control" autocomplete="off"
-                           placeholder="openai/gpt-4o-mini" disabled>
-                    <p class="form-hint">{{ _('Enter the model slug exactly as shown in OpenRouter, for ex. openai/gpt-4o-mini ') }}</p>
+            <fieldset>
+                <legend class="form-label">{{ _('Use this model for') }}</legend>
+                <div id="modelPurpose" class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="{{ _('Model purpose') }}">
+                    <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
+                        <input class="peer sr-only" type="radio" name="model_purpose" value="transcription" checked>
+                        <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Transcription') }}</span>
+                    </label>
+                    <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
+                        <input class="peer sr-only" type="radio" name="model_purpose" value="llm">
+                        <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('LLM') }}</span>
+                    </label>
+                    <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
+                        <input class="peer sr-only" type="radio" name="model_purpose" value="live">
+                        <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Live') }}</span>
+                    </label>
                 </div>
-                <fieldset>
-                    <legend class="form-label">{{ _('Use this model for') }}</legend>
-                    <div id="openrouterModelPurpose" class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="{{ _('OpenRouter model purpose') }}">
-                        <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
-                            <input class="peer sr-only" type="radio" name="openrouter_model_purpose" value="transcription" checked disabled>
-                            <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Transcription') }}</span>
-                        </label>
-                        <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
-                            <input class="peer sr-only" type="radio" name="openrouter_model_purpose" value="llm" disabled>
-                            <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('LLM') }}</span>
-                        </label>
-                    </div>
-                    <p class="form-hint">{{ _('Choose whether this model should handle audio transcription or titles and workflows.') }}</p>
-                </fieldset>
-            </div>
+                <p class="form-hint">{{ _('Choose whether this model should handle audio transcription, live transcription, or titles and workflows.') }}</p>
+                <div id="liveModelSettings" class="hidden mt-3">
+                    <label for="apiKeyLiveModel" class="form-label">{{ _('Live transcription model') }}</label>
+                    <select id="apiKeyLiveModel" class="input-select" disabled>
+                        {% for model in live_transcription_models|default([]) %}
+                            <option value="{{ model.code }}" data-model-name="{{ model.code }}" data-provider="{{ model.provider|default('openai') }}">{{ model.display_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </fieldset>
             {{ ui.button(_('Save Key'), variant='primary', type='submit', icon='save', icon_position='end', extra_classes='btn-save') }}
         </form>
-        <div class="surface-divider"></div>
+        <div class="border-t-2 border-border-strong"></div>
         <h5 class="text-lg font-medium text-text-strong">{{ _('Configured Keys') }}</h5>
-        <ul class="divide-y divide-border-default">
+        <ul id="configuredApiKeyRows" class="divide-y divide-border-default">
             {% if user_permissions.use_api_openai_whisper
                   or user_permissions.use_api_openai_gpt_4o_transcribe
-                  or user_permissions.use_api_openai_live_transcribe %}
-            <li class="py-3 flex justify-between items-center">
-                <span class="text-sm text-text-strong">{{ _('OpenAI (Whisper/GPT/Live)') }}</span>
-                <div class="flex items-center">
-                    <span id="openaiKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
-                    <span id="openaiKeyActions"></span>
-                </div>
-            </li>
+                  or user_permissions.use_api_openai_live_transcribe
+                  or user_permissions.use_api_openai %}
+            <li id="openaiKeyRows" class="py-3"></li>
             {% endif %}
             {% if user_permissions.use_api_assemblyai %}
-            <li class="py-3 flex justify-between items-center">
-                <span class="text-sm text-text-strong">{{ _('AssemblyAI (Universal)') }}</span>
-                <div class="flex items-center">
-                    <span id="assemblyaiKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
-                    <span id="assemblyaiKeyActions"></span>
-                </div>
-            </li>
+            <li id="assemblyaiKeyRows" class="py-3"></li>
             {% endif %}
-            {% if user_permissions.use_api_google_gemini %}
-            <li class="py-3 flex justify-between items-center">
-                <span class="text-sm text-text-strong">{{ _('Google (Gemini)') }}</span>
-                <div class="flex items-center">
-                    <span id="geminiKeyStatus" class="text-sm text-text-muted mr-3">{{ _('Checking...') }}</span>
-                    <span id="geminiKeyActions"></span>
-                </div>
-            </li>
+            {% if user_permissions.use_api_google_gemini or user_permissions.use_api_google %}
+            <li id="geminiKeyRows" class="py-3"></li>
             {% endif %}
             {% if user_permissions.use_api_openrouter %}
-            <li id="openrouterKeyRows" class="hidden py-3"></li>
+            <li id="openrouterKeyRows" class="py-3"></li>
             {% endif %}
         </ul>
         {% if user_permissions.allow_public_api_access %}
-            <div class="surface-divider"></div>
+            <div class="border-t-2 border-border-strong"></div>
             <div class="space-y-3" id="publicApiKeySection">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-base font-semibold text-text-strong">{{ _('Public API Access') }}</p>
-                        <p class="text-sm text-text-muted">
-                            {{ _('Use this key to call the transcription API without logging in. Send it as') }}
-                            <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">Authorization: Bearer &lt;{{ _('YOUR_KEY') }}&gt;</code>
-                        </p>
-                    </div>
-                    <span id="publicApiKeyStatus" class="text-sm text-orange-600 font-medium ml-4 whitespace-nowrap">{{ _('Not Configured') }}</span>
+                <div>
+                    <p class="text-base font-semibold text-text-strong">{{ _('Public API Access') }}</p>
+                    <p class="text-sm text-text-muted">
+                        {{ _('Use this key to call the transcription API without logging in. Send it as') }}
+                        <code class="bg-gray-100 text-gray-800 px-1 py-0.5 rounded">Authorization: Bearer &lt;{{ _('YOUR_KEY') }}&gt;</code>
+                    </p>
                 </div>
                 <form id="publicApiKeyForm" class="space-y-3">
                     <div>

@@ -123,6 +123,7 @@ def test_workflow_start_uses_user_workflow_model(llm_app_context):
         transcription_id="transcription-1",
         prompt_id=None,
         status="pending",
+        model="google/gemini-3.7-flash",
     )
     thread_args = create_thread.call_args.kwargs["args"]
     assert thread_args[-2:] == ("OPENROUTER", "google/gemini-3.7-flash")

@@ -103,20 +103,45 @@ def _validate_gemini_api_key_format(api_key: str) -> bool:
         return True
     return False
 
+def _normalize_model_name(service: str, model_name: Optional[str], *, required: bool = False) -> Optional[str]:
+    """Normalize a provider-local model name while preserving legacy blanks."""
+    value = str(model_name or '').strip()
+    if not value:
+        if required:
+            raise ValueError("Model name is required.")
+        return None
+    if len(value) > 120 or any(char.isspace() for char in value):
+        raise ValueError("Model name must be 120 characters or fewer and contain no spaces.")
+    if service == 'openrouter':
+        return normalize_openrouter_model(value)
+    if '/' in value:
+        raise ValueError("Model name for this provider must not include '/'.")
+    return value
+
+
 def save_user_api_key(
     user_id: int,
     service: str,
     api_key: str,
+    model_name: Optional[str] = None,
+    model_purpose: str = 'transcription',
+    *,
+    # Backward-compatible keyword names used by older callers/tests.
     openrouter_model: Optional[str] = None,
-    openrouter_model_purpose: str = 'transcription',
+    openrouter_model_purpose: Optional[str] = None,
 ) -> bool:
-    """
-    Encrypts and saves or updates an API key for a specific user and service.
-    For OpenRouter, the key is scoped to the submitted model slug and the
-    model preference is persisted for transcription or LLM use.
-    Uses MySQL backend via models.
+    """Encrypt and save a provider/model-scoped API key.
+
+    A blank model name is accepted only for legacy provider-wide API clients;
+    the Manage API Keys UI always supplies one. OpenRouter retains its
+    vendor/model validation rules, while other providers use a provider-local
+    model name such as ``universal-3-5-pro``.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
+    if model_name is None:
+        model_name = openrouter_model
+    if openrouter_model_purpose and model_purpose == 'transcription':
+        model_purpose = openrouter_model_purpose
     if not service or not api_key:
         logger.error("Attempted to save empty service or API key.")
         raise ValueError("Service name and API key cannot be empty.")
@@ -127,16 +152,18 @@ def save_user_api_key(
         raise ValueError("Service name and API key cannot be empty.")
 
     allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
+    service = service.lower()
     if service not in allowed_services:
         logger.error(f"Attempted to save API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
-    service = service.lower()
+    if model_purpose not in ('transcription', 'llm', 'live'):
+        raise ValueError("Model purpose must be 'transcription', 'llm', or 'live'.")
 
-    normalized_openrouter_model = None
-    if service == 'openrouter':
-        if openrouter_model_purpose not in ('transcription', 'llm'):
-            raise ValueError("OpenRouter model purpose must be 'transcription' or 'llm'.")
-        normalized_openrouter_model = normalize_openrouter_model(openrouter_model)
+    normalized_model_name = _normalize_model_name(
+        service,
+        model_name,
+        required=service == 'openrouter',
+    )
 
     if service == 'gemini' and not _validate_gemini_api_key_format(api_key):
         logger.warning("Invalid Google Gemini API key format provided.")
@@ -148,9 +175,9 @@ def save_user_api_key(
             logger.error("User not found when trying to save API key.")
             raise UserNotFoundError(f"User with ID {user_id} not found.")
 
-        if service == 'openrouter' and api_key.startswith('***'):
+        if api_key.startswith('***'):
             existing_key = get_decrypted_api_key(
-                user_id, service, normalized_openrouter_model
+                user_id, service, normalized_model_name
             )
             if (
                 not existing_key
@@ -158,7 +185,7 @@ def save_user_api_key(
                 or api_key[3:] != existing_key[-3:]
             ):
                 raise ValueError(
-                    "Enter a complete OpenRouter API key or use the suggested saved key."
+                    "Enter a complete API key or use the suggested saved key."
                 )
             api_key = existing_key
 
@@ -170,37 +197,38 @@ def save_user_api_key(
             user_id,
             service,
             encrypted_key,
-            normalized_openrouter_model,
+            normalized_model_name,
         )
         if not success:
             logger.error(f"Failed to persist API key for service '{service}'.")
             raise DatabaseUpdateError("Failed to update API keys in the database.")
 
-        if service == 'openrouter':
-            if openrouter_model_purpose == 'transcription':
+        preference_field = None
+        preference_kwargs = {}
+        if model_purpose == 'live' and normalized_model_name:
+            preference_field = 'default_live_transcription_model'
+            preference_kwargs = {'default_live_transcription_model': normalized_model_name}
+        elif service == 'openrouter' and normalized_model_name:
+            if model_purpose == 'transcription':
                 preference_field = 'default_openrouter_model'
-                preference_updated = user_model.update_user_preferences(
-                    user_id,
-                    None,
-                    None,
-                    default_openrouter_model=normalized_openrouter_model,
-                )
-            else:
+                preference_kwargs = {'default_openrouter_model': normalized_model_name}
+            elif model_purpose == 'llm':
                 preference_field = 'default_openrouter_llm_model'
-                preference_updated = user_model.update_user_preferences(
-                    user_id,
-                    None,
-                    None,
-                    default_openrouter_llm_model=normalized_openrouter_model,
-                )
+                preference_kwargs = {'default_openrouter_llm_model': normalized_model_name}
+
+        if preference_kwargs:
+            preference_updated = user_model.update_user_preferences(
+                user_id, None, None, **preference_kwargs
+            )
             if not preference_updated:
                 refreshed_user = user_model.get_user_by_id(user_id)
-                if not refreshed_user or getattr(refreshed_user, preference_field, None) != normalized_openrouter_model:
-                    raise DatabaseUpdateError("Failed to persist the OpenRouter model preference.")
+                if not refreshed_user or getattr(refreshed_user, preference_field, None) != normalized_model_name:
+                    raise DatabaseUpdateError("Failed to persist the model preference.")
             logger.info(
-                "Saved OpenRouter model '%s' for purpose '%s'.",
-                normalized_openrouter_model,
-                openrouter_model_purpose,
+                "Saved model '%s' for service '%s' and purpose '%s'.",
+                normalized_model_name,
+                service,
+                model_purpose,
             )
 
         logger.debug(f"Successfully saved encrypted API key for service '{service}'.")
@@ -233,11 +261,11 @@ def get_decrypted_api_key(
     service = service.lower()
 
     normalized_model_slug = None
-    if service == "openrouter" and model_slug:
+    if model_slug:
         try:
-            normalized_model_slug = normalize_openrouter_model(model_slug)
+            normalized_model_slug = _normalize_model_name(service, model_slug, required=True)
         except ValueError as err:
-            logger.warning(f"Invalid OpenRouter model slug while fetching API key: {err}")
+            logger.warning(f"Invalid model name while fetching API key: {err}")
             return None
 
     try:
@@ -307,8 +335,8 @@ def delete_user_api_key(
         logger.error(f"Attempted to delete API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
     service = service.lower()
-    if service == 'openrouter' and model_slug is not None:
-        model_slug = normalize_openrouter_model(model_slug)
+    if model_slug is not None:
+        model_slug = _normalize_model_name(service, model_slug, required=True)
 
     try:
         user = user_model.get_user_by_id(user_id)
@@ -332,26 +360,34 @@ def delete_user_api_key(
         logger.error(f"Unexpected error deleting API key for service '{service}': {e}", exc_info=True)
         raise ApiKeyManagementError(f"An unexpected error occurred while deleting the API key for {service}.") from e
 
+
+def delete_user_api_key_by_id(user_id: int, key_id: int) -> None:
+    """Delete one provider/model key without widening a provider-wide delete."""
+    user = user_model.get_user_by_id(user_id)
+    if not user:
+        raise UserNotFoundError(f"User with ID {user_id} not found.")
+    if not user_api_key_model.delete_api_key_by_id(user_id, key_id):
+        raise KeyNotFoundError("API key not found.")
+
 def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
-    """
-    Checks which API keys are configured and returns safe OpenRouter metadata.
-    OpenRouter entries contain model slugs and only the final three key
-    characters; plaintext keys never leave the service layer.
-    """
+    """Return configured provider/model key metadata without plaintext keys."""
     logger = get_logger(__name__, user_id=user_id, component="UserService")
+    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
     status: Dict[str, Any] = {
-        'openai': False,
-        'assemblyai': False,
-        'gemini': False,
-        'openrouter': False,
+        provider: False for provider in providers
+    }
+    status.update({
+        'provider_keys': {provider: [] for provider in providers},
+        # Compatibility alias retained for existing catalog/profile callers.
         'openrouter_keys': [],
+        'live_model': None,
         'public_api': {
             'enabled': False,
             'last_four': None,
             'created_at': None,
             'keys': []
         }
-    }
+    })
     try:
         user = user_model.get_user_by_id(user_id)
         if not user:
@@ -362,50 +398,72 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         except Exception:
             allow_public = False
 
-        key_map = user_api_key_model.get_api_keys_by_user(user_id)
-        status['openai'] = bool(key_map.get('openai'))
-        status['assemblyai'] = bool(key_map.get('assemblyai'))
-        status['gemini'] = bool(key_map.get('gemini'))
-
-        openrouter_entries = []
-        seen_slugs = set()
         security_svc: SecurityService = get_security_service()
-        for record in user_api_key_model.get_api_key_records_by_user(
-            user_id, 'openrouter'
-        ):
+        provider_labels = {
+            'openai': 'OpenAI',
+            'assemblyai': 'AssemblyAI',
+            'gemini': 'Google',
+            'openrouter': 'OpenRouter',
+        }
+        records = user_api_key_model.get_api_key_records_by_user(user_id)
+        for record in records:
+            provider = str(record.get('provider_code') or '').lower()
+            if provider not in providers:
+                continue
             encrypted_key = record.get('encrypted_key')
             if not isinstance(encrypted_key, str) or not encrypted_key:
                 continue
             try:
                 decrypted_key = security_svc.decrypt_data(encrypted_key)
             except (InvalidToken, ValueError, TypeError):
-                logger.warning("Skipping an unreadable OpenRouter API key status entry.")
+                logger.warning("Skipping an unreadable API key status entry for provider '%s'.", provider)
                 continue
-
             if not decrypted_key:
                 continue
-            model_slug = str(record.get('model_slug') or '').strip()
-            if model_slug:
-                model_slugs = [model_slug]
+
+            model_name = str(record.get('model_slug') or '').strip()
+            if not model_name:
+                if provider == 'openrouter':
+                    legacy_names = [
+                        getattr(user, 'default_openrouter_model', None),
+                        getattr(user, 'default_openrouter_llm_model', None),
+                    ]
+                    model_names = [str(name).strip() for name in legacy_names if str(name or '').strip()]
+                    if not model_names:
+                        model_names = [provider_labels[provider]]
+                else:
+                    model_names = [provider_labels[provider]]
             else:
-                model_slugs = [
-                    getattr(user, 'default_openrouter_model', None),
-                    getattr(user, 'default_openrouter_llm_model', None),
-                ]
-                model_slugs = [slug for slug in model_slugs if slug]
-                if not model_slugs:
-                    model_slugs = ['OpenRouter']
+                model_names = [model_name]
 
-            for model_slug in model_slugs:
-                if model_slug in seen_slugs:
+            for model_name in model_names:
+                entry = {
+                    'key_id': record.get('id'),
+                    'model_name': model_name,
+                    'provider_wide': not bool(record.get('model_slug')),
+                    'last_three': decrypted_key[-3:],
+                }
+                if provider == 'openrouter':
+                    if record.get('model_slug'):
+                        entry['model_slug'] = model_name
+                existing_names = {
+                    item.get('model_name') or item.get('model_slug')
+                    for item in status['provider_keys'][provider]
+                }
+                if model_name in existing_names:
                     continue
-                seen_slugs.add(model_slug)
-                openrouter_entries.append(
-                    {'model_slug': model_slug, 'last_three': decrypted_key[-3:]}
-                )
+                status['provider_keys'][provider].append(entry)
 
-        status['openrouter_keys'] = openrouter_entries
-        status['openrouter'] = bool(openrouter_entries)
+        for provider in providers:
+            status[provider] = bool(status['provider_keys'][provider])
+        status['openrouter_keys'] = [
+            {
+                'model_slug': entry.get('model_slug'),
+                'last_three': entry.get('last_three'),
+            }
+            for entry in status['provider_keys']['openrouter']
+        ]
+        status['live_model'] = getattr(user, 'default_live_transcription_model', None)
         status['public_api'] = get_public_api_key_status(user_id) if allow_public else status['public_api']
 
         logger.debug(f"API Key status checked: {status}")
@@ -610,7 +668,8 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                Expected keys: 'username', 'email', 'first_name', 'last_name',
                               'default_content_language', 'default_transcription_model',
                               'default_title_generation_model', 'default_workflow_model',
-                              'default_openrouter_model', 'enable_auto_title_generation', 'language'.
+                              'default_openrouter_model', 'default_live_transcription_model',
+                              'enable_auto_title_generation', 'language'.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     logger.debug(f"Attempting to update profile with data: {data}")
@@ -627,6 +686,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     default_model = data.get('default_transcription_model')
     default_title_generation_model = data.get('default_title_generation_model')
     default_workflow_model = data.get('default_workflow_model')
+    default_live_transcription_model = data.get('default_live_transcription_model')
     default_openrouter_model_raw = data.get('default_openrouter_model')
     language = data.get('language')
     enable_auto_title_raw = data.get('enable_auto_title_generation')
@@ -641,6 +701,17 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         default_title_generation_model = default_title_generation_model.strip() or None
     if isinstance(default_workflow_model, str):
         default_workflow_model = default_workflow_model.strip() or None
+    live_model_present = 'default_live_transcription_model' in data
+    if isinstance(default_live_transcription_model, str):
+        default_live_transcription_model = default_live_transcription_model.strip() or None
+    if live_model_present:
+        allowed_live_models = {
+            str(model).strip()
+            for model in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', [])
+            if str(model).strip()
+        }
+        if default_live_transcription_model and default_live_transcription_model not in allowed_live_models:
+            raise ProfileUpdateError("The selected Live transcription model is not available.")
     language = None if language == "" else language
     if default_model == 'openrouter':
         raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
@@ -699,6 +770,10 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                     default_workflow_model != getattr(current_user_obj, 'default_workflow_model', None)
                 )
             )
+            or (
+                live_model_present
+                and default_live_transcription_model != getattr(current_user_obj, 'default_live_transcription_model', None)
+            )
         )
 
         if not core_info_changed and not prefs_changed:
@@ -726,6 +801,8 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                 preference_kwargs['default_title_generation_model'] = default_title_generation_model
             if 'default_workflow_model' in data:
                 preference_kwargs['default_workflow_model'] = default_workflow_model
+            if live_model_present:
+                preference_kwargs['default_live_transcription_model'] = default_live_transcription_model
             if user_model.update_user_preferences(
                 user_id,
                 default_language,

@@ -33,7 +33,7 @@ class OpenAIGPTTranscribeClient(OpenAIBaseTranscriptionClient):
         extra_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         api_params: Dict[str, Any] = {
-            "model": self.API_MODEL_PARAM,
+            "model": (extra_options or {}).get("model") or self.API_MODEL_PARAM,
             "response_format": "json",
         }
         if context_prompt:

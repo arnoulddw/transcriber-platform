@@ -9,11 +9,14 @@
         window.API_KEY_STATUS = JSON.parse('{{ initial_key_status|default({})|tojson|safe }}');
         window.DEFAULT_OPENROUTER_MODEL = {{ (effective_openrouter_model or '')|tojson|safe }};
         try {
-            window.TRANSCRIPTION_MODELS = JSON.parse('{{ TRANSCRIPTION_MODEL_CATALOG|tojson|safe }}');
+            window.TRANSCRIPTION_MODELS = JSON.parse('{{ TRANSCRIPTION_MODEL_CATALOG|default([])|tojson|safe }}');
         } catch (e) { window.TRANSCRIPTION_MODELS = []; console.error("Error parsing transcription model catalog:", e); }
         try {
             window.LLM_MODEL_CATALOG = JSON.parse('{{ LLM_MODEL_CATALOG|default([])|tojson|safe }}');
         } catch (e) { window.LLM_MODEL_CATALOG = []; console.error("Error parsing LLM model catalog:", e); }
+        try {
+            window.LIVE_TRANSCRIPTION_MODELS = JSON.parse('{{ LIVE_TRANSCRIPTION_MODELS|default([])|tojson|safe }}');
+        } catch (e) { window.LIVE_TRANSCRIPTION_MODELS = []; console.error("Error parsing Live model catalog:", e); }
         try {
             window.SUPPORTED_LANGUAGE_MAP = JSON.parse('{{ supported_languages|tojson|safe }}');
         } catch (e) { window.SUPPORTED_LANGUAGE_MAP = {}; console.error("Error parsing supported_languages map:", e); }

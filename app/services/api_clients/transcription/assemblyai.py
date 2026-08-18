@@ -74,9 +74,11 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
     def _prepare_api_params(self, language_code: str, context_prompt: str, response_format: str,
                             is_chunk: bool, extra_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Prepare the TranscriptionConfig parameters for AssemblyAI."""
-        # Ensure we always route to AssemblyAI's multilingual Universal model.
+        # Use the configured provider-local model when supplied; preserve the
+        # historical Universal fallback for legacy provider-wide keys.
+        model_name = (extra_options or {}).get('model') or 'universal'
         config_params: Dict[str, Any] = {
-            'speech_models': ['universal'],
+            'speech_models': [model_name],
         }
         log_lang_param_desc = ""
         ui_lang_msg = ""

@@ -86,7 +86,10 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% set periods = ['24h', '7d', '30d', 'all'] %}
-                        {% set api_display_map = transcription_models if transcription_models else {'gpt-transcribe': 'GPT Transcribe', 'gpt-4o-transcribe': 'GPT-4o', 'whisper': 'Whisper', 'assemblyai': 'AssemblyAI Universal'} %}
+                        {% set observed_apis = {} %}
+                        {% for period in periods %}{% for api_name in metrics.api_jobs_distribution.get(period, {}).keys() %}{% set _ = observed_apis.update({api_name: api_name}) %}{% endfor %}{% endfor %}
+                        {% set api_display_map = transcription_models.copy() if transcription_models else {} %}
+                        {% for api_name in observed_apis %}{% if api_name not in api_display_map %}{% set _ = api_display_map.update({api_name: api_name}) %}{% endif %}{% endfor %}
                         {% for api_name, display_name in api_display_map.items() %}
                         <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
                             <td data-label="API" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">{{ display_name }}</td>
@@ -121,7 +124,10 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% set periods = ['24h', '7d', '30d', 'all'] %}
-                        {% set api_display_map = transcription_models if transcription_models else {'gpt-transcribe': 'GPT Transcribe', 'gpt-4o-transcribe': 'GPT-4o', 'whisper': 'Whisper', 'assemblyai': 'AssemblyAI Universal'} %}
+                        {% set observed_apis = {} %}
+                        {% for period in periods %}{% for api_name in metrics.api_jobs_distribution.get(period, {}).keys() %}{% set _ = observed_apis.update({api_name: api_name}) %}{% endfor %}{% endfor %}
+                        {% set api_display_map = transcription_models.copy() if transcription_models else {} %}
+                        {% for api_name in observed_apis %}{% if api_name not in api_display_map %}{% set _ = api_display_map.update({api_name: api_name}) %}{% endif %}{% endfor %}
                         {% for api_name, display_name in api_display_map.items() %}
                         <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
                             <td data-label="API" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">{{ display_name }}</td>
@@ -278,7 +284,8 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% set periods = ['24h', '7d', '30d', 'all'] %}
-                        {% set workflow_display_map = supported_workflow_models if supported_workflow_models else metrics.get('workflow_model_display_map', {}) %}
+                        {% set workflow_display_map = metrics.get('workflow_model_display_map', {}).copy() %}
+                        {% for period in periods %}{% for model_id in metrics.workflow_model_distribution.get(period, {}).keys() %}{% if model_id not in workflow_display_map %}{% set _ = workflow_display_map.update({model_id: model_id}) %}{% endif %}{% endfor %}{% endfor %}
                         {% for model_id, display_name in workflow_display_map.items() %}
                         <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
                             <td data-label="Model" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">{{ display_name }}</td>

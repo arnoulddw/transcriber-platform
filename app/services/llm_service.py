@@ -159,9 +159,10 @@ def generate_text_via_llm(
 
             if key_service_name:
                 try:
-                    if key_service_name == "openrouter":
+                    model_for_key = kwargs.get('model')
+                    if model_for_key:
                         effective_api_key = user_service.get_decrypted_api_key(
-                            user_id, key_service_name, kwargs.get('model')
+                            user_id, key_service_name, model_for_key
                         )
                     else:
                         effective_api_key = user_service.get_decrypted_api_key(

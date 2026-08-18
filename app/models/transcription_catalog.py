@@ -134,23 +134,45 @@ def expand_models_for_ui(
     key_status: Optional[Dict[str, Any]] = None,
     fallback_openrouter_model: Optional[str] = None,
 ) -> List[Dict[str, Optional[str]]]:
-    """Expand provider-level catalog entries into selectable UI model entries."""
+    """Expand provider catalog entries into selectable provider/model entries."""
     status = key_status or {}
-    openrouter_slugs = [
-        str(entry.get("model_slug") or "").strip()
-        for entry in (status.get("openrouter_keys", []) or [])
-        if isinstance(entry, dict) and str(entry.get("model_slug") or "").strip()
-    ]
-    if not openrouter_slugs and fallback_openrouter_model:
-        openrouter_slugs = [fallback_openrouter_model.strip()]
+    provider_keys = status.get("provider_keys") or {}
+    legacy_openrouter_keys = status.get("openrouter_keys") or []
+    fallback_names = {
+        "openrouter": [fallback_openrouter_model] if fallback_openrouter_model else [],
+    }
 
     expanded: List[Dict[str, Optional[str]]] = []
     for model in models:
-        if model.get("code") != "openrouter" or not openrouter_slugs:
+        provider = str(model.get("code") or "").strip().lower()
+        raw_entries = provider_keys.get(provider) or (
+            legacy_openrouter_keys if provider == "openrouter" else []
+        )
+        if provider in {"whisper", "gpt-transcribe", "gpt-4o-transcribe"}:
+            raw_entries = provider_keys.get(provider) or provider_keys.get("openai") or []
+        names = []
+        for entry in raw_entries:
+            if not isinstance(entry, dict) or entry.get("provider_wide"):
+                continue
+            name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+            if name and name not in names:
+                names.append(name)
+        for name in fallback_names.get(provider, []):
+            if name and name not in names:
+                names.append(name)
+
+        if not names:
             expanded.append(dict(model))
             continue
-        for slug in openrouter_slugs:
-            expanded.append({**model, "model_slug": slug, "display_name": slug})
+        for name in names:
+            expanded.append({
+                **model,
+                "model_name": name,
+                "model_slug": name if provider == "openrouter" else None,
+                "display_name": name,
+            })
+    # Preserve the provider catalog entry when no saved model-specific key
+    # exists. The UI can still present the provider and request a model name.
     return expanded
 
 

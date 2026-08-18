@@ -260,7 +260,7 @@ def get_workflow_model_distribution(
 
     sql = f"""
         SELECT
-            lo.provider AS llm_operation_model_used,
+            COALESCE(lo.model, lo.provider) AS llm_operation_model_used,
             COUNT(t.id) AS count
         FROM transcriptions t
         JOIN llm_operations lo ON t.llm_operation_id = lo.id
@@ -277,7 +277,7 @@ def get_workflow_model_distribution(
         sql += f" AND {date_column_on_t} < %s"
         params.append(end_dt.isoformat(timespec='seconds'))
 
-    sql += " GROUP BY lo.provider"
+    sql += " GROUP BY COALESCE(lo.model, lo.provider)"
 
     cursor = get_cursor()
     distribution: Dict[str, int] = {}
@@ -372,6 +372,7 @@ def count_workflow_jobs_with_filters(
     transcription_status_in: Optional[Tuple[str, ...]] = None,
     llm_operation_status: Optional[str] = None,
     llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
 ) -> int:
     """
     Counts transcription jobs that have associated workflow operations matching the given criteria.
@@ -412,6 +413,9 @@ def count_workflow_jobs_with_filters(
     if llm_provider:
         sql += " AND lo.provider = %s"
         params.append(llm_provider)
+    if llm_model:
+        sql += " AND COALESCE(lo.model, lo.provider) = %s"
+        params.append(llm_model)
 
     cursor = get_cursor()
     count = 0

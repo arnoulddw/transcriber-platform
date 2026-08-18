@@ -56,6 +56,11 @@ class Config:
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY') # Placeholder for future LLM
     OPENAI_HTTP_TIMEOUT = 120
     LIVE_TRANSCRIPTION_MODEL = os.environ.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
+    LIVE_TRANSCRIPTION_MODELS = [
+        model.strip()
+        for model in os.environ.get('LIVE_TRANSCRIPTION_MODELS', LIVE_TRANSCRIPTION_MODEL).split(',')
+        if model.strip()
+    ]
     LIVE_TRANSCRIPTION_SESSION_MAX_RETRIES = int(
         os.environ.get('LIVE_TRANSCRIPTION_SESSION_MAX_RETRIES', '1')
     )
@@ -98,8 +103,8 @@ class Config:
 
     API_PROVIDER_NAME_MAP = {
         # Transcription Providers
-        "assemblyai": "AssemblyAI Universal",
-        "whisper": "OpenAI Whisper",
+        "assemblyai": "AssemblyAI",
+        "whisper": "OpenAI",
         "gpt-4o-transcribe": "OpenAI GPT-4o Transcribe",
         "gpt-transcribe": "OpenAI GPT Transcribe",
         "gpt-live-transcribe": "OpenAI GPT Live Transcribe",

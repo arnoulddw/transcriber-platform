@@ -154,8 +154,11 @@ class Role:
     default_title_generation_model: Optional[str]
     default_workflow_model: Optional[str]
     default_openrouter_model: Optional[str]
-    # Transcription API Permissions
+    default_live_transcription_model: Optional[str]
+    # Transcription API Permissions (provider-level; legacy model fields remain for migration compatibility)
+    use_api_openai: bool
     use_api_assemblyai: bool
+    use_api_google: bool
     use_api_openai_whisper: bool
     use_api_openai_gpt_4o_transcribe: bool
     use_api_openai_live_transcribe: bool
@@ -198,11 +201,26 @@ class Role:
         self.default_title_generation_model = kwargs.get('default_title_generation_model') or None
         self.default_workflow_model = kwargs.get('default_workflow_model') or None
         self.default_openrouter_model = kwargs.get('default_openrouter_model') or None
+        self.default_live_transcription_model = kwargs.get('default_live_transcription_model') or None
+        # Legacy rows may not contain provider-level fields. Derive those
+        # values only when the new columns are absent; once present they are
+        # authoritative and can be explicitly disabled by an administrator.
+        legacy_provider_aliases = {
+            'use_api_openai': (
+                'use_api_openai_whisper',
+                'use_api_openai_gpt_4o_transcribe',
+                'use_api_openai_live_transcribe',
+            ),
+            'use_api_google': ('use_api_google_gemini',),
+        }
+        for provider_field, legacy_fields in legacy_provider_aliases.items():
+            if provider_field not in kwargs:
+                kwargs[provider_field] = any(bool(kwargs.get(field)) for field in legacy_fields)
         # Process boolean fields
         bool_fields = [
-            'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
-            'use_api_openai_live_transcribe',
-            'use_api_google_gemini',
+            'use_api_openai', 'use_api_assemblyai', 'use_api_google',
+            'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+            'use_api_openai_live_transcribe', 'use_api_google_gemini',
             'use_api_openrouter',
             'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
             'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript', 'allow_workflows',
@@ -233,12 +251,17 @@ class Role:
         return f'<Role {self.name} (ID: {self.id})>'
 
     def has_permission(self, permission_name: str) -> bool:
-        # --- MODIFIED: Added use_api_google_gemini to valid prefixes (implicitly handled by use_) ---
         if not permission_name.startswith(('use_', 'allow_', 'access_', 'manage_')):
-        # --- END MODIFIED ---
             logging.warning(f"Attempted to check non-boolean permission '{permission_name}' with has_permission().")
             return False
-        return getattr(self, permission_name, False)
+        provider_permission_aliases = {
+            'use_api_openai_whisper': 'use_api_openai',
+            'use_api_openai_gpt_4o_transcribe': 'use_api_openai',
+            'use_api_openai_live_transcribe': 'use_api_openai',
+            'use_api_google_gemini': 'use_api_google',
+        }
+        effective_permission = provider_permission_aliases.get(permission_name, permission_name)
+        return bool(getattr(self, effective_permission, False))
 
     def get_limit(self, limit_name: str) -> int | float:
         if not limit_name.startswith(('limit_', 'max_', 'history_')):
@@ -254,14 +277,24 @@ def _map_row_to_role(row: Dict[str, Any]) -> Optional[Role]:
             row['max_minutes_monthly'] = row.pop('max_seconds_monthly')
         if 'max_seconds_total' in row:
             row['max_minutes_total'] = row.pop('max_seconds_total')
-        # --- MODIFIED: Ensure use_api_google_gemini is present ---
-        if 'use_api_google_gemini' not in row:
-            row['use_api_google_gemini'] = 0
-        if 'use_api_openrouter' not in row:
-            row['use_api_openrouter'] = 0
-        if 'use_api_openai_live_transcribe' not in row:
-            row['use_api_openai_live_transcribe'] = 0
-        # --- END MODIFIED ---
+        # Keep reads compatible with databases created before provider-level
+        # permissions were introduced.
+        if 'use_api_openai' not in row:
+            row['use_api_openai'] = int(any(
+                bool(row.get(field)) for field in (
+                    'use_api_openai_whisper',
+                    'use_api_openai_gpt_4o_transcribe',
+                    'use_api_openai_live_transcribe',
+                )
+            ))
+        if 'use_api_google' not in row:
+            row['use_api_google'] = int(bool(row.get('use_api_google_gemini')))
+        for field in (
+            'use_api_assemblyai', 'use_api_openrouter',
+            'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+            'use_api_openai_live_transcribe', 'use_api_google_gemini',
+        ):
+            row.setdefault(field, 0)
         if 'default_transcription_model' not in row:
             row['default_transcription_model'] = None
         if 'default_title_generation_model' not in row:
@@ -270,6 +303,8 @@ def _map_row_to_role(row: Dict[str, Any]) -> Optional[Role]:
             row['default_workflow_model'] = None
         if 'default_openrouter_model' not in row:
             row['default_openrouter_model'] = None
+        if 'default_live_transcription_model' not in row:
+            row['default_live_transcription_model'] = None
         if 'allow_auto_title_generation' not in row:
             row['allow_auto_title_generation'] = 0
         if 'allow_speaker_diarization' not in row:
@@ -295,10 +330,13 @@ def init_roles_table() -> None:
                 default_title_generation_model VARCHAR(100) DEFAULT NULL,
                 default_workflow_model VARCHAR(100) DEFAULT NULL,
                 default_openrouter_model VARCHAR(120) DEFAULT NULL,
+                default_live_transcription_model VARCHAR(120) DEFAULT NULL,
+                use_api_openai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_assemblyai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_whisper BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_gpt_4o_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_live_transcribe BOOLEAN NOT NULL DEFAULT FALSE,
+                use_api_google BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_google_gemini BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openrouter BOOLEAN NOT NULL DEFAULT FALSE,
                 access_admin_panel BOOLEAN NOT NULL DEFAULT FALSE,
@@ -359,6 +397,25 @@ def init_roles_table() -> None:
                        "VARCHAR(100) DEFAULT NULL", after="default_title_generation_model", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "default_openrouter_model",
                        "VARCHAR(120) DEFAULT NULL", after="default_workflow_model", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "default_live_transcription_model",
+                       "VARCHAR(120) DEFAULT NULL", after="default_openrouter_model", log_prefix=log_prefix)
+
+        openai_permission_exists = _column_exists(cursor, "roles", "use_api_openai")
+        _ensure_column(
+            cursor, "roles", None, "use_api_openai",
+            "BOOLEAN NOT NULL DEFAULT FALSE", after="default_openrouter_model", log_prefix=log_prefix
+        )
+        if not openai_permission_exists:
+            cursor.execute(
+                """
+                UPDATE roles
+                SET use_api_openai = (
+                    use_api_openai_whisper
+                    OR use_api_openai_gpt_4o_transcribe
+                    OR use_api_openai_live_transcribe
+                )
+                """
+            )
 
         cursor.execute("SHOW COLUMNS FROM roles LIKE 'use_api_openai_live_transcribe'")
         live_permission_exists = cursor.fetchone()
@@ -373,6 +430,13 @@ def init_roles_table() -> None:
         # --- MODIFIED: Add use_api_google_gemini column idempotently ---
         _ensure_column(cursor, "roles", None, "use_api_google_gemini",
                        "BOOLEAN NOT NULL DEFAULT FALSE", after="use_api_openai_live_transcribe", log_prefix=log_prefix)
+        google_permission_exists = _column_exists(cursor, "roles", "use_api_google")
+        _ensure_column(
+            cursor, "roles", None, "use_api_google",
+            "BOOLEAN NOT NULL DEFAULT FALSE", after="use_api_openai_live_transcribe", log_prefix=log_prefix
+        )
+        if not google_permission_exists:
+            cursor.execute("UPDATE roles SET use_api_google = use_api_google_gemini")
         _ensure_column(
             cursor, "roles", None, "use_api_openrouter",
             "BOOLEAN NOT NULL DEFAULT FALSE",
@@ -417,19 +481,32 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
     Creates a new role in the database.
     Handles renamed limit fields and new workflow fields.
     """
-    if permissions is None:
-        permissions = {}
+    permissions = dict(permissions or {})
+    # Keep the public provider-level permission contract compatible with
+    # callers that still submit the legacy model-level flags. Do not override
+    # an explicitly supplied provider permission.
+    if 'use_api_openai' not in permissions:
+        permissions['use_api_openai'] = any(
+            bool(permissions.get(field))
+            for field in (
+                'use_api_openai_whisper',
+                'use_api_openai_gpt_4o_transcribe',
+                'use_api_openai_live_transcribe',
+            )
+        )
+    if 'use_api_google' not in permissions:
+        permissions['use_api_google'] = bool(permissions.get('use_api_google_gemini'))
     logging.info(f"[DB:Role] create_role called with permissions: {permissions}")
-    # --- MODIFIED: Add use_api_google_gemini to valid columns ---
     valid_permission_columns = [
-        'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+        'use_api_openai', 'use_api_assemblyai',
+        'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
         'use_api_openai_live_transcribe',
-        'use_api_google_gemini', # Added
+        'use_api_google', 'use_api_google_gemini',
         'use_api_openrouter',
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
-        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model',
+        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model', 'default_live_transcription_model',
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
@@ -679,17 +756,29 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
     Handles renamed limit fields and new workflow fields.
     """
     log_prefix = f"[DB:Role:Update:{role_id}]"
-    # --- MODIFIED: Add use_api_google_gemini to updatable columns ---
+    role_data = dict(role_data or {})
+    if 'use_api_openai' not in role_data:
+        role_data['use_api_openai'] = any(
+            bool(role_data.get(field))
+            for field in (
+                'use_api_openai_whisper',
+                'use_api_openai_gpt_4o_transcribe',
+                'use_api_openai_live_transcribe',
+            )
+        )
+    if 'use_api_google' not in role_data:
+        role_data['use_api_google'] = bool(role_data.get('use_api_google_gemini'))
     updatable_columns = [
         'name', 'description',
-        'use_api_assemblyai', 'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
+        'use_api_openai', 'use_api_assemblyai',
+        'use_api_openai_whisper', 'use_api_openai_gpt_4o_transcribe',
         'use_api_openai_live_transcribe',
-        'use_api_google_gemini', # Added
+        'use_api_google', 'use_api_google_gemini',
         'use_api_openrouter',
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
-        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model',
+        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model', 'default_live_transcription_model',
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',

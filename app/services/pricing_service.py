@@ -43,6 +43,25 @@ def update_prices(pricing_data: Dict[str, Dict[str, float]]) -> None:
         raise PricingServiceError(f"Could not update prices: {e}")
 
 
+def update_price(item_type: str, item_key: str, price: float) -> None:
+    """Validate and save one catalog item's price."""
+    if item_type not in {'transcription', 'workflow', 'title_generation'}:
+        raise PricingServiceError("Invalid pricing section.")
+    if not item_key or not isinstance(item_key, str):
+        raise PricingServiceError("A model must be selected.")
+    try:
+        numeric_price = float(price)
+    except (TypeError, ValueError) as exc:
+        raise PricingServiceError("Price must be a number.") from exc
+    if numeric_price < 0:
+        raise PricingServiceError("Price cannot be negative.")
+    try:
+        pricing_model.update_prices({item_type: {item_key: numeric_price}})
+    except Exception as e:
+        logging.error("[SERVICE:Pricing:UpdateOne] Error updating price: %s", e, exc_info=True)
+        raise PricingServiceError(f"Could not update price: {e}") from e
+
+
 def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]:
     """
     Retrieves the price for a given item type.
@@ -65,6 +84,8 @@ def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]
     log_prefix = f"[SERVICE:Pricing:{key_to_use}:{item_type}]"
 
     try:
+        if not key_to_use:
+            return None
         # Standardize on lowercase for all lookups
         item_key_to_use = key_to_use.lower()
         type_to_use = item_type.lower()

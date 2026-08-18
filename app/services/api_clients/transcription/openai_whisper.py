@@ -35,7 +35,7 @@ class OpenAIWhisperTranscriptionAPI(OpenAIBaseTranscriptionClient):
                             is_chunk: bool, extra_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Prepare the dictionary of parameters for the Whisper API call."""
         api_params: Dict[str, Any] = {
-            "model": self.MODEL_NAME,
+            "model": (extra_options or {}).get("model") or self.MODEL_NAME,
             "prompt": context_prompt
         }
         log_lang_param_desc = ""

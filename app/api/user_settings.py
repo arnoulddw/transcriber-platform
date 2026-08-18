@@ -54,10 +54,12 @@ def get_user_readiness():
             role = user_obj.role 
             permissions = {
                 'use_api_assemblyai': role.has_permission('use_api_assemblyai'),
+                'use_api_openai': role.has_permission('use_api_openai'),
                 'use_api_openai_whisper': role.has_permission('use_api_openai_whisper'),
                 'use_api_openai_gpt_4o_transcribe': role.has_permission('use_api_openai_gpt_4o_transcribe'),
                 'use_api_openai_live_transcribe': role.has_permission('use_api_openai_live_transcribe'),
                 'use_api_google_gemini': role.has_permission('use_api_google_gemini'),
+                'use_api_google': role.has_permission('use_api_google'),
                 'use_api_openrouter': role.has_permission('use_api_openrouter'),
                 'allow_large_files': role.has_permission('allow_large_files'),
                 'allow_context_prompt': role.has_permission('allow_context_prompt'),
@@ -250,8 +252,8 @@ def save_api_key():
                 user_id,
                 service,
                 api_key,
-                openrouter_model=form.openrouter_model.data,
-                openrouter_model_purpose=form.openrouter_model_purpose.data,
+                model_name=form.model_name.data or form.openrouter_model.data,
+                model_purpose=form.model_purpose.data or form.openrouter_model_purpose.data,
             )
             logging.info(f"{log_prefix} API key for service '{service}' saved successfully.")
             return jsonify({'message': _('API key for %(service)s saved successfully.', service=service)}), 200
@@ -285,12 +287,12 @@ def delete_api_key(service):
 
     logging.info(f"{log_prefix} Attempting to delete API key.")
     try:
-        model_slug = request.args.get('model') if service == 'openrouter' else None
-        user_service.delete_user_api_key(
-            user_id,
-            service,
-            model_slug=model_slug,
-        )
+        key_id = request.args.get('key_id', type=int)
+        if key_id is not None:
+            user_service.delete_user_api_key_by_id(user_id, key_id)
+        else:
+            model_slug = request.args.get('model')
+            user_service.delete_user_api_key(user_id, service, model_slug=model_slug)
         logging.info(f"{log_prefix} API key deleted successfully.")
         return jsonify({'message': _('API key for %(service)s deleted successfully.', service=service)}), 200
     except KeyNotFoundError as e:
@@ -326,6 +328,7 @@ def get_profile():
             'default_workflow_model': getattr(user_obj, 'default_workflow_model', None),
             'default_openrouter_model': user_obj.default_openrouter_model,
             'default_openrouter_llm_model': user_obj.default_openrouter_llm_model,
+            'default_live_transcription_model': getattr(user_obj, 'default_live_transcription_model', None),
             'oauth_provider': user_obj.oauth_provider,
             'enable_auto_title_generation': user_obj.enable_auto_title_generation,
             'language': user_obj.language
@@ -360,7 +363,11 @@ def update_profile():
             validated_profile_data = dict(form.data)
             # Preserve older API clients: an omitted new preference should not
             # clear a value that was previously saved for the user.
-            for preference_field in ('default_title_generation_model', 'default_workflow_model'):
+            for preference_field in (
+                'default_title_generation_model',
+                'default_workflow_model',
+                'default_live_transcription_model',
+            ):
                 if preference_field not in (form_data or {}):
                     validated_profile_data.pop(preference_field, None)
             user_service.update_profile(user_id, validated_profile_data)

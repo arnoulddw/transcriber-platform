@@ -48,21 +48,31 @@ function initializeApiKeyModalElements() {
     return true;
 }
 
-function getOpenRouterKeyEntries() {
+function getProviderKeyEntries(service) {
     const status = window.API_KEY_STATUS || {};
-    return Array.isArray(status.openrouter_keys) ? status.openrouter_keys : [];
+    if (status.provider_keys && Array.isArray(status.provider_keys[service])) {
+        return status.provider_keys[service];
+    }
+    const legacyEntries = status[`${service}_keys`];
+    if (Array.isArray(legacyEntries)) return legacyEntries;
+    return service === 'openrouter' && Array.isArray(status.openrouter_keys)
+        ? status.openrouter_keys
+        : [];
 }
 
-function setOpenRouterApiKeySuggestion(force = false) {
+function setApiKeySuggestion(force = false) {
     const serviceSelect = document.getElementById('apiKeyServiceSelect');
     const keyInput = document.getElementById('apiKeyInput');
     const modelInput = document.getElementById('apiKeyOpenrouterModel');
-    if (!serviceSelect || !keyInput || !modelInput || serviceSelect.value !== 'openrouter') return;
+    if (!serviceSelect || !keyInput || !modelInput || !serviceSelect.value) return;
 
-    const requestedSlug = modelInput.value.trim();
-    const entries = getOpenRouterKeyEntries();
-    const suggestion = entries.find(entry => requestedSlug && entry.model_slug === requestedSlug) || entries[0];
-    const mask = suggestion && suggestion.last_three ? `***${suggestion.last_three}` : '';
+    const requestedModel = modelInput.value.trim();
+    const entries = getProviderKeyEntries(serviceSelect.value);
+    const suggestion = entries.find(entry =>
+        requestedModel && (entry.model_name || entry.model_slug) === requestedModel
+    ) || entries[0];
+    const suffix = suggestion && (suggestion.last_three || suggestion.lastThree);
+    const mask = suffix ? `***${suffix}` : '';
 
     if (!force && keyInput.value && keyInput.value !== openRouterSuggestedMask) return;
     openRouterSuggestedMask = mask;
@@ -70,29 +80,46 @@ function setOpenRouterApiKeySuggestion(force = false) {
     keyInput.value = mask;
 }
 
-function updateOpenRouterModelSettings(service) {
-    const settings = document.getElementById('openrouterModelSettings');
+// Kept as a compatibility alias for pages or tests that still call the old
+// OpenRouter-specific helper.
+function setOpenRouterApiKeySuggestion(force = false) {
+    setApiKeySuggestion(force);
+}
+
+function updateModelSettings(service) {
     const modelInput = document.getElementById('apiKeyOpenrouterModel');
     const keyInput = document.getElementById('apiKeyInput');
-    const purposeInputs = document.querySelectorAll('input[name="openrouter_model_purpose"]');
-    if (!settings || !modelInput) return;
+    const openrouterHint = document.getElementById('openrouterModelHint');
+    const liveSettings = document.getElementById('liveModelSettings');
+    const liveModelSelect = document.getElementById('apiKeyLiveModel');
+    const purposeInputs = document.querySelectorAll('input[name="model_purpose"]');
+    if (!modelInput) return;
 
-    const show = service === 'openrouter';
-    settings.classList.toggle('hidden', !show);
-    modelInput.disabled = !show;
-    purposeInputs.forEach(input => {
-        input.disabled = !show;
-    });
+    if (openrouterHint) openrouterHint.classList.toggle('hidden', service !== 'openrouter');
+    purposeInputs.forEach(input => { input.disabled = !service; });
+    if (liveModelSelect) liveModelSelect.disabled = !service;
 
-    if (show) {
-        setOpenRouterApiKeySuggestion(true);
-    } else {
-        openRouterSuggestedMask = '';
-        if (keyInput) {
-            keyInput.type = 'password';
-            keyInput.value = '';
+    const selectedPurpose = document.querySelector('input[name="model_purpose"]:checked')?.value || 'transcription';
+    const showLive = selectedPurpose === 'live';
+    if (liveSettings) liveSettings.classList.toggle('hidden', !showLive);
+
+    if (showLive && liveModelSelect && liveModelSelect.value) {
+        const selectedOption = liveModelSelect.options[liveModelSelect.selectedIndex];
+        modelInput.value = selectedOption?.dataset.modelName || liveModelSelect.value;
+        if (selectedOption?.dataset.provider && service !== selectedOption.dataset.provider) {
+            const providerSelect = document.getElementById('apiKeyServiceSelect');
+            if (providerSelect && providerSelect.querySelector(`option[value="${selectedOption.dataset.provider}"]`)) {
+                providerSelect.value = selectedOption.dataset.provider;
+                service = selectedOption.dataset.provider;
+            }
         }
     }
+    setApiKeySuggestion(true);
+}
+
+// Compatibility alias used by older callers.
+function updateOpenRouterModelSettings(service) {
+    updateModelSettings(service);
 }
 
 function openApiKeyModalDialog() {
@@ -241,17 +268,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const apiKeyServiceSelect = document.getElementById('apiKeyServiceSelect');
     if (apiKeyServiceSelect) {
         apiKeyServiceSelect.addEventListener('change', () => {
-            updateOpenRouterModelSettings(apiKeyServiceSelect.value);
+            updateModelSettings(apiKeyServiceSelect.value);
         });
-        updateOpenRouterModelSettings(apiKeyServiceSelect.value);
+        updateModelSettings(apiKeyServiceSelect.value);
     }
 
     const apiKeyInput = document.getElementById('apiKeyInput');
-    const openrouterModelInput = document.getElementById('apiKeyOpenrouterModel');
-    if (openrouterModelInput) {
-        openrouterModelInput.addEventListener('input', () => {
-            setOpenRouterApiKeySuggestion();
+    const modelNameInput = document.getElementById('apiKeyOpenrouterModel');
+    const liveModelSelect = document.getElementById('apiKeyLiveModel');
+    const purposeInputs = document.querySelectorAll('input[name="model_purpose"]');
+    if (modelNameInput) {
+        modelNameInput.addEventListener('input', () => {
+            setApiKeySuggestion();
         });
+    }
+    purposeInputs.forEach(input => {
+        input.addEventListener('change', () => updateModelSettings(apiKeyServiceSelect?.value || ''));
+    });
+    if (liveModelSelect) {
+        liveModelSelect.addEventListener('change', () => updateModelSettings(apiKeyServiceSelect?.value || ''));
     }
     if (apiKeyInput) {
         apiKeyInput.addEventListener('input', () => {
@@ -287,17 +322,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 function updatePublicApiKeySection(publicStatus) {
-    if (!publicApiKeyStatusEl || !publicApiKeyValueInput || !publicApiCopyBtn) return;
+    if (!publicApiKeyValueInput || !publicApiCopyBtn) return;
     const status = publicStatus || {};
     const keys = Array.isArray(status.keys) ? status.keys : [];
     const enabled = Boolean(status && status.enabled);
 
-    if (enabled) {
-        publicApiKeyStatusEl.textContent = keys.length === 1 ? '1 Active' : `${keys.length} Active`;
-        publicApiKeyStatusEl.className = 'text-sm text-green-600 font-medium';
-    } else {
-        publicApiKeyStatusEl.textContent = 'Not Configured';
-        publicApiKeyStatusEl.className = 'text-sm text-orange-600 font-medium';
+    if (publicApiKeyStatusEl) {
+        publicApiKeyStatusEl.textContent = enabled ? 'Configured' : 'Not Configured';
+        publicApiKeyStatusEl.className = enabled
+            ? 'text-sm text-green-600 font-medium'
+            : 'text-sm text-orange-600 font-medium';
     }
 
     if (lastGeneratedPublicApiKey) {
@@ -479,13 +513,18 @@ function handleRevokePublicApiKey(button) {
 }
 
 
-function renderOpenRouterKeyRows(keys) {
-    const container = document.getElementById('openrouterKeyRows');
+function renderProviderKeyRows(service, keys) {
+    const container = document.getElementById(`${service}KeyRows`);
     if (!container) return;
 
     const entries = Array.isArray(keys) ? keys : [];
+    const providerLabels = {
+        openai: 'OpenAI',
+        assemblyai: 'AssemblyAI',
+        gemini: 'Google',
+        openrouter: 'OpenRouter',
+    };
     container.innerHTML = '';
-    container.classList.remove('hidden');
     container.className = 'py-3 space-y-3';
 
     if (entries.length === 0) {
@@ -493,7 +532,7 @@ function renderOpenRouterKeyRows(keys) {
         row.className = 'flex justify-between items-center';
         const label = document.createElement('span');
         label.className = 'text-sm text-text-strong';
-        label.textContent = 'OpenRouter';
+        label.textContent = providerLabels[service] || service;
         const status = document.createElement('span');
         status.className = 'text-sm text-orange-500';
         status.textContent = 'Not Configured';
@@ -508,8 +547,10 @@ function renderOpenRouterKeyRows(keys) {
 
         const label = document.createElement('span');
         label.className = 'text-sm text-text-strong';
-        const modelSlug = entry.model_slug || 'OpenRouter';
-        label.textContent = modelSlug === 'OpenRouter' ? modelSlug : `${modelSlug} (OpenRouter)`;
+        const modelName = entry.model_name || entry.model_slug || providerLabels[service] || service;
+        label.textContent = modelName === providerLabels[service]
+            ? modelName
+            : `${modelName} (${providerLabels[service] || service})`;
 
         const actions = document.createElement('div');
         actions.className = 'flex items-center';
@@ -520,19 +561,21 @@ function renderOpenRouterKeyRows(keys) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.className = 'delete-key-btn p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500';
-        deleteBtn.dataset.service = 'openrouter';
-        if (entry.model_slug && entry.model_slug !== 'OpenRouter') {
-            deleteBtn.dataset.modelSlug = entry.model_slug;
+        deleteBtn.dataset.service = service;
+        if (entry.key_id) deleteBtn.dataset.keyId = entry.key_id;
+        if (!entry.provider_wide && (entry.model_name || entry.model_slug)) {
+            deleteBtn.dataset.modelSlug = entry.model_name || entry.model_slug;
         }
         deleteBtn.setAttribute('aria-label', `Delete ${label.textContent} key`);
-        const deleteIcon = document.createElement('i');
-        deleteIcon.className = 'material-icons text-base';
-        deleteIcon.textContent = 'delete';
-        deleteBtn.appendChild(deleteIcon);
+        deleteBtn.innerHTML = '<i class="material-icons text-base">delete</i>';
         actions.append(status, deleteBtn);
         row.append(label, actions);
         container.appendChild(row);
     });
+}
+
+function renderOpenRouterKeyRows(keys) {
+    renderProviderKeyRows('openrouter', keys);
 }
 
 /**
@@ -542,110 +585,56 @@ function renderOpenRouterKeyRows(keys) {
  */
 function fetchApiKeyStatus() {
     window.logger.debug(userSettingsLogPrefix, "Fetching API key status...");
-    return new Promise((resolve, reject) => {
-        const openaiStatusElem = document.getElementById('openaiKeyStatus');
-        const assemblyaiStatusElem = document.getElementById('assemblyaiKeyStatus');
-        const geminiStatusElem = document.getElementById('geminiKeyStatus');
-        const openaiActionsElem = document.getElementById('openaiKeyActions');
-        const assemblyaiActionsElem = document.getElementById('assemblyaiKeyActions'); // Corrected ID
-        const geminiActionsElem = document.getElementById('geminiKeyActions');
+    const permissions = window.USER_PERMISSIONS || {};
+    const providerPermissions = {
+        openai: permissions.use_api_openai || permissions.use_api_openai_whisper
+            || permissions.use_api_openai_gpt_4o_transcribe || permissions.use_api_openai_live_transcribe,
+        assemblyai: permissions.use_api_assemblyai,
+        gemini: permissions.use_api_google || permissions.use_api_google_gemini,
+        openrouter: permissions.use_api_openrouter,
+    };
 
-        const permissions = window.USER_PERMISSIONS || {};
-        const canUseOpenAI = permissions.use_api_openai_whisper
-            || permissions.use_api_openai_gpt_4o_transcribe
-            || permissions.use_api_openai_live_transcribe;
-        const canUseAssemblyAI = permissions.use_api_assemblyai;
-        const canUseGemini = permissions.use_api_google_gemini;
-        const canUseOpenRouter = permissions.use_api_openrouter;
-
-        if (canUseOpenAI && openaiStatusElem && openaiActionsElem) {
-            updateStatusElement(openaiStatusElem, openaiActionsElem, null, 'openai', 'Checking...');
-        } else if (canUseOpenAI) {
-            window.logger.debug(userSettingsLogPrefix, "OpenAI status elements not found (but permission exists), skipping initial reset.");
-        }
-
-        if (canUseAssemblyAI && assemblyaiStatusElem && assemblyaiActionsElem) {
-            updateStatusElement(assemblyaiStatusElem, assemblyaiActionsElem, null, 'assemblyai', 'Checking...');
-        } else if (canUseAssemblyAI) {
-            window.logger.debug(userSettingsLogPrefix, "AssemblyAI status elements not found (but permission exists), skipping initial reset.");
-        }
-
-        if (canUseGemini && geminiStatusElem && geminiActionsElem) {
-            updateStatusElement(geminiStatusElem, geminiActionsElem, null, 'gemini', 'Checking...');
-        } else if (canUseGemini) {
-            window.logger.debug(userSettingsLogPrefix, "Gemini status elements not found (but permission exists), skipping initial reset.");
-        }
-
-
-        fetch('/api/user/keys', {
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken }
-        })
-        .then(response => {
-            if (response.status === 401) throw new Error('Authentication required (401)');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            window.logger.info(userSettingsLogPrefix, "API Key status received:", data);
-
-            if (canUseOpenAI && openaiStatusElem && openaiActionsElem) {
-                updateStatusElement(openaiStatusElem, openaiActionsElem, data.openai, 'openai');
-            } else if (canUseOpenAI) {
-                window.logger.debug(userSettingsLogPrefix, "OpenAI status elements not found (but permission exists), skipping update.");
-            }
-
-            if (canUseAssemblyAI && assemblyaiStatusElem && assemblyaiActionsElem) {
-                updateStatusElement(assemblyaiStatusElem, assemblyaiActionsElem, data.assemblyai, 'assemblyai');
-            } else if (canUseAssemblyAI) {
-                window.logger.debug(userSettingsLogPrefix, "AssemblyAI status elements not found (but permission exists), skipping update.");
-            }
-
-            if (canUseGemini && geminiStatusElem && geminiActionsElem) {
-                updateStatusElement(geminiStatusElem, geminiActionsElem, data.gemini, 'gemini');
-            } else if (canUseGemini) {
-                window.logger.debug(userSettingsLogPrefix, "Gemini status elements not found (but permission exists), skipping update.");
-            }
-
-            if (canUseOpenRouter) {
-                renderOpenRouterKeyRows(data.openrouter_keys);
-            }
-
-            window.API_KEY_STATUS = data || {};
-            setOpenRouterApiKeySuggestion();
-            updatePublicApiKeySection(data.public_api);
-
-            if (typeof window.updateApiKeyNotificationVisibility === 'function') {
-                window.updateApiKeyNotificationVisibility(data, permissions);
-            } else {
-                window.logger.error(userSettingsLogPrefix, "updateApiKeyNotificationVisibility function not found.");
-            }
-
-            resolve(data);
-        })
-        .catch(error => {
-            window.logger.error(userSettingsLogPrefix, 'Error fetching API key status:', error);
-            window.showNotification(`Error fetching key status: ${escapeHtml(error.message)}`, 'error', 6000, false);
-
-            if (canUseOpenAI && openaiStatusElem && openaiActionsElem) {
-                updateStatusElement(openaiStatusElem, openaiActionsElem, false, 'openai', 'Error');
-            }
-            if (canUseAssemblyAI && assemblyaiStatusElem && assemblyaiActionsElem) {
-                updateStatusElement(assemblyaiStatusElem, assemblyaiActionsElem, false, 'assemblyai', 'Error');
-            }
-            if (canUseGemini && geminiStatusElem && geminiActionsElem) {
-                updateStatusElement(geminiStatusElem, geminiActionsElem, false, 'gemini', 'Error');
-            }
-            if (canUseOpenRouter) {
-                renderOpenRouterKeyRows([]);
-            }
-            updatePublicApiKeySection(null);
-
-            if (error.message.includes('Authentication required')) {
-                closeApiKeyModalDialog(); // Close the new modal
-            }
-            reject(error);
+    return fetch('/api/user/keys', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken }
+    })
+    .then(response => {
+        if (response.status === 401) throw new Error('Authentication required (401)');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        window.logger.info(userSettingsLogPrefix, "API Key status received:", data);
+        window.API_KEY_STATUS = data || {};
+        const providerKeys = data.provider_keys || {};
+        Object.entries(providerPermissions).forEach(([service, allowed]) => {
+            if (!allowed) return;
+            const entries = Array.isArray(providerKeys[service])
+                ? providerKeys[service]
+                : getProviderKeyEntries(service);
+            renderProviderKeyRows(service, entries);
         });
+        setApiKeySuggestion();
+
+        if (typeof window.updateApiKeyNotificationVisibility === 'function') {
+            window.updateApiKeyNotificationVisibility(data, permissions);
+        } else {
+            window.logger.error(userSettingsLogPrefix, "updateApiKeyNotificationVisibility function not found.");
+        }
+        updatePublicApiKeySection(data.public_api);
+        return data;
+    })
+    .catch(error => {
+        window.logger.error(userSettingsLogPrefix, 'Error fetching API key status:', error);
+        window.showNotification(`Error fetching key status: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        Object.entries(providerPermissions).forEach(([service, allowed]) => {
+            if (allowed) renderProviderKeyRows(service, []);
+        });
+        updatePublicApiKeySection(null);
+        if (error.message.includes('Authentication required')) {
+            closeApiKeyModalDialog();
+        }
+        throw error;
     });
 }
 
@@ -711,37 +700,50 @@ function handleApiKeySave(event) {
     const form = event.target;
     const serviceSelect = document.getElementById('apiKeyServiceSelect');
     const keyInput = document.getElementById('apiKeyInput');
-    const openrouterModelInput = document.getElementById('apiKeyOpenrouterModel');
+    const modelNameInput = document.getElementById('apiKeyOpenrouterModel');
+    const liveModelSelect = document.getElementById('apiKeyLiveModel');
     const submitButton = form.querySelector('button[type="submit"]');
 
-    const service = serviceSelect.value;
-    const apiKey = keyInput.value.trim();
-    const isMaskedOpenRouterKey = service === 'openrouter' && /^\*{3}.{3}$/.test(apiKey);
+    const service = serviceSelect?.value || '';
+    const purpose = document.querySelector('input[name="model_purpose"]:checked')?.value || 'transcription';
+    if (purpose === 'live' && liveModelSelect?.value && modelNameInput) {
+        modelNameInput.value = liveModelSelect.value;
+    }
+    const modelName = modelNameInput?.value.trim() || '';
+    const apiKey = keyInput?.value.trim() || '';
+    const isMaskedKey = /^\*{3}.{3}$/.test(apiKey);
 
     if (!service) {
         window.showNotification('Please select an API service.', 'warning', 4000, false);
+        return;
+    }
+    if (!modelName && service === 'openrouter') {
+        window.showNotification('Please enter an OpenRouter model slug.', 'warning', 4000, false);
         return;
     }
     if (!apiKey) {
         window.showNotification('Please enter an API key.', 'warning', 4000, false);
         return;
     }
-    if (apiKey.length < 10 && !isMaskedOpenRouterKey) {
+    if (apiKey.length < 10 && !isMaskedKey) {
          window.showNotification('API key seems too short.', 'warning', 4000, false);
          return;
     }
-    if (service === 'openrouter' && (!openrouterModelInput || !openrouterModelInput.value.trim() || !openrouterModelInput.value.includes('/'))) {
+    if (service === 'openrouter' && !modelName.includes('/')) {
         window.showNotification('Please enter an OpenRouter model slug such as openai/gpt-4o-mini.', 'warning', 5000, false);
         return;
     }
 
     const originalButtonHtml = submitButton.innerHTML;
-    keyInput.value = apiKey;
     submitButton.disabled = true;
     submitButton.innerHTML = 'Saving... <span class="spinner ml-2 inline-block" style="width: 1em; height: 1em; border-width: .15em;"></span>';
 
-
     const formData = new FormData(form);
+    // Keep both names in the request while older API clients migrate.
+    formData.set('model_name', modelName);
+    formData.set('openrouter_model', modelName);
+    formData.set('model_purpose', purpose);
+    formData.set('openrouter_model_purpose', purpose);
 
     fetch('/api/user/keys', {
         method: 'POST',
@@ -753,9 +755,7 @@ function handleApiKeySave(event) {
     })
     .then(response => {
         if (!response.ok) {
-            return response.json().catch(() => {
-                return { error: `HTTP error! Status: ${response.status}` };
-            }).then(errData => {
+            return response.json().catch(() => ({ error: `HTTP error! Status: ${response.status}` })).then(errData => {
                 throw new Error(errData.error || `Save failed: ${response.statusText}`);
             });
         }
@@ -768,17 +768,15 @@ function handleApiKeySave(event) {
         keyInput.type = 'password';
         openRouterSuggestedMask = '';
         serviceSelect.value = '';
-        if (openrouterModelInput) openrouterModelInput.value = '';
-        const transcriptionPurpose = document.querySelector('input[name="openrouter_model_purpose"][value="transcription"]');
+        if (modelNameInput) modelNameInput.value = '';
+        const transcriptionPurpose = document.querySelector('input[name="model_purpose"][value="transcription"]');
         if (transcriptionPurpose) transcriptionPurpose.checked = true;
-        updateOpenRouterModelSettings(serviceSelect.value);
-        // No M.FormSelect.init needed for Tailwind select if it's a basic HTML select
-
+        updateModelSettings(serviceSelect.value);
         return fetchApiKeyStatus();
     })
     .then(() => {
         if (typeof window.invalidateReadinessCache === 'function') {
-            window.invalidateReadinessCache(); // Invalidate cache
+            window.invalidateReadinessCache();
         }
         if (typeof checkTranscribeButtonState === 'function') {
             window.logger.info(logPrefix, "Triggering main page UI update after save.");
@@ -793,12 +791,12 @@ function handleApiKeySave(event) {
             window.showNotification(`Error saving key: ${escapeHtml(error.message)}`, 'error', 6000, false);
         }
         if (error.message.includes('Authentication required')) {
-            closeApiKeyModalDialog(); // Close the new modal
+            closeApiKeyModalDialog();
         }
     })
     .finally(() => {
         submitButton.disabled = false;
-        submitButton.innerHTML = originalButtonHtml; // Restore original button text
+        submitButton.innerHTML = originalButtonHtml;
     });
 }
 
@@ -810,6 +808,7 @@ function handleApiKeySave(event) {
 function handleApiKeyDelete(button) {
     const service = button.dataset.service;
     const modelSlug = button.dataset.modelSlug;
+    const keyId = button.dataset.keyId;
     const logPrefix = `[UserSettingsJS:handleApiKeyDelete:${service}]`;
     window.logger.info(logPrefix, `Delete key requested.`);
 
@@ -837,9 +836,10 @@ function handleApiKeyDelete(button) {
     button.innerHTML = '<span class="spinner inline-block" style="width: 0.8em; height: 0.8em; border-width: .15em;"></span>';
 
 
-    const deleteUrl = modelSlug
-        ? `/api/user/keys/${service}?model=${encodeURIComponent(modelSlug)}`
-        : `/api/user/keys/${service}`;
+    const deleteParams = new URLSearchParams();
+    if (keyId) deleteParams.set('key_id', keyId);
+    else if (modelSlug) deleteParams.set('model', modelSlug);
+    const deleteUrl = `/api/user/keys/${service}${deleteParams.toString() ? `?${deleteParams.toString()}` : ''}`;
     fetch(deleteUrl, {
         method: 'DELETE',
         headers: {

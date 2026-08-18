@@ -77,48 +77,92 @@ class ApiKeyForm(FlaskForm):
         _('API Service'),
         choices=[
             ('', '-- Select Service --'),
-            ('openai', 'OpenAI (Whisper/GPT-4o)'),
-            ('assemblyai', 'AssemblyAI (Universal)'),
-            ('gemini', 'Google (Gemini)'), # Added Gemini
+            ('openai', 'OpenAI'),
+            ('assemblyai', 'AssemblyAI'),
+            ('gemini', 'Google'),
             ('openrouter', 'OpenRouter')
         ],
         validators=[DataRequired(message="Please select an API service.")]
     )
-    api_key = StringField(
-        _('API Key'),
-        validators=[
-            DataRequired(message="API Key is required."),
-        ]
+    # ``model_name`` is the canonical field. ``openrouter_model`` remains as a
+    # compatibility alias for existing API clients and older saved forms.
+    model_name = StringField(
+        _('Model Name'),
+        validators=[Length(max=120)]
     )
     openrouter_model = StringField(
         _('OpenRouter Model'),
         validators=[Length(max=120)]
     )
+    api_key = StringField(
+        _('API Key'),
+        validators=[DataRequired(message="API Key is required."),]
+    )
+    model_purpose = SelectField(
+        _('Model Purpose'),
+        choices=[
+            ('transcription', _('Transcription')),
+            ('llm', _('LLM')),
+            ('live', _('Live')),
+        ],
+        default='transcription',
+    )
+    # Backward-compatible request name used by the original OpenRouter UI.
     openrouter_model_purpose = SelectField(
         _('OpenRouter Model Purpose'),
         choices=[
             ('transcription', _('Transcription')),
             ('llm', _('LLM')),
+            ('live', _('Live')),
         ],
         default='transcription',
     )
 
-    def validate_openrouter_model(self, field):
-        if self.service.data != 'openrouter':
+    def __init__(self, *args, **kwargs):
+        raw_data = kwargs.get('data') or {}
+        super().__init__(*args, **kwargs)
+        if not self.model_name.data and self.openrouter_model.data:
+            self.model_name.data = self.openrouter_model.data
+        if 'model_purpose' not in raw_data and raw_data.get('openrouter_model_purpose'):
+            self.model_purpose.data = raw_data['openrouter_model_purpose']
+        self.openrouter_model.data = self.model_name.data
+
+    def validate_model_name(self, field):
+        value = str(field.data or '').strip()
+        service = (self.service.data or '').lower()
+        if not value:
+            if service == 'openrouter':
+                raise ValidationError("OpenRouter model is required.")
+            # Provider-wide rows from older clients are still accepted. New UI
+            # submissions always provide a model name.
             field.data = None
+            self.openrouter_model.data = None
             return
-        try:
-            field.data = normalize_openrouter_model(field.data)
-        except ValueError as err:
-            raise ValidationError(str(err)) from err
+        if service == 'openrouter':
+            try:
+                value = normalize_openrouter_model(value)
+            except ValueError as err:
+                raise ValidationError(str(err)) from err
+        elif '/' in value or any(char.isspace() for char in value):
+            raise ValidationError("Model Name must contain a single provider model name without spaces or '/'.")
+        field.data = value
+        self.openrouter_model.data = value
+
+    def validate_openrouter_model(self, field):
+        # Keep the legacy field synchronized with the canonical model field.
+        field.data = self.model_name.data
+
+    def validate_model_purpose(self, field):
+        if field.data not in {'transcription', 'llm', 'live'}:
+            raise ValidationError("Please choose a valid model purpose.")
+        self.openrouter_model_purpose.data = field.data
 
     def validate_openrouter_model_purpose(self, field):
-        if self.service.data != 'openrouter':
-            field.data = 'transcription'
+        field.data = self.model_purpose.data or 'transcription'
 
     def validate_api_key(self, field):
         value = str(field.data or '').strip()
-        if self.service.data == 'openrouter' and value.startswith('***') and len(value) == 6:
+        if value.startswith('***') and len(value) == 6:
             field.data = value
             return
         if len(value) < 10:
@@ -190,6 +234,12 @@ class UserProfileForm(FlaskForm):
         _('Default Workflow LLM Model'),
         validators=[] # Optional handled by form processing
     )
+    default_live_transcription_model = SelectField(
+        _('Default Live Transcription Model'),
+        validators=[],
+        choices=[],
+        validate_choice=False,
+    )
     default_openrouter_model = StringField(
         _('Default OpenRouter Model'),
         validators=[Length(max=120)],
@@ -226,7 +276,7 @@ class UserProfileForm(FlaskForm):
         self.default_content_language.choices = lang_choices
 
         # --- MODIFICATION START: Task 1 ---
-        model_choices = []
+        model_choices: list[tuple[str, str]] = [('', _('-- Use System Default --'))]
         try:
             catalog_models = transcription_catalog_model.get_active_models()
         except Exception as catalog_err:
@@ -262,6 +312,15 @@ class UserProfileForm(FlaskForm):
             self.default_title_generation_model.data = ''
         if self.default_workflow_model.data is None:
             self.default_workflow_model.data = ''
+
+        live_choices = [('', _('-- Use System Default --'))]
+        for model_code in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []):
+            model_code = str(model_code).strip()
+            if model_code:
+                live_choices.append((model_code, current_app.config.get('API_PROVIDER_NAME_MAP', {}).get(model_code, model_code)))
+        self.default_live_transcription_model.choices = live_choices
+        if self.default_live_transcription_model.data is None:
+            self.default_live_transcription_model.data = ''
 
         # --- NEW: Populate UI language choices ---
         ui_lang_choices = []
@@ -365,16 +424,23 @@ class AdminRoleForm(FlaskForm):
         choices=[],
         validate_choice=False
     )
+    default_live_transcription_model = SelectField(
+        _('Default Live Transcription Model'),
+        validators=[],
+        choices=[],
+        validate_choice=False,
+    )
 
-    # Permissions (Boolean Fields)
-    use_api_assemblyai = BooleanField(_('Use AssemblyAI API'))
-    use_api_openai_whisper = BooleanField(_('Use OpenAI Whisper API'))
-    use_api_openai_gpt_4o_transcribe = BooleanField(_('Use OpenAI GPT-4o Transcribe API'))
-    use_api_openai_live_transcribe = BooleanField(_('Use OpenAI Live Transcription'))
-    # --- MODIFIED: Add use_api_google_gemini field ---
-    use_api_google_gemini = BooleanField(_('Use Google Gemini API'))
-    use_api_openrouter = BooleanField(_('Use OpenRouter API'))
-    # --- END MODIFIED ---
+    # API access is granted per provider; legacy fields remain accepted when
+    # loading older role records.
+    use_api_openai = BooleanField(_('Allow OpenAI'))
+    use_api_assemblyai = BooleanField(_('Allow AssemblyAI'))
+    use_api_google = BooleanField(_('Allow Google'))
+    use_api_openrouter = BooleanField(_('Allow OpenRouter'))
+    use_api_openai_whisper = BooleanField(_('Legacy OpenAI Whisper permission'))
+    use_api_openai_gpt_4o_transcribe = BooleanField(_('Legacy OpenAI transcription permission'))
+    use_api_openai_live_transcribe = BooleanField(_('Legacy OpenAI Live permission'))
+    use_api_google_gemini = BooleanField(_('Legacy Google permission'))
     access_admin_panel = BooleanField(_('Access Admin Panel'))
     allow_large_files = BooleanField(_('Allow Large Files (>25MB)'))
     allow_context_prompt = BooleanField(_('Allow Context Prompt'))
@@ -430,6 +496,8 @@ class AdminRoleForm(FlaskForm):
             transcription_choices.append((model_code, display_name))
             seen_transcription_codes.add(model_code)
 
+        # Catalog rows are individual selectable models. Keep model codes as
+        # values so role defaults remain stable when display names change.
         self._assign_choices(self.default_transcription_model, transcription_choices)
 
         # Populate LLM model choices (shared for title generation and workflows)
@@ -455,6 +523,16 @@ class AdminRoleForm(FlaskForm):
         # Assign choices to both LLM-related fields separately to avoid shared list mutations
         self._assign_choices(self.default_title_generation_model, list(llm_choices))
         self._assign_choices(self.default_workflow_model, list(llm_choices))
+
+        live_choices = list(placeholder_choice)
+        for raw_model in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []):
+            model_code = str(raw_model).strip()
+            if model_code:
+                live_choices.append((
+                    model_code,
+                    current_app.config.get('API_PROVIDER_NAME_MAP', {}).get(model_code, model_code),
+                ))
+        self._assign_choices(self.default_live_transcription_model, live_choices)
 
     @staticmethod
     def _assign_choices(field, choices):

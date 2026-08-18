@@ -213,6 +213,9 @@ def create_role():
                 'default_title_generation_model': form.default_title_generation_model.data or None,
                 'default_workflow_model': form.default_workflow_model.data or None,
                 'default_openrouter_model': form.default_openrouter_model.data or None,
+                'default_live_transcription_model': form.default_live_transcription_model.data or None,
+                'use_api_openai': form.use_api_openai.data,
+                'use_api_google': form.use_api_google.data,
                 'use_api_assemblyai': form.use_api_assemblyai.data,
                 'use_api_openai_whisper': form.use_api_openai_whisper.data,
                 'use_api_openai_gpt_4o_transcribe': form.use_api_openai_gpt_4o_transcribe.data,
@@ -288,6 +291,9 @@ def edit_role(role_id):
                 'default_title_generation_model': temp_form.default_title_generation_model.data or None,
                 'default_workflow_model': temp_form.default_workflow_model.data or None,
                 'default_openrouter_model': temp_form.default_openrouter_model.data or None,
+                'default_live_transcription_model': temp_form.default_live_transcription_model.data or None,
+                'use_api_openai': temp_form.use_api_openai.data,
+                'use_api_google': temp_form.use_api_google.data,
                 'use_api_assemblyai': temp_form.use_api_assemblyai.data,
                 'use_api_openai_whisper': temp_form.use_api_openai_whisper.data,
                 'use_api_openai_gpt_4o_transcribe': temp_form.use_api_openai_gpt_4o_transcribe.data,
@@ -341,6 +347,9 @@ def edit_role(role_id):
                 'default_title_generation_model': form.default_title_generation_model.data or None,
                 'default_workflow_model': form.default_workflow_model.data or None,
                 'default_openrouter_model': form.default_openrouter_model.data or None,
+                'default_live_transcription_model': form.default_live_transcription_model.data or None,
+                'use_api_openai': form.use_api_openai.data,
+                'use_api_google': form.use_api_google.data,
                 'use_api_assemblyai': form.use_api_assemblyai.data,
                 'use_api_openai_whisper': form.use_api_openai_whisper.data,
                 'use_api_openai_gpt_4o_transcribe': form.use_api_openai_gpt_4o_transcribe.data,
@@ -507,11 +516,25 @@ def costs():
         )
         # --- END FINAL CORRECTED LOGIC ---
 
+        pricing_options = {
+            'transcription': transcription_models,
+            'title_generation': {
+                model_id: model_name
+                for models in title_generation_models.values()
+                for model_id, model_name in models.items()
+            },
+            'workflow': {
+                model_id: model_name
+                for models in workflow_models.values()
+                for model_id, model_name in models.items()
+            },
+        }
         return render_template('admin/costs.html',
                                metrics=metrics,
                                transcription_models=transcription_models,
                                workflow_models=workflow_models,
                                title_generation_models=title_generation_models,
+                               pricing_options=pricing_options,
                                active_title_generation_model=active_title_generation_model,
                                active_workflow_model=active_workflow_model)
     except AdminServiceError as e:

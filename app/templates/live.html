@@ -62,6 +62,15 @@
                 </select>
             </label>
 
+            <label class="live-control">
+                <span>{{ _('Model') }}</span>
+                <select id="liveModel" class="live-select">
+                    {% for model in live_transcription_models|default([]) %}
+                    <option value="{{ model.code if model is mapping else model }}">{{ model.display_name if model is mapping else model }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
             {% if user_permissions.allow_context_prompt %}
             <button id="liveContextToggle"
                     type="button"

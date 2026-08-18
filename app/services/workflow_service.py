@@ -219,7 +219,8 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
                 input_text=resolved_prompt_text,
                 transcription_id=transcription_id,
                 prompt_id=prompt_id,
-                status='pending'
+                status='pending',
+                model=llm_model,
             )
             if not operation_id:
                 raise WorkflowError("Failed to create workflow operation record in database.")

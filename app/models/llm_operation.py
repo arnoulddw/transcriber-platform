@@ -21,6 +21,7 @@ class LLMOperation:
     id: int
     user_id: int
     provider: str
+    model: Optional[str]
     operation_type: str
     input_text: Optional[str]
     result: Optional[str]
@@ -36,6 +37,7 @@ class LLMOperation:
         self.id = kwargs.get('id')
         self.user_id = kwargs.get('user_id')
         self.provider = kwargs.get('provider')
+        self.model = kwargs.get('model')
         self.operation_type = kwargs.get('operation_type')
         self.input_text = kwargs.get('input_text')
         self.result = kwargs.get('result')
@@ -76,6 +78,7 @@ def init_db_command() -> None:
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 user_id INT NOT NULL,
                 provider VARCHAR(50) NOT NULL,
+                model VARCHAR(120) DEFAULT NULL,
                 operation_type VARCHAR(50) NOT NULL,
                 input_text MEDIUMTEXT,
                 result MEDIUMTEXT,
@@ -90,6 +93,7 @@ def init_db_command() -> None:
                 FOREIGN KEY (transcription_id) REFERENCES transcriptions (id) ON DELETE SET NULL,
                 INDEX idx_llm_op_user (user_id),
                 INDEX idx_llm_op_provider (provider),
+                INDEX idx_llm_op_model (model),
                 INDEX idx_llm_op_type (operation_type),
                 INDEX idx_llm_op_status (status),
                 INDEX idx_llm_op_transcription (transcription_id),
@@ -108,6 +112,18 @@ def init_db_command() -> None:
         if not cost_col_exists:
             logging.info(f"{log_prefix} Adding 'cost' column (DECIMAL(10, 5)) to 'llm_operations' table.")
             cursor.execute("ALTER TABLE llm_operations ADD COLUMN cost DECIMAL(10, 5) DEFAULT NULL AFTER error")
+
+        cursor.execute("SHOW COLUMNS FROM llm_operations LIKE 'model'")
+        model_col_exists = cursor.fetchone()
+        cursor.fetchall()
+        if not model_col_exists:
+            logging.info(f"{log_prefix} Adding 'model' column to 'llm_operations' table.")
+            cursor.execute("ALTER TABLE llm_operations ADD COLUMN model VARCHAR(120) DEFAULT NULL AFTER provider")
+        cursor.execute("SHOW INDEX FROM llm_operations WHERE Key_name = 'idx_llm_op_model'")
+        model_index_exists = cursor.fetchone()
+        cursor.fetchall()
+        if not model_index_exists:
+            cursor.execute("ALTER TABLE llm_operations ADD INDEX idx_llm_op_model (model)")
 
         cursor.execute("SHOW COLUMNS FROM llm_operations LIKE 'transcription_id'")
         transcription_id_col = cursor.fetchone()
@@ -162,7 +178,8 @@ def create_llm_operation(
     input_text: Optional[str] = None,
     transcription_id: Optional[str] = None,
     prompt_id: Optional[int] = None,
-    status: str = 'pending'
+    status: str = 'pending',
+    model: Optional[str] = None,
 ) -> Optional[int]:
     """
     Creates an initial record for an LLM operation.
@@ -178,15 +195,15 @@ def create_llm_operation(
 
     sql = """
         INSERT INTO llm_operations (
-            user_id, provider, operation_type, input_text, transcription_id,
+            user_id, provider, model, operation_type, input_text, transcription_id,
             prompt_id, created_at, status
-        ) VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s)
     """
     cursor = get_cursor()
     operation_id = None
     try:
         cursor.execute(sql, (
-            user_id, provider, operation_type, input_text, transcription_id,
+            user_id, provider, model, operation_type, input_text, transcription_id,
             prompt_id, status
         ))
         get_db().commit()

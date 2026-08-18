@@ -187,13 +187,10 @@ def get_usage_analytics_metrics() -> Dict[str, Any]:
         'error': None
     }
     time_periods = _get_time_periods()
-    supported_apis = [
-        'gpt-transcribe',
-        'gpt-4o-transcribe',
-        'whisper',
-        'assemblyai',
-        current_app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe'),
-    ]
+    supported_apis = list(dict.fromkeys(
+        list(current_app.config.get('TRANSCRIPTION_PROVIDERS', []) or [])
+        + list(current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []) or [])
+    ))
     supported_workflow_models, workflow_display_map = _get_supported_llm_models()
     # Define relevant statuses for volume/duration metrics
     relevant_statuses_for_volume = ('finished', 'cancelled')
@@ -219,12 +216,12 @@ def get_usage_analytics_metrics() -> Dict[str, Any]:
                 api_jobs = transcription_utils.get_api_distribution_in_range(
                     start, end, aggregate_minutes=False, status__in=relevant_statuses_for_volume
                 )
-                metrics['api_jobs_distribution'][key] = {api: api_jobs.get(api, 0) for api in supported_apis}
+                metrics['api_jobs_distribution'][key] = dict(api_jobs)
 
                 api_minutes = transcription_utils.get_api_distribution_in_range(
                     start, end, aggregate_minutes=True, status__in=relevant_statuses_for_volume
                 )
-                metrics['api_minutes_distribution'][key] = {api: round(api_minutes.get(api, 0.0), 1) for api in supported_apis}
+                metrics['api_minutes_distribution'][key] = {api: round(value, 1) for api, value in api_minutes.items()}
 
                 # Language Distribution (remains based on 'finished' jobs)
                 lang_dist = transcription_utils.get_language_distribution_in_range(start, end) # This already filters for status='finished'
@@ -271,7 +268,7 @@ def get_usage_analytics_metrics() -> Dict[str, Any]:
                 workflows_run_count = transcription_utils.count_jobs_in_range(start, end, llm_operation_status='finished') # Use llm_operation_status
                 metrics['workflows_run'][key] = workflows_run_count
                 model_dist = transcription_utils.get_workflow_model_distribution(start, end)
-                metrics['workflow_model_distribution'][key] = {model: model_dist.get(model, 0) for model in supported_workflow_models}
+                metrics['workflow_model_distribution'][key] = dict(model_dist)
 
         _cache_set('usage_analytics', metrics)
         logging.debug(f"{log_prefix} Retrieved usage analytics metrics.")
@@ -348,13 +345,10 @@ def get_performance_error_metrics() -> Dict[str, Any]:
         'error': None
     }
     time_periods = _get_time_periods()
-    supported_apis = [
-        'gpt-transcribe',
-        'gpt-4o-transcribe',
-        'whisper',
-        'assemblyai',
-        current_app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe'),
-    ]
+    supported_apis = list(dict.fromkeys(
+        list(current_app.config.get('TRANSCRIPTION_PROVIDERS', []) or [])
+        + list(current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []) or [])
+    ))
     supported_workflow_models, workflow_display_map = _get_supported_llm_models()
 
     try:
@@ -396,13 +390,14 @@ def get_performance_error_metrics() -> Dict[str, Any]:
 
                 workflow_model_rates = {}
                 model_attempt_dist = transcription_utils.get_workflow_model_distribution(start, end, include_attempted=True)
-                for model in supported_workflow_models:
+                observed_models = list(dict.fromkeys(list(supported_workflow_models) + list(model_attempt_dist.keys())))
+                for model in observed_models:
                     # --- MODIFIED: Use new function for counting errors by model ---
                     errors_for_model = transcription_utils.count_workflow_jobs_with_filters(
                         start_dt=start,
                         end_dt=end,
                         llm_operation_status='error',
-                        llm_provider=model
+                        llm_model=model
                     )
                     # --- END MODIFIED ---
                     attempts_for_model = model_attempt_dist.get(model, 0)

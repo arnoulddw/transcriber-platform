@@ -298,7 +298,8 @@ Generated Title:"""
                 operation_type='title_generation',
                 input_text=prompt,
                 transcription_id=transcription_id,
-                status='processing'
+                status='processing',
+                model=model_name,
             )
             if not operation_id:
                 error_reason = "db_create_failed"

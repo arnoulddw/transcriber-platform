@@ -96,8 +96,12 @@ def init_db_command() -> None:
 
 
 def _stored_model_slug(provider_code: str, model_slug: Optional[str]) -> str:
-    if provider_code.lower() != "openrouter":
-        return ""
+    """Return the normalized storage key for any provider/model pair.
+
+    Empty model names remain valid for legacy provider-wide keys. New UI writes
+    a model name, which lets one provider own multiple independently managed
+    keys without changing the table shape.
+    """
     return str(model_slug or "").strip()
 
 
@@ -139,7 +143,20 @@ def get_api_key_record(
 ) -> Optional[Dict[str, Any]]:
     provider = provider_code.lower()
     stored_model_slug = _stored_model_slug(provider, model_slug)
-    if provider == "openrouter" and stored_model_slug:
+    if stored_model_slug and provider != "openrouter":
+        sql = """
+            SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
+            FROM user_api_keys
+            WHERE user_id = %s
+              AND provider_code = %s
+              AND (model_slug = %s OR model_slug = '')
+            ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END,
+                     COALESCE(last_used_at, updated_at, created_at) DESC,
+                     id DESC
+            LIMIT 1
+        """
+        params = (user_id, provider, stored_model_slug, stored_model_slug)
+    elif stored_model_slug and provider == "openrouter":
         sql = """
             SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
@@ -226,7 +243,7 @@ def delete_api_key(
 ) -> bool:
     provider = provider_code.lower()
     stored_model_slug = _stored_model_slug(provider, model_slug)
-    if provider == "openrouter" and model_slug is not None:
+    if model_slug is not None and stored_model_slug:
         sql = (
             "DELETE FROM user_api_keys WHERE user_id = %s AND provider_code = %s "
             "AND model_slug = %s"
@@ -245,6 +262,28 @@ def delete_api_key(
         logging.error(
             f"[DB:UserApiKey] Error deleting API key for user {user_id}, "
             f"provider {provider_code}, model {stored_model_slug}: {err}",
+            exc_info=True,
+        )
+        get_db().rollback()
+        return False
+
+
+def delete_api_key_by_id(user_id: int, key_id: int) -> bool:
+    """Delete exactly one stored key owned by the user."""
+    cursor = get_cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM user_api_keys WHERE id = %s AND user_id = %s",
+            (key_id, user_id),
+        )
+        get_db().commit()
+        return cursor.rowcount > 0
+    except MySQLError as err:
+        logging.error(
+            "[DB:UserApiKey] Error deleting key %s for user %s: %s",
+            key_id,
+            user_id,
+            err,
             exc_info=True,
         )
         get_db().rollback()

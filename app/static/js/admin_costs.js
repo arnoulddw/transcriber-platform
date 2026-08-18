@@ -1,94 +1,73 @@
 document.addEventListener('DOMContentLoaded', function() {
     const pricingForm = document.getElementById('pricing-form');
+    if (!pricingForm) return;
 
-    // Fetch initial prices and populate the form
+    const selects = Array.from(pricingForm.querySelectorAll('.pricing-model-select'));
+    const prices = Array.from(pricingForm.querySelectorAll('.pricing-value'));
+    const priceByType = new Map();
+
+    function priceInput(type) {
+        return pricingForm.querySelector(`.pricing-value[data-type="${type}"]`) || prices[selects.findIndex(select => select.dataset.type === type)];
+    }
+
+    function populatePrices(data) {
+        Object.entries(data || {}).forEach(([type, values]) => {
+            if (!values || typeof values !== 'object') return;
+            Object.entries(values).forEach(([key, value]) => priceByType.set(`${type}:${key}`, value));
+        });
+        selects.forEach(select => {
+            const input = priceInput(select.dataset.type);
+            if (input && select.value) input.value = priceByType.get(`${select.dataset.type}:${select.value}`) ?? '';
+        });
+    }
+
     fetch('/api/admin/pricing')
         .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                window.logger.error('Error fetching prices:', data.error);
-                return;
-            }
-            for (const type in data) {
-                for (const key in data[type]) {
-                    const inputId = `${type}-${key.toUpperCase()}`;
-                    const input = document.getElementById(inputId);
-                    if (input) {
-                        input.value = data[type][key];
-                    } else {
-                        // Fallback for case inconsistency
-                        const lowerCaseInput = document.getElementById(`${type}-${key.toLowerCase()}`);
-                        if (lowerCaseInput) {
-                            lowerCaseInput.value = data[type][key];
-                        }
-                    }
-                }
-            }
-        })
+        .then(populatePrices)
         .catch(error => window.logger.error('Error fetching prices:', error));
 
-    // Handle form submission
-    pricingForm.addEventListener('submit', function(event) {
-        event.preventDefault();
-        const formData = new FormData(pricingForm);
-        const payload = {};
-        // Iterate over all input elements in the form to build the data payload
-        pricingForm.querySelectorAll('input[type="number"]').forEach(input => {
-            const name = input.name; // e.g., "workflow-openai"
-            const value = input.value;
-            const type = input.dataset.type; // e.g., "workflow"
-            const modelId = name.substring(name.indexOf('-') + 1); // e.g., "gemini-1.5-flash"
-
-            if (value) {
-                if (!payload[type]) {
-                    payload[type] = {};
-                }
-                // Use the full modelId as the key
-                payload[type][modelId] = parseLocaleNumber(value);
-            }
-        });
-
-        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-
-        fetch('/api/admin/pricing', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload),
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const successMessage = data.message || 'Pricing updated successfully.';
-                showNotification(successMessage, 'success');
-            } else {
-                showNotification(`Error updating prices: ${data.error}`, 'error', 5000, true);
-            }
-        })
-        .catch(error => {
-            window.logger.error('Error updating prices:', error);
-            showNotification('An unexpected error occurred.', 'error', 5000, true);
+    selects.forEach(select => {
+        select.addEventListener('change', () => {
+            const input = priceInput(select.dataset.type);
+            if (input) input.value = priceByType.get(`${select.dataset.type}:${select.value}`) ?? '';
         });
     });
-    
-    /**
-     * Parses a number from a string based on the browser's locale.
-     * It handles both comma and dot as decimal separators.
-     * @param {string} stringNumber - The number string to parse.
-     * @returns {number} The parsed number.
-     */
-    function parseLocaleNumber(stringNumber) {
-        // Use a regex to find the last comma or dot, which is likely the decimal separator.
-        const decimalSeparator = (1.1).toLocaleString().substring(1, 2);
-        const thousandSeparator = decimalSeparator === '.' ? ',' : '.';
-    
-        // Remove thousand separators
-        const cleanedString = stringNumber.replace(new RegExp(`\\${thousandSeparator}`, 'g'), '');
-        // Replace locale-specific decimal separator with a dot
-        const normalizedString = cleanedString.replace(decimalSeparator, '.');
-    
-        return parseFloat(normalizedString);
-    }
+
+    pricingForm.querySelectorAll('.save-price-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const type = button.dataset.type;
+            const select = pricingForm.querySelector(`.pricing-model-select[data-type="${type}"]`);
+            const input = priceInput(type);
+            const itemKey = select?.value;
+            const price = parseFloat(input?.value || '');
+            if (!itemKey || Number.isNaN(price) || price < 0) {
+                showNotification('Choose a model and enter a valid non-negative price.', 'warning', 4000, false);
+                return;
+            }
+            button.disabled = true;
+            fetch('/api/admin/pricing', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': pricingForm.querySelector('input[name="csrf_token"]').value,
+                },
+                body: JSON.stringify({ item_type: type, item_key: itemKey, price }),
+            })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || !data.success) throw new Error(data.error || 'Pricing update failed.');
+                    priceByType.set(`${type}:${itemKey}`, price);
+                    showNotification(data.message || 'Pricing updated successfully.', 'success', 3000, false);
+                })
+                .catch(error => {
+                    window.logger.error('Error updating price:', error);
+                    showNotification(`Error updating price: ${error.message}`, 'error', 5000, true);
+                })
+                .finally(() => { button.disabled = false; });
+        });
+    });
 });
+
+function parseLocaleNumber(stringNumber) {
+    return parseFloat(String(stringNumber).replace(',', '.'));
+}

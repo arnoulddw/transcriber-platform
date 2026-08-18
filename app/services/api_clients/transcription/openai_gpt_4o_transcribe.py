@@ -34,7 +34,7 @@ class OpenAIGPT4OTranscribeClient(OpenAIBaseTranscriptionClient):
                             is_chunk: bool, extra_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Prepare the dictionary of parameters for the OpenAI transcriptions API call."""
         api_params: Dict[str, Any] = {
-            "model": self.API_MODEL_PARAM,
+            "model": (extra_options or {}).get("model") or self.API_MODEL_PARAM,
             "prompt": context_prompt
         }
         log_lang_param_desc = ""

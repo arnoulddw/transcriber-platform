@@ -33,6 +33,7 @@ class User(UserMixin):
     default_workflow_model: Optional[str]
     default_openrouter_model: Optional[str]
     default_openrouter_llm_model: Optional[str]
+    default_live_transcription_model: Optional[str]
     enable_auto_title_generation: bool
     language: Optional[str]
     public_api_key_hash: Optional[str]
@@ -64,6 +65,7 @@ class User(UserMixin):
         public_api_key_created_at: Optional[str] = None,
         default_openrouter_model: Optional[str] = None,
         default_openrouter_llm_model: Optional[str] = None,
+        default_live_transcription_model: Optional[str] = None,
     ):
         self.id = id
         self.username = username
@@ -82,6 +84,7 @@ class User(UserMixin):
         self.default_workflow_model = default_workflow_model
         self.default_openrouter_model = default_openrouter_model
         self.default_openrouter_llm_model = default_openrouter_llm_model
+        self.default_live_transcription_model = default_live_transcription_model
         self.enable_auto_title_generation = enable_auto_title_generation
         self.language = language
         self.public_api_key_hash = public_api_key_hash
@@ -170,6 +173,7 @@ def _map_row_to_user(row: Dict[str, Any]) -> Optional[User]:
             public_api_key_created_at=row.get('public_api_key_created_at'),
             default_openrouter_model=row.get('default_openrouter_model'),
             default_openrouter_llm_model=row.get('default_openrouter_llm_model'),
+            default_live_transcription_model=row.get('default_live_transcription_model'),
         )
         return user
     return None

@@ -10,77 +10,45 @@
         <h2 class="card-title mb-6">{{ _('Pricing Configuration') }}</h2>
         <form id="pricing-form" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="flex flex-col md:flex-row md:space-x-8 space-y-8 md:space-y-0">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- Transcription Models -->
                 <div class="flex-1">
                     <h3 class="section-title">{{ _('Transcription Models') }}</h3>
-                    <div class="text-right mb-2">
-                        <span class="text-sm text-text-muted">Price per Minute ($)</span>
-                    </div>
-                    <div class="space-y-2">
-                        {% for key, name in transcription_models.items()|sort %}
-                        <div class="flex items-center justify-between">
-                            <label for="transcription-{{ key.upper() }}" class="text-text-strong">{{ name }}</label>
-                            <input type="number" step="0.00001" id="transcription-{{ key.upper() }}" name="transcription-{{ key.upper() }}" class="input-control w-32 text-right" data-type="transcription">
-                        </div>
-                        {% endfor %}
-                    </div>
+                    <label for="transcription-model" class="form-label">{{ _('Model') }}</label>
+                    <select id="transcription-model" class="input-select pricing-model-select" data-type="transcription">
+                        <option value="">{{ _('Choose a model') }}</option>
+                        {% for key, name in pricing_options.transcription.items()|sort %}<option value="{{ key }}">{{ name }}</option>{% endfor %}
+                    </select>
+                    <label for="transcription-price" class="form-label mt-4">{{ _('Price per Minute ($)') }}</label>
+                    <input type="number" step="0.00001" min="0" id="transcription-price" class="input-control pricing-value">
+                    <button type="button" class="ui-btn ui-btn--primary mt-4 save-price-btn" data-type="transcription">{{ _('Save') }}</button>
                 </div>
-
-                <!-- Separator -->
-                <div class="border-t border-border-default md:border-t-0 md:border-l md:border-border-default"></div>
 
                 <!-- Title Generations -->
                 <div class="flex-1">
                     <h3 class="section-title">{{ _('Title Generations') }}</h3>
-                    <div class="text-right mb-2">
-                        <span class="text-sm text-text-muted">Price per Execution ($)</span>
-                    </div>
-                    <div class="space-y-2">
-                        {% for provider_name, models in title_generation_models.items()|sort %}
-                            {% for model_id, model_name in models.items()|sort %}
-                            <div class="flex items-center justify-between gap-4 mt-2">
-                                <div>
-                                    <label for="title_generation-{{ model_id }}" class="text-text-strong">{{ model_name }}</label>
-                                </div>
-                                <div class="flex items-center space-x-2">
-                                    <input type="number" step="0.00001" id="title_generation-{{ model_id }}" name="title_generation-{{ model_id }}" class="input-control w-32 text-right" data-type="title_generation">
-                                </div>
-                            </div>
-                            {% endfor %}
-                        {% endfor %}
-                    </div>
+                    <label for="title-generation-model" class="form-label">{{ _('Model') }}</label>
+                    <select id="title-generation-model" class="input-select pricing-model-select" data-type="title_generation">
+                        <option value="">{{ _('Choose a model') }}</option>
+                        {% for model_id, model_name in pricing_options.title_generation.items()|sort %}<option value="{{ model_id }}">{{ model_name }}</option>{% endfor %}
+                    </select>
+                    <label for="title-generation-price" class="form-label mt-4">{{ _('Price per Execution ($)') }}</label>
+                    <input type="number" step="0.00001" min="0" id="title-generation-price" class="input-control pricing-value">
+                    <button type="button" class="ui-btn ui-btn--primary mt-4 save-price-btn" data-type="title_generation">{{ _('Save') }}</button>
                 </div>
-
-                <!-- Separator -->
-                <div class="border-t border-border-default md:border-t-0 md:border-l md:border-border-default"></div>
 
                 <!-- Workflows -->
                 <div class="flex-1">
                     <h3 class="section-title">{{ _('Workflows') }}</h3>
-                    <div class="text-right mb-2">
-                        <span class="text-sm text-text-muted">Price per Execution ($)</span>
-                    </div>
-                    <div class="space-y-2">
-                        {% for provider_name, models in workflow_models.items()|sort %}
-                            {% for model_id, model_name in models.items()|sort %}
-                            <div class="flex items-center justify-between gap-4 mt-2">
-                                <div>
-                                    <label for="workflow-{{ model_id }}" class="text-text-strong">{{ model_name }}</label>
-                                </div>
-                                <div class="flex items-center space-x-2">
-                                    <input type="number" step="0.00001" id="workflow-{{ model_id }}" name="workflow-{{ model_id }}" class="input-control w-32 text-right" data-type="workflow">
-                                </div>
-                            </div>
-                            {% endfor %}
-                        {% endfor %}
-                    </div>
+                    <label for="workflow-model" class="form-label">{{ _('Model') }}</label>
+                    <select id="workflow-model" class="input-select pricing-model-select" data-type="workflow">
+                        <option value="">{{ _('Choose a model') }}</option>
+                        {% for model_id, model_name in pricing_options.workflow.items()|sort %}<option value="{{ model_id }}">{{ model_name }}</option>{% endfor %}
+                    </select>
+                    <label for="workflow-price" class="form-label mt-4">{{ _('Price per Execution ($)') }}</label>
+                    <input type="number" step="0.00001" min="0" id="workflow-price" class="input-control pricing-value">
+                    <button type="button" class="ui-btn ui-btn--primary mt-4 save-price-btn" data-type="workflow">{{ _('Save') }}</button>
                 </div>
-            </div>
-            <div class="text-right mt-6">
-                <button type="submit" class="ui-btn ui-btn--primary inline-flex items-center gap-2">
-                    <i class="material-icons text-base">save</i>{{ _('Save Pricing Configuration') }}
-                </button>
             </div>
         </form>
     </div>

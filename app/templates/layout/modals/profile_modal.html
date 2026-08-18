@@ -81,6 +81,13 @@
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                         <div>
+                            <label for="profileDefaultLiveModel" class="form-label">{{ _('Default Live Transcription Model') }}</label>
+                            <div class="mt-1">
+                                <select id="profileDefaultLiveModel" name="default_live_transcription_model" class="input-select"></select>
+                            </div>
+                            <span id="profileDefaultLiveModelError" class="form-error"></span>
+                        </div>
+                        <div>
                             <label for="profileDefaultWorkflowModel" class="form-label">{{ _('Default Workflow LLM Model') }}</label>
                             <div class="mt-1">
                                 <select id="profileDefaultWorkflowModel" name="default_workflow_model"

@@ -52,10 +52,29 @@ def _serializer() -> URLSafeSerializer:
     return URLSafeSerializer(current_app.config["SECRET_KEY"], salt=SESSION_TOKEN_SALT)
 
 
-def _resolve_openai_api_key(user) -> str:
+def _resolve_live_model(user, requested: Optional[str] = None) -> str:
+    configured = requested or getattr(user, "default_live_transcription_model", None)
+    if not configured:
+        configured = getattr(getattr(user, "role", None), "default_live_transcription_model", None)
+    model = str(configured or current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")).strip()
+    allowed_models = {
+        str(value).strip()
+        for value in current_app.config.get("LIVE_TRANSCRIPTION_MODELS", [])
+        if str(value).strip()
+    }
+    if not allowed_models:
+        allowed_models.add(model)
+    if allowed_models and model not in allowed_models:
+        raise LiveTranscriptionValidationError(_("The selected Live transcription model is not available."))
+    if not model or any(char.isspace() for char in model) or '/' in model:
+        raise LiveTranscriptionValidationError(_("The selected Live transcription model is invalid."))
+    return model
+
+
+def _resolve_openai_api_key(user, model: Optional[str] = None) -> str:
     mode = current_app.config["DEPLOYMENT_MODE"]
     if mode == "multi":
-        api_key = user_service.get_decrypted_api_key(user.id, "openai")
+        api_key = user_service.get_decrypted_api_key(user.id, "openai", model)
         if api_key:
             return api_key
         if check_permission(user, "allow_api_key_management"):
@@ -115,13 +134,14 @@ def _call_id_from_location(location: str) -> Optional[str]:
 
 
 def create_session(
-    user, sdp: str, language_code: str, context_prompt: str
+    user, sdp: str, language_code: str, context_prompt: str,
+    requested_model: Optional[str] = None,
 ) -> Dict[str, str]:
     if not isinstance(sdp, str) or not sdp.strip():
         raise LiveTranscriptionValidationError(_("A WebRTC session offer is required."))
     language, prompt = _validate_settings(user, language_code, context_prompt)
-    api_key = _resolve_openai_api_key(user)
-    model = current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
+    model = _resolve_live_model(user, requested_model)
+    api_key = _resolve_openai_api_key(user, model)
     session_config = build_session_config(model, language, prompt)
 
     max_retries = max(
@@ -193,6 +213,7 @@ def create_session(
             "started_at": time.time(),
             "language": language,
             "context_prompt_used": bool(prompt),
+            "model": model,
         }
     )
     return {"answer_sdp": response.text, "session_token": token}
@@ -214,6 +235,9 @@ def _decode_session_token(token: str) -> Dict[str, Any]:
     }
     if not isinstance(payload, dict) or not required_fields.issubset(payload):
         raise LiveTranscriptionValidationError(_("The live session token is invalid."))
+    model = payload.get("model")
+    if not isinstance(model, str) or not model.strip():
+        payload["model"] = current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
     return payload
 
 
@@ -230,7 +254,7 @@ def hangup_session(user, session_token: str) -> Dict[str, bool]:
     try:
         response = httpx.post(
             f"https://api.openai.com/v1/realtime/calls/{call_id}/hangup",
-            headers={"Authorization": f"Bearer {_resolve_openai_api_key(user)}"},
+            headers={"Authorization": f"Bearer {_resolve_openai_api_key(user, payload.get('model'))}"},
             timeout=current_app.config.get("OPENAI_HTTP_TIMEOUT", 120),
         )
     except httpx.HTTPError as exc:
@@ -266,11 +290,10 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         )
 
     transcription_id = str(payload["transcription_id"])
+    session_model = str(payload.get("model") or _resolve_live_model(user))
     existing = transcription_model.get_transcription_by_id(transcription_id, user.id)
     if existing:
-        if existing.get("api_used") != current_app.config.get(
-            "LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe"
-        ):
+        if existing.get("api_used") != session_model:
             raise LiveTranscriptionPermissionError(
                 _("The live session identifier is already in use.")
             )
@@ -291,7 +314,7 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         max(0.0, (time.time() - started_at) / 60.0),
     )
     language = payload["language"] if payload["language"] != "auto" else "und"
-    model = current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
+    model = session_model
     filename = datetime.now(timezone.utc).strftime(
         "Live transcription %Y-%m-%d %H-%M UTC"
     )

@@ -133,6 +133,7 @@
         const elements = {
             language: document.getElementById('liveLanguage'),
             microphone: document.getElementById('liveMicrophone'),
+            model: document.getElementById('liveModel'),
             contextToggle: document.getElementById('liveContextToggle'),
             contextPanel: document.getElementById('liveContextPanel'),
             contextPrompt: document.getElementById('liveContextPrompt'),
@@ -211,6 +212,7 @@
         function setControlsDisabled(disabled) {
             elements.language.disabled = disabled;
             elements.microphone.disabled = disabled;
+            if (elements.model) elements.model.disabled = disabled;
             if (elements.contextPrompt) elements.contextPrompt.disabled = disabled;
             if (elements.contextToggle) elements.contextToggle.disabled = disabled;
         }
@@ -489,6 +491,7 @@
                 const session = await postJson('/api/live/session', {
                     sdp: offer.sdp,
                     language_code: elements.language.value,
+                    model: elements.model ? elements.model.value : '',
                     context_prompt: elements.contextPrompt ? elements.contextPrompt.value.trim() : '',
                 });
                 sessionToken = session.session_token;

@@ -24,8 +24,9 @@ def live_permission_required(view):
     @wraps(view)
     @login_required
     def wrapped(*args, **kwargs):
-        if current_app.config["DEPLOYMENT_MODE"] == "multi" and not check_permission(
-            current_user, "use_api_openai_live_transcribe"
+        if current_app.config["DEPLOYMENT_MODE"] == "multi" and not (
+            check_permission(current_user, "use_api_openai")
+            or check_permission(current_user, "use_api_openai_live_transcribe")
         ):
             return jsonify({"error": _("You do not have access to Live transcription.")}), 403
         return view(*args, **kwargs)
@@ -47,6 +48,7 @@ def create_live_session():
             data.get("sdp"),
             data.get("language_code", "auto"),
             data.get("context_prompt", ""),
+            data.get("model"),
         )
         return jsonify(result)
     except LiveTranscriptionValidationError as exc:

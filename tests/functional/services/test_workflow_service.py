@@ -44,8 +44,8 @@ def workflow_user(app, logged_in_client_with_permissions):
             print(f"[TEST] User role after reassignment: {user.role.name if user.role else 'None'} (role_id={user.role_id})")
         else:
             print("[TEST] Failed to create workflow role for workflow_user fixture")
-        app.config.setdefault("WORKFLOW_LLM_PROVIDER", "GEMINI")
-        app.config.setdefault("WORKFLOW_LLM_MODEL", "gemini-2.0-flash")
+        app.config["WORKFLOW_LLM_PROVIDER"] = "GEMINI"
+        app.config["WORKFLOW_LLM_MODEL"] = "gemini-2.0-flash"
         return user
 
 
@@ -90,12 +90,13 @@ def test_start_workflow_success(app, workflow_user):
     assert operation_id == 55
     mock_create.assert_called_once_with(
         user_id=workflow_user.id,
-        provider="GEMINI",
+        provider="OPENROUTER",
         operation_type="workflow",
         input_text="Summarize this transcript.",
         transcription_id=transcription_id,
         prompt_id=None,
         status="pending",
+        model="google/gemini-3.7-flash",
     )
     mock_thread.assert_called_once()
     mock_thread.return_value.start.assert_called_once()

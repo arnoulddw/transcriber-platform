@@ -47,11 +47,11 @@
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
                             {% if not required_perm or user_permissions.get(required_perm) %}
-                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api and (not model.model_slug or model.model_slug == effective_openrouter_model) %}selected{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api and (not model.model_name or model.model_name == effective_openrouter_model) %}selected{% endif %}{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
                             {% endif %}
                         {% endfor %}
                     </select>
-                    <input type="hidden" id="openrouterModelInput" name="openrouter_model" value="{{ effective_openrouter_model or '' }}">
+                    <input type="hidden" id="openrouterModelInput" name="model_name" value="{{ effective_openrouter_model or '' }}">
                     <p id="modelDescription" class="form-hint" aria-live="polite"></p>
                 </div>
             </div>

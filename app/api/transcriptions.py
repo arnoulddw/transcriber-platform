@@ -232,11 +232,16 @@ def transcribe_audio_public():
         return jsonify({'error': _('No transcription provider is available for your account.')}), 400
 
     try:
-        api_model = resolve_openrouter_model(
-            api_choice,
-            request.form.get("openrouter_model"),
-            getattr(user, "default_openrouter_model", None),
-            getattr(getattr(user, "role", None), "default_openrouter_model", None),
+        submitted_model = request.form.get("model_name") or request.form.get("openrouter_model")
+        api_model = (
+            resolve_openrouter_model(
+                api_choice,
+                submitted_model,
+                getattr(user, "default_openrouter_model", None),
+                getattr(getattr(user, "role", None), "default_openrouter_model", None),
+            )
+            if api_choice == "openrouter"
+            else (str(submitted_model or "").strip() or None)
         )
     except ValueError as model_err:
         logging.warning(f"{log_prefix} Invalid OpenRouter model: {model_err}")
@@ -296,7 +301,7 @@ def transcribe_audio_public():
         return jsonify({'error': _('We could not save or process the uploaded file. Please try again.')}), 500
 
     try:
-        price = pricing_service.get_price(item_type='transcription', item_key=api_choice)
+        price = pricing_service.get_price(item_type='transcription', item_key=api_model or api_choice)
         cost_to_add = 0.0
         if price is not None:
             cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
@@ -538,14 +543,19 @@ def transcribe_audio():
             logging.error(f"{job_log_prefix} Invalid API choice '{api_choice}'. Allowed: {sorted(active_model_codes)}")
             raise ValueError(f"Invalid transcription provider selected: {api_choice}")
 
-        api_model = resolve_openrouter_model(
-            api_choice,
-            request.form.get("openrouter_model"),
-            getattr(user, "default_openrouter_model", None),
-            getattr(getattr(user, "role", None), "default_openrouter_model", None),
+        submitted_model = request.form.get("model_name") or request.form.get("openrouter_model")
+        api_model = (
+            resolve_openrouter_model(
+                api_choice,
+                submitted_model,
+                getattr(user, "default_openrouter_model", None),
+                getattr(getattr(user, "role", None), "default_openrouter_model", None),
+            )
+            if api_choice == "openrouter"
+            else (str(submitted_model or "").strip() or None)
         )
 
-        price = pricing_service.get_price(item_type='transcription', item_key=api_choice)
+        price = pricing_service.get_price(item_type='transcription', item_key=api_model or api_choice)
         cost_to_add = 0.0
         if price is not None:
             cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)

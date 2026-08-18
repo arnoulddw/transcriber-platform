@@ -14,6 +14,7 @@ from .model import User, _map_row_to_user
 
 logger = logging.getLogger(__name__)
 _DEFAULT_OPENROUTER_MODEL_UNSET = object()
+_DEFAULT_LIVE_MODEL_UNSET = object()
 
 try:
     from app.models.role import Role, get_role_by_id, get_role_by_name
@@ -47,7 +48,7 @@ def _get_default_transcription_model_for_new_user(role: Role) -> Optional[str]:
 
     for model in catalog_models:
         permission_key = model.get('permission_key')
-        if not permission_key or getattr(role, permission_key, False):
+        if not permission_key or role.has_permission(permission_key):
             permitted_model_codes.append(model['code'])
             if model.get('is_default'):
                 default_model_code = model['code']
@@ -632,6 +633,7 @@ def update_user_preferences(
     language: Optional[str] = None,
     default_openrouter_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
     default_openrouter_llm_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
+    default_live_transcription_model: Optional[str] = _DEFAULT_LIVE_MODEL_UNSET,  # type: ignore[assignment]
     default_title_generation_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
     default_workflow_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
 ) -> bool:
@@ -666,6 +668,10 @@ def update_user_preferences(
     if default_openrouter_llm_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
         set_clauses.append("default_openrouter_llm_model = %s")
         params.append(default_openrouter_llm_model if default_openrouter_llm_model else None)
+
+    if default_live_transcription_model is not _DEFAULT_LIVE_MODEL_UNSET:
+        set_clauses.append("default_live_transcription_model = %s")
+        params.append(default_live_transcription_model if default_live_transcription_model else None)
 
     if default_title_generation_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
         set_clauses.append("default_title_generation_model = %s")

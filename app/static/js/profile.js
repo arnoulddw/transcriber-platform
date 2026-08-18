@@ -103,7 +103,8 @@ function updateProfileOpenrouterField() {
     field.classList.toggle('hidden', !enabled);
     input.disabled = !enabled;
     if (enabled) {
-        const selectedModel = modelSelect.selectedOptions[0]?.dataset.openrouterModel;
+        const selectedModel = modelSelect.selectedOptions[0]?.dataset.modelName
+            || modelSelect.selectedOptions[0]?.dataset.openrouterModel;
         if (selectedModel) input.value = selectedModel;
     }
 }
@@ -118,6 +119,17 @@ function populateProfileLlmModelSelect(select) {
     catalogModels.forEach(model => {
         if (!model.code || (model.permission_key && !userPermissions[model.permission_key])) return;
         select.appendChild(new Option(model.display_name || model.code, model.code));
+    });
+}
+
+function populateProfileLiveModelSelect(select) {
+    if (!select) return;
+    while (select.options.length > 0) select.remove(0);
+    select.appendChild(new Option('-- Use System Default --', ''));
+    (window.LIVE_TRANSCRIPTION_MODELS || []).forEach(model => {
+        const code = typeof model === 'string' ? model : model.code;
+        const label = typeof model === 'string' ? model : (model.display_name || model.code);
+        if (code) select.appendChild(new Option(label, code));
     });
 }
 
@@ -220,11 +232,12 @@ async function loadProfileData() {
     const modelSelect = document.getElementById('profileDefaultModel');
     const workflowModelSelect = document.getElementById('profileDefaultWorkflowModel');
     const auxiliaryModelSelect = document.getElementById('profileDefaultAuxiliaryModel');
+    const liveModelSelect = document.getElementById('profileDefaultLiveModel');
     const openrouterModelInput = document.getElementById('profileDefaultOpenrouterModel');
     const autoTitleCheckbox = document.getElementById('enable_auto_title_generation');
     const uiLangSelect = document.getElementById('profileLanguage');
 
-    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !workflowModelSelect || !auxiliaryModelSelect || !openrouterModelInput || !autoTitleCheckbox || !uiLangSelect) {
+    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !workflowModelSelect || !auxiliaryModelSelect || !liveModelSelect || !openrouterModelInput || !autoTitleCheckbox || !uiLangSelect) {
         window.logger.error(profileLogPrefix, "One or more profile form elements not found.");
         window.showNotification('Error loading profile form.', 'error', 4000, false);
         return;
@@ -238,6 +251,7 @@ async function loadProfileData() {
     modelSelect.value = '';
     workflowModelSelect.value = '';
     auxiliaryModelSelect.value = '';
+    liveModelSelect.value = '';
     openrouterModelInput.value = '';
     updateProfileOpenrouterField();
     uiLangSelect.value = '';
@@ -265,6 +279,7 @@ async function loadProfileData() {
         if (model.permission_key && !userPermissions[model.permission_key]) return;
 
         const opt = new Option(model.display_name || model.code, model.code);
+        if (model.model_name) opt.dataset.modelName = model.model_name;
         if (model.model_slug) opt.dataset.openrouterModel = model.model_slug;
         const requiredKey = model.required_api_key;
         if (requiredKey && !apiKeyStatus[requiredKey]) {
@@ -277,6 +292,7 @@ async function loadProfileData() {
 
     populateProfileLlmModelSelect(workflowModelSelect);
     populateProfileLlmModelSelect(auxiliaryModelSelect);
+    populateProfileLiveModelSelect(liveModelSelect);
 
     // Populate UI language dropdown
     while (uiLangSelect.options.length > 0) uiLangSelect.remove(0);
@@ -307,7 +323,7 @@ async function loadProfileData() {
         const effectiveOpenrouterModel = data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL || '';
         const matchingOpenrouterOption = Array.from(modelSelect.options).find(
             option => option.value === 'openrouter'
-                && option.dataset.openrouterModel === effectiveOpenrouterModel
+                && (option.dataset.modelName || option.dataset.openrouterModel) === effectiveOpenrouterModel
         );
         if (matchingOpenrouterOption) matchingOpenrouterOption.selected = true;
         if (data.default_transcription_model !== 'openrouter') {
@@ -315,8 +331,9 @@ async function loadProfileData() {
         }
         workflowModelSelect.value = data.default_workflow_model || '';
         auxiliaryModelSelect.value = data.default_title_generation_model || '';
+        liveModelSelect.value = data.default_live_transcription_model || '';
         const selectedOpenrouterOption = modelSelect.selectedOptions[0];
-        openrouterModelInput.value = selectedOpenrouterOption?.dataset.openrouterModel || effectiveOpenrouterModel;
+        openrouterModelInput.value = selectedOpenrouterOption?.dataset.modelName || selectedOpenrouterOption?.dataset.openrouterModel || effectiveOpenrouterModel;
         updateProfileOpenrouterField();
         uiLangSelect.value = data.language || window.CURRENT_UI_LANGUAGE || 'en';
         autoTitleCheckbox.checked = data.enable_auto_title_generation === true;

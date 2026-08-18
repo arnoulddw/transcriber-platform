@@ -439,9 +439,21 @@ def create_app(config_class=Config) -> Flask:
             model['code']: model['display_name'] for model in catalog_models
         }
         live_model = app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
-        api_name_map_for_frontend_subset[live_model] = all_provider_names_from_config.get(
-            live_model, 'OpenAI GPT Live Transcribe'
-        )
+        live_model_codes = [
+            str(model_code).strip()
+            for model_code in app.config.get('LIVE_TRANSCRIPTION_MODELS', [live_model])
+            if str(model_code).strip()
+        ]
+        live_transcription_models = [
+            {
+                'code': model_code,
+                'display_name': all_provider_names_from_config.get(model_code, model_code),
+                'provider': 'openai',
+            }
+            for model_code in live_model_codes
+        ]
+        for live_entry in live_transcription_models:
+            api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
 
         color_name_map = {
             "#ffffff": "Default", "#ffd1dc": "Pink", "#aec6cf": "Blue Grey",
@@ -454,7 +466,9 @@ def create_app(config_class=Config) -> Flask:
             except Exception as e: _ctx_logger.error(f"Error fetching initial key status: {e}", exc_info=True)
             if role:
                 user_permissions = {
+                    'use_api_openai': role.use_api_openai,
                     'use_api_assemblyai': role.use_api_assemblyai,
+                    'use_api_google': role.use_api_google,
                     'use_api_openai_whisper': role.use_api_openai_whisper,
                     'use_api_openai_gpt_4o_transcribe': role.use_api_openai_gpt_4o_transcribe,
                     'use_api_openai_live_transcribe': role.use_api_openai_live_transcribe,
@@ -479,6 +493,7 @@ def create_app(config_class=Config) -> Flask:
                  'openrouter': bool(app.config.get('OPENROUTER_API_KEY'))
              }
              user_permissions = {
+                 'use_api_openai': True, 'use_api_google': True,
                  'use_api_assemblyai': True, 'use_api_openai_whisper': True,
                  'use_api_openai_gpt_4o_transcribe': True, 'use_api_openai_live_transcribe': True,
                  'use_api_google_gemini': True,
@@ -561,6 +576,8 @@ def create_app(config_class=Config) -> Flask:
             API_NAME_MAP_FRONTEND=api_name_map_for_frontend_subset,
             API_PROVIDER_NAME_MAP=all_provider_names_from_config,
             TRANSCRIPTION_MODEL_CATALOG=available_transcription_models,
+            live_transcription_models=live_transcription_models,
+            LIVE_TRANSCRIPTION_MODELS=live_model_codes,
             LLM_MODEL_CATALOG=llm_model_catalog,
             COLOR_NAME_MAP=color_name_map,
             app_debug=app.debug,

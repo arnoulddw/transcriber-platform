@@ -121,6 +121,7 @@ def create_default_roles() -> None:
         'admin': {
             'description': 'Administrator role with all permissions',
             'permissions': {
+                'use_api_openai': True, 'use_api_google': True,
                 'use_api_assemblyai': True, 'use_api_openai_whisper': True, 'use_api_openai_gpt_4o_transcribe': True,
                 'use_api_openai_live_transcribe': True,
                 'use_api_google_gemini': True, 'use_api_openrouter': True,
@@ -137,6 +138,7 @@ def create_default_roles() -> None:
         'beta-tester': {
             'description': 'Beta tester role with standard permissions',
             'permissions': {
+                'use_api_openai': True, 'use_api_google': False,
                 'use_api_assemblyai': True, 'use_api_openai_whisper': True, 'use_api_openai_gpt_4o_transcribe': True,
                 'use_api_openai_live_transcribe': False, 'use_api_openrouter': True,
                 'access_admin_panel': False,

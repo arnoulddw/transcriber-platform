@@ -115,9 +115,9 @@ async function fetchReadinessData() {
     if (!window.IS_MULTI_USER) {
         initLogger.debug("Single-user mode: Assuming readiness.");
         return {
-            api_keys: { openai: true, assemblyai: true, gemini: true, openrouter: true },
+            api_keys: { openai: true, assemblyai: true, gemini: true, openrouter: true, provider_keys: {} },
             permissions: {
-                use_api_assemblyai: true, use_api_openrouter: true, use_api_openai_whisper: true,
+                use_api_openai: true, use_api_assemblyai: true, use_api_google: true, use_api_openrouter: true, use_api_openai_whisper: true,
                 use_api_openai_gpt_4o_transcribe: true, use_api_openai_live_transcribe: true,
                 use_api_google_gemini: true,
                 allow_large_files: true, allow_context_prompt: true, allow_download_transcript: true,
@@ -201,7 +201,7 @@ window.fetchReadinessData = fetchReadinessData;
 function updateSelectedOpenRouterModel(selectedOption) {
     const input = document.getElementById('openrouterModelInput');
     if (!input) return;
-    input.value = selectedOption?.dataset.openrouterModel || '';
+    input.value = selectedOption?.dataset.modelName || selectedOption?.dataset.openrouterModel || '';
 }
 
 async function checkTranscribeButtonState() {
@@ -319,8 +319,7 @@ async function checkTranscribeButtonState() {
 
     if (!disableReason) {
         let canUseSelectedApi = false;
-        if (selectedApiValue === 'gpt-transcribe' || selectedApiValue === 'gpt-4o-transcribe') canUseSelectedApi = permissions.use_api_openai_gpt_4o_transcribe;
-        else if (selectedApiValue === 'whisper') canUseSelectedApi = permissions.use_api_openai_whisper;
+        if (selectedApiValue === 'gpt-transcribe' || selectedApiValue === 'gpt-4o-transcribe' || selectedApiValue === 'whisper') canUseSelectedApi = permissions.use_api_openai || permissions.use_api_openai_gpt_4o_transcribe || permissions.use_api_openai_whisper;
         else if (selectedApiValue === 'assemblyai') canUseSelectedApi = permissions.use_api_assemblyai;
         else if (selectedApiValue === 'openrouter') canUseSelectedApi = permissions.use_api_openrouter;
 
@@ -331,9 +330,9 @@ async function checkTranscribeButtonState() {
         }
     }
 
-    if (!disableReason && selectedApiValue === 'openrouter') {
-        const openrouterModel = selectedApiOption?.dataset.openrouterModel || '';
-        if (!openrouterModel.includes('/')) {
+    if (!disableReason) {
+        const selectedModelName = selectedApiOption?.dataset.modelName || selectedApiOption?.dataset.openrouterModel || '';
+        if (selectedApiValue === 'openrouter' && !selectedModelName.includes('/')) {
             disableReason = "Select an OpenRouter transcription model.";
         }
     }

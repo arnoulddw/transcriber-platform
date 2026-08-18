@@ -42,20 +42,14 @@
                 description='Choose default providers for users assigned to this role. Leave blank to use system defaults.',
                 divider=True
             ) %}
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div>
                         <label for="{{ form.default_transcription_model.id }}" class="form-label">{{ form.default_transcription_model.label.text }}</label>
                         {{ form.default_transcription_model(class="input-select" + (" border-red-500" if form.default_transcription_model.errors else ""), id=form.default_transcription_model.id) }}
                         {% if form.default_transcription_model.errors %}
                             <p class="form-error">{{ form.default_transcription_model.errors[0] }}</p>
                         {% endif %}
-                        <div id="defaultOpenrouterModelField" class="mt-3{% if form.default_transcription_model.data != 'openrouter' %} hidden{% endif %}">
-                            <label for="{{ form.default_openrouter_model.id }}" class="form-label">{{ form.default_openrouter_model.label.text }}</label>
-                            {{ form.default_openrouter_model(class="input-control" + (" border-red-500" if form.default_openrouter_model.errors else ""), placeholder="openai/gpt-transcribe", autocomplete="off", disabled=form.default_transcription_model.data != 'openrouter', id=form.default_openrouter_model.id) }}
-                            {% if form.default_openrouter_model.errors %}
-                                <p class="form-error">{{ form.default_openrouter_model.errors[0] }}</p>
-                            {% endif %}
-                        </div>
+
                     </div>
                     <div>
                         <label for="{{ form.default_title_generation_model.id }}" class="form-label">{{ form.default_title_generation_model.label.text }}</label>
@@ -71,6 +65,13 @@
                             <p class="form-error">{{ form.default_workflow_model.errors[0] }}</p>
                         {% endif %}
                     </div>
+                    <div>
+                        <label for="{{ form.default_live_transcription_model.id }}" class="form-label">{{ form.default_live_transcription_model.label.text }}</label>
+                        {{ form.default_live_transcription_model(class="input-select" + (" border-red-500" if form.default_live_transcription_model.errors else ""), id=form.default_live_transcription_model.id) }}
+                        {% if form.default_live_transcription_model.errors %}
+                            <p class="form-error">{{ form.default_live_transcription_model.errors[0] }}</p>
+                        {% endif %}
+                    </div>
                 </div>
             {% endcall %}
 
@@ -80,24 +81,16 @@
                     <div class="space-y-3">
                     <h4 class="section-title text-sm text-text-muted">API Access</h4>
                     <label class="flex items-center space-x-2 cursor-pointer">
+                        {{ form.use_api_openai(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
+                        <span class="text-sm text-text-strong">{{ form.use_api_openai.label.text }}</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
                         {{ form.use_api_assemblyai(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
                         <span class="text-sm text-text-strong">{{ form.use_api_assemblyai.label.text }}</span>
                     </label>
                     <label class="flex items-center space-x-2 cursor-pointer">
-                        {{ form.use_api_openai_whisper(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
-                        <span class="text-sm text-text-strong">{{ form.use_api_openai_whisper.label.text }}</span>
-                    </label>
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        {{ form.use_api_openai_gpt_4o_transcribe(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
-                        <span class="text-sm text-text-strong">{{ form.use_api_openai_gpt_4o_transcribe.label.text }}</span>
-                    </label>
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        {{ form.use_api_openai_live_transcribe(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
-                        <span class="text-sm text-text-strong">{{ form.use_api_openai_live_transcribe.label.text }}</span>
-                    </label>
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        {{ form.use_api_google_gemini(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
-                        <span class="text-sm text-text-strong">{{ form.use_api_google_gemini.label.text }}</span>
+                        {{ form.use_api_google(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
+                        <span class="text-sm text-text-strong">{{ form.use_api_google.label.text }}</span>
                     </label>
                     <label class="flex items-center space-x-2 cursor-pointer">
                         {{ form.use_api_openrouter(class="form-checkbox h-4 w-4 text-primary border-border-default rounded focus:ring-primary") }}
@@ -229,24 +222,4 @@
         </div>
     </form>
     {% endcall %}
-{% endblock %}
-
-{% block admin_scripts %}
-    {{ super() }}
-    <script nonce="{{ csp_nonce }}">
-        document.addEventListener('DOMContentLoaded', function() {
-            const defaultModel = document.getElementById('{{ form.default_transcription_model.id }}');
-            const openrouterField = document.getElementById('defaultOpenrouterModelField');
-            const openrouterInput = document.getElementById('{{ form.default_openrouter_model.id }}');
-            if (!defaultModel || !openrouterField || !openrouterInput) return;
-
-            const updateOpenrouterField = () => {
-                const enabled = defaultModel.value === 'openrouter';
-                openrouterField.classList.toggle('hidden', !enabled);
-                openrouterInput.disabled = !enabled;
-            };
-            defaultModel.addEventListener('change', updateOpenrouterField);
-            updateOpenrouterField();
-        });
-    </script>
 {% endblock %}
