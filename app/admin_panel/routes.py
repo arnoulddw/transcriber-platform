@@ -2,6 +2,7 @@
 # Defines routes for the admin panel section (dashboard, user management, etc.).
 
 import logging
+from typing import Dict
 from flask import render_template, flash, redirect, url_for, request, abort, current_app
 from flask_login import current_user
 
@@ -18,7 +19,7 @@ from app.models import role as role_model
 from app.models import template_prompt as template_prompt_model
 from app.models import transcription_catalog as transcription_catalog_model
 from app.models import llm_catalog as llm_catalog_model
-from app.models import user_api_key as user_api_key_model
+from app.services import user_service
 
 def _get_common_admin_context():
     """Helper to get frequently used context for admin templates."""
@@ -35,39 +36,85 @@ def _get_common_admin_context():
     }
 
 
+def _model_option_map(
+    models: list,
+    key_by_model_name: bool = False,
+):
+    """Convert catalog/expanded model dicts into {code: display_name} maps.
+
+    ``key_by_model_name`` keeps OpenRouter slugs as distinct pricing keys
+    (``model_name``/``model_slug``) instead of collapsing them under the
+    generic ``openrouter`` provider code.
+    """
+    result: Dict[str, str] = {}
+    for model in models:
+        code = str(model.get('code') or '').strip()
+        if key_by_model_name:
+            code = str(
+                model.get('model_name')
+                or model.get('model_slug')
+                or model.get('code')
+                or ''
+            ).strip()
+        if not code or code in result:
+            continue
+        result[code] = model.get('display_name') or code
+    return result
+
+
 def build_pricing_options():
-    """Build one model-code mapping for each pricing section."""
+    """Build one model-code mapping per pricing section.
+
+    Transcription, live transcription, and LLM records stay strictly
+    separate: the transcription dropdown receives transcription models
+    (normal + live), while Title Generations and Workflows receive LLM
+    models only.
+    """
     try:
         transcription_catalog = transcription_catalog_model.get_active_models()
     except Exception as catalog_err:
         logging.warning("[AdminPanel] Failed to load transcription models for pricing: %s", catalog_err, exc_info=True)
         transcription_catalog = []
     try:
-        llm_models = llm_catalog_model.get_active_models()
+        aggregated_status = user_service.get_aggregate_api_key_status()
+    except Exception as status_err:
+        logging.warning("[AdminPanel] Failed to load aggregated key status for pricing: %s", status_err, exc_info=True)
+        aggregated_status = {}
+
+    try:
+        transcription_options = transcription_catalog_model.expand_models_for_ui(
+            transcription_catalog, aggregated_status
+        )
+    except Exception as expand_err:
+        logging.warning("[AdminPanel] Failed to expand transcription models for pricing: %s", expand_err, exc_info=True)
+        transcription_options = transcription_catalog
+
+    transcription_map = _model_option_map(transcription_options, key_by_model_name=True)
+
+    # Live transcription models are priced per minute like normal transcription.
+    try:
+        live_models = transcription_catalog_model.get_live_models(aggregated_status)
+        live_map = _model_option_map(live_models)
+        for code, name in live_map.items():
+            if code not in transcription_map:
+                transcription_map[code] = name
+    except Exception as live_err:
+        logging.warning("[AdminPanel] Failed to load live transcription models for pricing: %s", live_err, exc_info=True)
+
+    try:
+        llm_models = llm_catalog_model.get_llm_model_options(aggregated_status)
     except Exception as catalog_err:
         logging.warning("[AdminPanel] Failed to load LLM models for pricing: %s", catalog_err, exc_info=True)
         llm_models = []
+    llm_map = _model_option_map(llm_models)
 
-    model_names = set(user_api_key_model.get_distinct_model_names())
-    model_names.update(
-        str(model.get('code') or '').strip()
-        for model in llm_models
-        if str(model.get('code') or '').strip()
-    )
-    model_names.update(
-        str(model.get('code') or '').strip()
-        for model in transcription_catalog
-        if str(model.get('code') or '').strip()
-    )
-    normalized_models = {
-        model_name: model_name
-        for model_name in sorted(model_names)
-        if model_name
-    }
+    def _sorted(mapping: Dict[str, str]) -> Dict[str, str]:
+        return dict(sorted(mapping.items(), key=lambda item: item[1].lower()))
+
     return {
-        'transcription': normalized_models.copy(),
-        'title_generation': normalized_models.copy(),
-        'workflow': normalized_models.copy(),
+        'transcription': _sorted(transcription_map),
+        'title_generation': _sorted(dict(llm_map)),
+        'workflow': _sorted(dict(llm_map)),
     }
 
 # --- Dashboard Route ---

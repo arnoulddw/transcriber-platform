@@ -36,7 +36,7 @@ except ImportError:
 class OpenAIClient(BaseLLMClient):
     """Handles LLM requests using the OpenAI API (GPT models)."""
 
-    DEFAULT_MODEL = "gpt-4o" # Or another suitable default
+    DEFAULT_MODEL = "gpt-4.1" # Or another suitable default
 
     # --- Implementation of Abstract Methods ---
 

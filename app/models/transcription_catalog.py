@@ -284,7 +284,8 @@ def expand_models_for_ui(
             if fallback_openrouter_model and fallback_openrouter_model.strip() not in names:
                 names.append(fallback_openrouter_model.strip())
             if not names:
-                append_once(dict(model))
+                # No specific OpenRouter model is known. The provider name is
+                # not a selectable model, so no option is emitted here.
                 continue
             for name in names:
                 append_once({

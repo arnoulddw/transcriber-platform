@@ -66,7 +66,7 @@ class TestConfig:
     # Simplified provider/language config for tests
     TRANSCRIPTION_PROVIDERS = ["assemblyai", "whisper", "gpt-4o-transcribe", "gpt-transcribe", "gpt-live-transcribe"]
     LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
-    OPENROUTER_MODELS = ['google/gemini-3.7-flash', 'openai/gpt-4o']
+    OPENROUTER_MODELS = ['google/gemini-3.7-flash']
     DEFAULT_TRANSCRIPTION_PROVIDER = 'whisper'
     LLM_PROVIDER = 'GEMINI'
     API_PROVIDER_NAME_MAP = {

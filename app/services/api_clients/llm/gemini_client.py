@@ -76,7 +76,7 @@ class GeminiClient(BaseLLMClient):
     # --- MODIFIED: Accept config in _get_model_name and update default ---
     def _get_model_name(self, config: Dict[str, Any]) -> str:
         """Gets the configured Gemini model name from the passed config dictionary."""
-        return config.get('WORKFLOW_LLM_MODEL') or 'gemini-2.0-flash'
+        return config.get('WORKFLOW_LLM_MODEL') or 'gemini-3.0-flash'
     # --- END MODIFIED ---
 
     def generate_text(self, prompt: str, **kwargs) -> str:

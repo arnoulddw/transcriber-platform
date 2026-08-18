@@ -3,7 +3,7 @@
 # Provides a single source of truth backed by MySQL tables.
 
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from flask import current_app
 from mysql.connector import Error as MySQLError
@@ -38,35 +38,20 @@ _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
 
 # Default metadata for known models. Extend this mapping as new models are added.
 _DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Optional[str]]] = {
-    "gemini-2.0-flash": {
-        "display_name": "Gemini 2.0 Flash",
-        "provider": "GEMINI",
-        "sort_order": 10,
-    },
     "gemini-3.0-flash": {
         "display_name": "Gemini 3.0 Flash",
         "provider": "GEMINI",
-        "sort_order": 20,
+        "sort_order": 10,
     },
     "gemma-4-26b-a4b-it": {
         "display_name": "Gemma 4 26B A4B",
         "provider": "GEMINI",
-        "sort_order": 30,
-    },
-    "gpt-4o": {
-        "display_name": "OpenAI GPT-4o",
-        "provider": "OPENAI",
-        "sort_order": 10,
+        "sort_order": 20,
     },
     "google/gemini-3.7-flash": {
         "display_name": "Gemini 3.7 Flash (OpenRouter)",
         "provider": "OPENROUTER",
         "sort_order": 10,
-    },
-    "openai/gpt-4o": {
-        "display_name": "OpenAI GPT-4o (OpenRouter)",
-        "provider": "OPENROUTER",
-        "sort_order": 20,
     },
 }
 
@@ -234,6 +219,51 @@ def get_models_grouped_by_provider() -> Dict[str, Dict[str, str]]:
     return grouped
 
 
+def get_llm_model_options(
+    key_status: Optional[Dict[str, Any]] = None,
+    include_user_models: bool = True,
+) -> List[Dict[str, Optional[str]]]:
+    """Return the full LLM model option list shared by every LLM dropdown.
+
+    Combines the active catalog with model slugs saved on user API keys
+    (purpose ``llm``). Catalog entries win on code collisions so display
+    names stay stable. When ``key_status`` aggregates several users, this is
+    the list admins see; with a single user's status it matches that user's
+    own options exactly.
+    """
+    options: List[Dict[str, Optional[str]]] = list(get_active_models())
+    if not include_user_models or not key_status:
+        return options
+
+    seen_codes = {str(model.get("code") or "").strip() for model in options}
+    status = key_status or {}
+    provider_keys = status.get("provider_keys") or {}
+    for provider, entries in provider_keys.items():
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            purposes = entry.get("model_purposes") or []
+            if isinstance(purposes, str):
+                purposes = purposes.split(",")
+            if "llm" not in {str(p).strip().lower() for p in purposes}:
+                continue
+            if entry.get("provider_wide"):
+                # Provider-wide rows grant access to the provider, not to a model.
+                continue
+            slug = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+            if not slug or slug in seen_codes:
+                continue
+            seen_codes.add(slug)
+            options.append({
+                "code": slug,
+                "display_name": slug,
+                "required_api_key": provider,
+                "provider": str(provider).upper(),
+                "permission_key": None,
+            })
+    return options
+
+
 # ----- Internal Helpers -----
 
 def _ensure_models_table(cursor) -> None:
@@ -327,6 +357,10 @@ def _seed_models_from_config() -> None:
     _set_default_flag("is_default_title", _resolve_default_code(default_title, seen_codes))
     _set_default_flag("is_default_workflow", _resolve_default_code(default_workflow, seen_codes))
 
+    # Deactivate catalog rows that are no longer configured so retired models
+    # (e.g. Gemini 2.0 Flash, OpenAI GPT-4o) disappear from every dropdown.
+    _deactivate_missing_models(seen_codes)
+
 
 def _ensure_default_model_seeded(
     code: Optional[str],
@@ -373,6 +407,21 @@ def _ensure_default_model_seeded(
 
 _ALLOWED_LLM_TABLES = {MODELS_TABLE}
 _ALLOWED_DEFAULT_COLUMNS = {"is_default", "is_default_title", "is_default_workflow"}
+
+def _deactivate_missing_models(active_codes: List[str]) -> None:
+    """
+    Marks catalog models that are no longer configured as inactive so they no
+    longer appear in dropdowns or pricing tables.
+    """
+    cursor = get_cursor()
+    if not active_codes:
+        cursor.execute(f"UPDATE {MODELS_TABLE} SET is_active = 0")
+        get_db().commit()
+        return
+    placeholders = ", ".join(["%s"] * len(active_codes))
+    sql = f"UPDATE {MODELS_TABLE} SET is_active = 0 WHERE code NOT IN ({placeholders})"
+    cursor.execute(sql, tuple(active_codes))
+    get_db().commit()
 
 def _table_has_rows(table_name: str) -> bool:
     if table_name not in _ALLOWED_LLM_TABLES:

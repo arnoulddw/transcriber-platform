@@ -38,13 +38,13 @@ def mock_db_utils():
         mock_transcription_utils.get_api_distribution_in_range.return_value = {'whisper': 30, 'assemblyai': 20}
         mock_transcription_utils.get_language_distribution_in_range.return_value = {'en': 40, 'es': 10}
         mock_transcription_utils.count_successful_title_generations_in_range.return_value = 25
-        mock_transcription_utils.get_workflow_model_distribution.return_value = {'gemini-2.0-flash': 15}
+        mock_transcription_utils.get_workflow_model_distribution.return_value = {'gemini-3.0-flash': 15}
         mock_transcription_utils.get_common_error_messages_in_range.return_value = [('Error A', 5)]
         mock_transcription_utils.get_common_workflow_error_messages.return_value = [('Workflow Error B', 3)]
         mock_transcription_utils.get_cost_analytics_by_component.return_value = {'transcriptions': 50.0, 'workflows': 25.0}
         mock_transcription_utils.get_cost_analytics_by_role.return_value = {'admin': {'total_cost': 75.0, 'user_count': 1}}
         mock_transcription_utils.count_workflow_jobs_with_filters.return_value = 2
-        mock_workflow_display_map.return_value = {'gemini-2.0-flash': 'Gemini 2.0 Flash'}
+        mock_workflow_display_map.return_value = {'gemini-3.0-flash': 'Gemini 3.0 Flash'}
 
         yield mock_user_utils, mock_transcription_utils
 

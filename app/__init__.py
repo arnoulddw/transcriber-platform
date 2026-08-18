@@ -450,8 +450,10 @@ def create_app(config_class=Config) -> Flask:
         }
 
         if is_multi and user:
-            try: initial_key_status = user_service.get_user_api_key_status(user.id)
-            except Exception as e: _ctx_logger.error(f"Error fetching initial key status: {e}", exc_info=True)
+            try:
+                initial_key_status = user_service.get_effective_key_status(user)
+            except Exception as e:
+                _ctx_logger.error(f"Error fetching initial key status: {e}", exc_info=True)
             if role:
                 user_permissions = {
                     'use_api_openai': role.use_api_openai,

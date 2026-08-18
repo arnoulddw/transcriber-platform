@@ -130,9 +130,9 @@ The application is configured using environment variables in a `.env` file. The 
 | `TITLE_GENERATION_LLM_MODEL` | Auxiliary model used for generated transcript titles and other auxiliary tasks when a user has no preference. | `gemma-4-26b-a4b-it` |
 | `WORKFLOW_LLM_PROVIDER` | Provider used for workflow runs when the model catalog cannot infer it. | `OPENROUTER` |
 | `WORKFLOW_LLM_MODEL` | Model used for workflow runs when a user has no preference. | `google/gemini-3.7-flash` |
-| `GEMINI_MODELS` | Comma-separated Gemini models to seed into the LLM catalog. | `gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it` |
-| `OPENAI_MODELS` | Comma-separated OpenAI LLM models to seed into the LLM catalog. | `gpt-4o` |
-| `OPENROUTER_MODELS` | Comma-separated OpenRouter model slugs to seed into the LLM catalog for title/workflow model defaults. | `google/gemini-3.7-flash,openai/gpt-4o` |
+| `GEMINI_MODELS` | Comma-separated Gemini models to seed into the LLM catalog. | `gemini-3.0-flash,gemma-4-26b-a4b-it` |
+| `OPENAI_MODELS` | Comma-separated OpenAI LLM models to seed into the LLM catalog. | *(empty)* |
+| `OPENROUTER_MODELS` | Comma-separated OpenRouter model slugs to seed into the LLM catalog for title/workflow model defaults. | `google/gemini-3.7-flash` |
 | `DEFAULT_LANGUAGE` | Default transcription language on load (`auto`, `en`, `es`, etc.). | `auto` |
 | `SUPPORTED_LANGUAGE_CODES` | Comma-separated language codes to seed into the active language catalog (ex. `en,nl,fr,es`). | `en,nl,fr,es` |
 | **Database (MySQL)** | | |

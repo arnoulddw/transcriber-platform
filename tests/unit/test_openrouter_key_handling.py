@@ -88,7 +88,7 @@ def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
         },
         {
             "provider_code": "openrouter",
-            "model_slug": "openai/gpt-4o-mini",
+            "model_slug": "openai/gpt-4.1-mini",
             "encrypted_key": "encrypted-old",
         },
     ]
@@ -113,7 +113,7 @@ def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
     assert status["openrouter"] is True
     assert status["openrouter_keys"] == [
         {"model_slug": "x-ai/grok-stt-1.0", "last_three": "XYZ"},
-        {"model_slug": "openai/gpt-4o-mini", "last_three": "ABC"},
+        {"model_slug": "openai/gpt-4.1-mini", "last_three": "ABC"},
     ]
     assert status["provider_keys"]["openrouter"][0]["model_purposes"] == [
         "transcription",
@@ -197,7 +197,10 @@ def test_api_key_modal_contract_contains_requested_copy_and_selected_state():
 
     assert 'id="modelNameHint"' in template
     assert "Enter the OpenRouter model as vendor/model." in script
-    assert "peer-checked:bg-primary/10" in template
+    # The entire purpose card turns blue when selected, not an inner span.
+    assert "has-[:checked]:bg-primary" in template
+    assert "has-[:checked]:text-white" in template
+    assert "peer-checked:bg-primary/10" not in template
     assert "openrouter_keys" in script
     assert "***${" in script
 

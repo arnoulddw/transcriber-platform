@@ -101,11 +101,11 @@ function updateModelSettings(service) {
             text: 'Enter the AssemblyAI model name only, without the vendor prefix.',
         },
         gemini: {
-            placeholder: 'gemini-2.0-flash',
+            placeholder: 'gemini-3.0-flash',
             text: 'Enter the Google model name only, without the vendor prefix.',
         },
         openrouter: {
-            placeholder: 'openai/gpt-4o-mini',
+            placeholder: 'google/gemini-3.7-flash',
             text: 'Enter the OpenRouter model as vendor/model.',
         },
     };
@@ -770,7 +770,7 @@ function handleApiKeySave(event) {
          return;
     }
     if (service === 'openrouter' && !modelName.includes('/')) {
-        window.showNotification('Please enter an OpenRouter model slug such as openai/gpt-4o-mini.', 'warning', 5000, false);
+        window.showNotification('Please enter an OpenRouter model slug such as google/gemini-3.7-flash.', 'warning', 5000, false);
         return;
     }
 

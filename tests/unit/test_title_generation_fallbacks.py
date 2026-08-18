@@ -16,12 +16,12 @@ def test_build_title_generation_attempts_keeps_gemma_primary(monkeypatch):
     attempts = title_generation._build_title_generation_attempts(
         provider="GEMINI",
         model_name="gemma-4-26b-a4b-it",
-        config={"TITLE_GENERATION_FALLBACK_MODELS": ["gemini-2.0-flash"]},
+        config={"TITLE_GENERATION_FALLBACK_MODELS": ["gemini-3.0-flash"]},
     )
 
     assert attempts == [
         ("GEMINI", "gemma-4-26b-a4b-it"),
-        ("GEMINI", "gemini-2.0-flash"),
+        ("GEMINI", "gemini-3.0-flash"),
     ]
 
 
@@ -34,11 +34,11 @@ def test_build_title_generation_attempts_deduplicates_fallback(monkeypatch):
 
     attempts = title_generation._build_title_generation_attempts(
         provider="GEMINI",
-        model_name="gemini-2.0-flash",
-        config={"TITLE_GENERATION_FALLBACK_MODELS": "gemini-2.0-flash, gemini-2.0-flash"},
+        model_name="gemini-3.0-flash",
+        config={"TITLE_GENERATION_FALLBACK_MODELS": "gemini-3.0-flash, gemini-3.0-flash"},
     )
 
-    assert attempts == [("GEMINI", "gemini-2.0-flash")]
+    assert attempts == [("GEMINI", "gemini-3.0-flash")]
 
 
 def test_only_generation_errors_are_title_model_retryable():
