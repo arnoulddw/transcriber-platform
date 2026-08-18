@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
     MAX_SESSION_DURATION_MS,
+    OPENROUTER_CHUNK_SECONDS,
     LiveTranscriptReducer,
+    encodePcm16Wav,
     createCompleteOffer,
     remainingSessionMilliseconds,
     waitForDataChannelOpen,
@@ -16,6 +18,15 @@ test('caps live sessions at 120 minutes', () => {
         remainingSessionMilliseconds(1000, 1000 + MAX_SESSION_DURATION_MS),
         0,
     );
+});
+
+test('encodes browser samples as a PCM WAV payload for OpenRouter', () => {
+    assert.equal(OPENROUTER_CHUNK_SECONDS, 3);
+    const wav = encodePcm16Wav(new Float32Array([0, 1, -1]), 16000);
+    const view = new DataView(wav);
+    assert.equal(String.fromCharCode(...new Uint8Array(wav.slice(0, 4))), 'RIFF');
+    assert.equal(view.getUint16(34, true), 16);
+    assert.equal(view.getUint32(40, true), 6);
 });
 
 test('reconciles interleaved deltas by item and preserves first-seen order', () => {

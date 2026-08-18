@@ -64,13 +64,9 @@
                     </label>
                 </div>
                 <p class="form-hint">{{ _('Choose whether this model should handle audio transcription, live transcription, or titles and workflows.') }}</p>
-                <div id="liveModelSettings" class="hidden mt-3">
-                    <label for="apiKeyLiveModel" class="form-label">{{ _('Live transcription model') }}</label>
-                    <select id="apiKeyLiveModel" class="input-select" disabled>
-                        {% for model in live_transcription_models|default([]) %}
-                            <option value="{{ model.code }}" data-model-name="{{ model.code }}" data-provider="{{ model.provider|default('openai') }}">{{ model.display_name }}</option>
-                        {% endfor %}
-                    </select>
+                <div id="modelPurposePreview" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted" aria-live="polite">
+                    <span>{{ _('Usage tags:') }}</span>
+                    <span id="modelPurposePreviewBadges" class="inline-flex flex-wrap items-center gap-1"></span>
                 </div>
             </fieldset>
             {{ ui.button(_('Save Key'), variant='primary', type='submit', icon='save', icon_position='end', extra_classes='btn-save') }}

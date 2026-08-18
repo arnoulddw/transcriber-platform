@@ -27,6 +27,7 @@ def live_permission_required(view):
         if current_app.config["DEPLOYMENT_MODE"] == "multi" and not (
             check_permission(current_user, "use_api_openai")
             or check_permission(current_user, "use_api_openai_live_transcribe")
+            or check_permission(current_user, "use_api_openrouter")
         ):
             return jsonify({"error": _("You do not have access to Live transcription.")}), 403
         return view(*args, **kwargs)
@@ -60,6 +61,34 @@ def create_live_session():
     except Exception:
         LOGGER.exception("Unexpected error while creating a live transcription session.")
         return jsonify({"error": _("Could not start Live transcription.")}), 500
+
+
+@live_bp.route("/chunk", methods=["POST"])
+@live_permission_required
+@limiter.limit("30 per minute", key_func=lambda: build_user_limit_key("live-chunk"))
+def transcribe_live_chunk():
+    data = request.get_json(silent=True) or {}
+    try:
+        sequence = data.get("sequence", 0)
+        if not isinstance(sequence, int) or sequence < 0:
+            return jsonify({"error": _("The live audio sequence is invalid.")}), 400
+        result = live_transcription_service.transcribe_openrouter_chunk(
+            current_user,
+            data.get("session_token"),  # type: ignore[arg-type]
+            data.get("audio_data"),  # type: ignore[arg-type]
+            data.get("audio_format", "wav"),
+            sequence,
+        )
+        return jsonify(result)
+    except LiveTranscriptionValidationError as exc:
+        return jsonify({"error": _(str(exc))}), 400
+    except (LiveTranscriptionPermissionError, MissingApiKeyError) as exc:
+        return jsonify({"error": _(str(exc))}), 403
+    except LiveTranscriptionUpstreamError as exc:
+        return jsonify({"error": _(str(exc))}), 502
+    except Exception:
+        LOGGER.exception("Unexpected error while transcribing an OpenRouter live chunk.")
+        return jsonify({"error": _("Could not transcribe the Live audio chunk.")}), 500
 
 
 @live_bp.route("/finalize", methods=["POST"])

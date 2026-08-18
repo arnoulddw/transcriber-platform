@@ -198,6 +198,7 @@ def save_user_api_key(
             service,
             encrypted_key,
             normalized_model_name,
+            model_purpose=model_purpose,
         )
         if not success:
             logger.error(f"Failed to persist API key for service '{service}'.")
@@ -422,6 +423,14 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
                 continue
 
             model_name = str(record.get('model_slug') or '').strip()
+            raw_purposes = str(record.get('model_purposes') or '').strip()
+            purposes = [
+                purpose
+                for purpose in raw_purposes.split(',')
+                if purpose in {'transcription', 'llm', 'live'}
+            ]
+            if not purposes:
+                purposes = ['transcription']
             if not model_name:
                 if provider == 'openrouter':
                     legacy_names = [
@@ -442,6 +451,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
                     'model_name': model_name,
                     'provider_wide': not bool(record.get('model_slug')),
                     'last_three': decrypted_key[-3:],
+                    'model_purposes': purposes,
                 }
                 if provider == 'openrouter':
                     if record.get('model_slug'):

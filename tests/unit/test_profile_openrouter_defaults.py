@@ -1,5 +1,6 @@
 from contextlib import ExitStack
 from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -282,6 +283,18 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "TRANSCRIPTION_MODEL_CATALOG=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
     assert "transcription_models=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
     assert 'type="hidden" id="openrouterModelInput"' in index_template
+
+
+def test_live_openrouter_configuration_is_documented_and_detected():
+    config_source = Path("app/config.py").read_text(encoding="utf-8")
+    env_example = Path(".env.example").read_text(encoding="utf-8")
+    live_service = Path("app/services/live_transcription_service.py").read_text(encoding="utf-8")
+    main_init = Path("app/static/js/main_init.js").read_text(encoding="utf-8")
+    profile_script = Path("app/static/js/profile.js").read_text(encoding="utf-8")
+
+    assert "replace('/', '_')" in config_source
+    assert "LIVE_TRANSCRIPTION_PROVIDER_OPENAI_GPT_TRANSCRIBE=openrouter" in env_example
+    assert '"transport": "openrouter-sse"' in live_service
     assert "updateSelectedOpenRouterModel" in main_init
     assert "openrouterModelField" not in main_init
     assert "const apiKeyStatus = window.API_KEY_STATUS || {};" in profile_script

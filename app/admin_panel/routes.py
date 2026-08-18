@@ -18,6 +18,7 @@ from app.models import role as role_model
 from app.models import template_prompt as template_prompt_model
 from app.models import transcription_catalog as transcription_catalog_model
 from app.models import llm_catalog as llm_catalog_model
+from app.models import user_api_key as user_api_key_model
 
 def _get_common_admin_context():
     """Helper to get frequently used context for admin templates."""
@@ -31,6 +32,38 @@ def _get_common_admin_context():
         'supported_workflow_models': display_mapping_service.get_workflow_model_display_map(),
         'transcription_models': display_mapping_service.get_transcription_display_map(),
         'supported_languages': supported_languages,
+    }
+
+
+def build_pricing_options():
+    """Build one model-code mapping for each pricing section."""
+    transcription_models = display_mapping_service.get_transcription_display_map()
+    try:
+        llm_models = llm_catalog_model.get_active_models()
+    except Exception as catalog_err:
+        logging.warning("[AdminPanel] Failed to load LLM models for pricing: %s", catalog_err, exc_info=True)
+        llm_models = []
+
+    model_names = set(user_api_key_model.get_distinct_model_names())
+    model_names.update(
+        str(model.get('code') or '').strip()
+        for model in llm_models
+        if str(model.get('code') or '').strip()
+    )
+    model_names.update(
+        str(model_code).strip()
+        for model_code in transcription_models.keys()
+        if str(model_code).strip()
+    )
+    normalized_models = {
+        model_name: model_name
+        for model_name in sorted(model_names)
+        if model_name
+    }
+    return {
+        'transcription': normalized_models.copy(),
+        'title_generation': normalized_models.copy(),
+        'workflow': normalized_models.copy(),
     }
 
 # --- Dashboard Route ---
@@ -493,50 +526,10 @@ def costs():
         if metrics.get('error'):
             flash(f"Warning: Could not load all cost metrics. {metrics['error']}", "warning")
 
-        transcription_models = display_mapping_service.get_transcription_display_map()
-        
-        # --- FINAL CORRECTED LOGIC ---
-        # Create a nested structure: { 'Provider Display Name': { 'model_id': 'model_display_name' } }
-        try:
-            llm_grouped_models = llm_catalog_model.get_models_grouped_by_provider()
-        except Exception as catalog_err:
-            logging.warning(f"{log_prefix} Failed to load LLM models from catalog: {catalog_err}", exc_info=True)
-            llm_grouped_models = {}
-
-        title_generation_models = {provider: dict(models) for provider, models in llm_grouped_models.items()}
-        workflow_models = {provider: dict(models) for provider, models in llm_grouped_models.items()}
-
-        active_title_generation_model = (
-            llm_catalog_model.get_default_title_generation_model_code()
-            or current_app.config.get('TITLE_GENERATION_LLM_MODEL')
-        )
-        active_workflow_model = (
-            llm_catalog_model.get_default_workflow_model_code()
-            or current_app.config.get('WORKFLOW_LLM_MODEL')
-        )
-        # --- END FINAL CORRECTED LOGIC ---
-
-        pricing_options = {
-            'transcription': transcription_models,
-            'title_generation': {
-                model_id: model_name
-                for models in title_generation_models.values()
-                for model_id, model_name in models.items()
-            },
-            'workflow': {
-                model_id: model_name
-                for models in workflow_models.values()
-                for model_id, model_name in models.items()
-            },
-        }
+        pricing_options = build_pricing_options()
         return render_template('admin/costs.html',
                                metrics=metrics,
-                               transcription_models=transcription_models,
-                               workflow_models=workflow_models,
-                               title_generation_models=title_generation_models,
-                               pricing_options=pricing_options,
-                               active_title_generation_model=active_title_generation_model,
-                               active_workflow_model=active_workflow_model)
+                               pricing_options=pricing_options)
     except AdminServiceError as e:
         logging.error(f"{log_prefix} Service error loading costs page: {e}", exc_info=True)
         flash("Error loading costs page. Please check the logs.", "danger")
