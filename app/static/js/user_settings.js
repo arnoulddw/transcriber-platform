@@ -88,10 +88,33 @@ function setOpenRouterApiKeySuggestion(force = false) {
 
 function updateModelSettings(service) {
     const modelInput = document.getElementById('apiKeyOpenrouterModel');
-    const openrouterHint = document.getElementById('openrouterModelHint');
+    const modelHint = document.getElementById('modelNameHint');
     if (!modelInput) return;
 
-    if (openrouterHint) openrouterHint.classList.toggle('hidden', service !== 'openrouter');
+    const providerHints = {
+        openai: {
+            placeholder: 'gpt-4o-transcribe',
+            text: 'Enter the OpenAI model name only, without the vendor prefix.',
+        },
+        assemblyai: {
+            placeholder: 'universal-3-pro',
+            text: 'Enter the AssemblyAI model name only, without the vendor prefix.',
+        },
+        gemini: {
+            placeholder: 'gemini-2.0-flash',
+            text: 'Enter the Google model name only, without the vendor prefix.',
+        },
+        openrouter: {
+            placeholder: 'openai/gpt-4o-mini',
+            text: 'Enter the OpenRouter model as vendor/model.',
+        },
+    };
+    const hint = providerHints[service] || {
+        placeholder: 'gpt-4o-transcribe',
+        text: 'Enter the model name exactly as shown by the provider.',
+    };
+    modelInput.placeholder = hint.placeholder;
+    if (modelHint) modelHint.textContent = hint.text;
     updateModelPurposePreview();
     setApiKeySuggestion(true);
 }
@@ -117,7 +140,7 @@ function createModelPurposeBadges(purposes) {
         const label = MODEL_PURPOSE_LABELS[purpose] || MODEL_PURPOSE_LABELS.transcription;
         const badge = document.createElement('span');
         badge.className = 'badge badge-muted text-xs';
-        badge.textContent = `[${label}]`;
+        badge.textContent = label;
         badge.dataset.modelPurpose = purpose;
         badges.appendChild(badge);
     });

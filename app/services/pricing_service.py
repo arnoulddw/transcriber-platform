@@ -72,11 +72,11 @@ def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]
     # If an explicit item_key (like a model name) is given, use it.
     if item_key:
         key_to_use = item_key
-    # For title generation and workflows, use the specific provider from config.
+    # Legacy callers without a model still use the configured model defaults.
     elif item_type == 'title_generation':
-        key_to_use = current_app.config.get('TITLE_GENERATION_LLM_PROVIDER')
+        key_to_use = current_app.config.get('TITLE_GENERATION_LLM_MODEL')
     elif item_type == 'workflow':
-        key_to_use = current_app.config.get('WORKFLOW_LLM_PROVIDER')
+        key_to_use = current_app.config.get('WORKFLOW_LLM_MODEL')
     # Fallback for other types if needed (though transcription should always have an item_key).
     else:
         key_to_use = current_app.config.get('LLM_PROVIDER')
@@ -86,8 +86,7 @@ def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]
     try:
         if not key_to_use:
             return None
-        # Standardize on lowercase for all lookups
-        item_key_to_use = key_to_use.lower()
+        item_key_to_use = str(key_to_use).strip()
         type_to_use = item_type.lower()
 
         price = pricing_model.get_price(item_key=item_key_to_use, item_type=type_to_use)

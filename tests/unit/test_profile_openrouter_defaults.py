@@ -304,7 +304,7 @@ def test_live_openrouter_configuration_is_documented_and_detected():
 
 def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
     models = [
-        {"code": "whisper", "display_name": "Whisper", "permission_key": None, "required_api_key": None},
+        {"code": "whisper", "display_name": "Whisper", "permission_key": None, "required_api_key": "openai"},
         {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
     ]
 
@@ -321,6 +321,77 @@ def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
         ("openrouter", "x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
         ("openrouter", "openai/gpt-transcribe", "openai/gpt-transcribe"),
     ]
+
+
+def test_scoped_transcription_key_only_expands_the_matching_catalog_model():
+    models = [
+        {"code": "whisper", "display_name": "Whisper", "permission_key": None, "required_api_key": "openai"},
+        {"code": "gpt-4o-transcribe", "display_name": "GPT-4o", "permission_key": None, "required_api_key": "openai"},
+        {"code": "gpt-transcribe", "display_name": "GPT", "permission_key": None, "required_api_key": "openai"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {
+            "provider_keys": {
+                "openai": [
+                    {"model_name": "gpt-transcribe", "model_purposes": ["transcription"]},
+                    {"model_name": "gpt-4o", "model_purposes": ["llm"]},
+                ],
+            },
+        },
+    )
+
+    assert [(model["code"], model.get("model_name")) for model in expanded] == [
+        ("whisper", None),
+        ("gpt-4o-transcribe", None),
+        ("gpt-transcribe", "gpt-transcribe"),
+    ]
+    assert sum(model.get("model_name") == "gpt-transcribe" for model in expanded) == 1
+
+
+def test_transcription_model_expansion_deduplicates_saved_model_names():
+    models = [
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {
+            "provider_keys": {
+                "openrouter": [
+                    {"model_slug": "openai/gpt-transcribe", "model_purposes": ["transcription"]},
+                    {"model_name": "openai/gpt-transcribe", "model_purposes": ["transcription"]},
+                ],
+            },
+        },
+    )
+
+    assert [(model["code"], model.get("model_slug")) for model in expanded] == [
+        ("openrouter", "openai/gpt-transcribe"),
+    ]
+
+
+def test_live_model_catalog_deduplicates_configured_and_user_models(form_context):
+    from flask import current_app
+
+    current_app.config.update(
+        API_PROVIDER_NAME_MAP={"gpt-live-transcribe": "GPT Live", "vendor/live": "Vendor Live"},
+        LIVE_TRANSCRIPTION_MODEL="gpt-live-transcribe",
+        LIVE_TRANSCRIPTION_MODELS=["gpt-live-transcribe", "gpt-live-transcribe"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"gpt-live-transcribe": "openai"},
+    )
+
+    live_models = transcription_catalog.get_live_models({
+        "provider_keys": {
+            "openrouter": [
+                {"model_slug": "vendor/live", "model_purposes": ["live"]},
+                {"model_slug": "vendor/live", "model_purposes": ["live"]},
+            ],
+        },
+    })
+
+    assert [model["code"] for model in live_models] == ["gpt-live-transcribe", "vendor/live"]
 
 
 def test_context_resolves_openrouter_label_after_loading_key_status():

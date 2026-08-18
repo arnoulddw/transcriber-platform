@@ -39,7 +39,7 @@
 
             {% call form_layout.section(
                 title='Default Models',
-                description='Choose default providers for users assigned to this role. Leave blank to use system defaults.',
+                description='Choose default models for users assigned to this role. Leave blank to use system defaults.',
                 divider=True
             ) %}
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
@@ -51,10 +51,10 @@
                         {% endif %}
                     </div>
                     <div class="min-w-0">
-                        <label for="{{ form.default_title_generation_model.id }}" class="form-label whitespace-nowrap">{{ form.default_title_generation_model.label.text }}</label>
-                        {{ form.default_title_generation_model(class="input-select" + (" border-red-500" if form.default_title_generation_model.errors else ""), id=form.default_title_generation_model.id) }}
-                        {% if form.default_title_generation_model.errors %}
-                            <p class="form-error">{{ form.default_title_generation_model.errors[0] }}</p>
+                        <label for="{{ form.default_live_transcription_model.id }}" class="form-label whitespace-nowrap">{{ form.default_live_transcription_model.label.text }}</label>
+                        {{ form.default_live_transcription_model(class="input-select" + (" border-red-500" if form.default_live_transcription_model.errors else ""), id=form.default_live_transcription_model.id) }}
+                        {% if form.default_live_transcription_model.errors %}
+                            <p class="form-error">{{ form.default_live_transcription_model.errors[0] }}</p>
                         {% endif %}
                     </div>
                     <div class="min-w-0">
@@ -65,10 +65,10 @@
                         {% endif %}
                     </div>
                     <div class="min-w-0">
-                        <label for="{{ form.default_live_transcription_model.id }}" class="form-label whitespace-nowrap">{{ form.default_live_transcription_model.label.text }}</label>
-                        {{ form.default_live_transcription_model(class="input-select" + (" border-red-500" if form.default_live_transcription_model.errors else ""), id=form.default_live_transcription_model.id) }}
-                        {% if form.default_live_transcription_model.errors %}
-                            <p class="form-error">{{ form.default_live_transcription_model.errors[0] }}</p>
+                        <label for="{{ form.default_title_generation_model.id }}" class="form-label whitespace-nowrap">{{ form.default_title_generation_model.label.text }}</label>
+                        {{ form.default_title_generation_model(class="input-select" + (" border-red-500" if form.default_title_generation_model.errors else ""), id=form.default_title_generation_model.id) }}
+                        {% if form.default_title_generation_model.errors %}
+                            <p class="form-error">{{ form.default_title_generation_model.errors[0] }}</p>
                         {% endif %}
                     </div>
                 </div>

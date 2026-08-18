@@ -37,7 +37,11 @@ def _get_common_admin_context():
 
 def build_pricing_options():
     """Build one model-code mapping for each pricing section."""
-    transcription_models = display_mapping_service.get_transcription_display_map()
+    try:
+        transcription_catalog = transcription_catalog_model.get_active_models()
+    except Exception as catalog_err:
+        logging.warning("[AdminPanel] Failed to load transcription models for pricing: %s", catalog_err, exc_info=True)
+        transcription_catalog = []
     try:
         llm_models = llm_catalog_model.get_active_models()
     except Exception as catalog_err:
@@ -51,9 +55,9 @@ def build_pricing_options():
         if str(model.get('code') or '').strip()
     )
     model_names.update(
-        str(model_code).strip()
-        for model_code in transcription_models.keys()
-        if str(model_code).strip()
+        str(model.get('code') or '').strip()
+        for model in transcription_catalog
+        if str(model.get('code') or '').strip()
     )
     normalized_models = {
         model_name: model_name

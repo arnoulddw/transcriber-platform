@@ -44,10 +44,12 @@
                             'assemblyai': _('Supports speaker identification and works well for meetings and interviews.'),
                             'openrouter': _('Routes the job through the selected OpenRouter transcription model.'),
                         } %}
+                        {% set seen_transcription_models = namespace(codes=[]) %}
                         {% for model in transcription_models %}
                             {% set required_perm = model.permission_key %}
-                            {% if not required_perm or user_permissions.get(required_perm) %}
+                            {% if model.code not in seen_transcription_models.codes and (not required_perm or user_permissions.get(required_perm)) %}
                                 <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api and (not model.model_name or model.model_name == effective_openrouter_model) %}selected{% endif %}{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                {% set seen_transcription_models.codes = seen_transcription_models.codes + [model.code] %}
                             {% endif %}
                         {% endfor %}
                     </select>
