@@ -93,7 +93,7 @@ class Config:
     TITLE_GENERATION_LLM_MODEL = os.environ.get('TITLE_GENERATION_LLM_MODEL', 'gemma-4-26b-a4b-it')
     TITLE_GENERATION_FALLBACK_MODELS = [
         model.strip()
-        for model in os.environ.get('TITLE_GENERATION_FALLBACK_MODELS', 'gemini-2.0-flash').split(',')
+        for model in os.environ.get('TITLE_GENERATION_FALLBACK_MODELS', 'gemini-3.0-flash').split(',')
         if model.strip()
     ]
     # The workflow default is the Gemini 3.7 Flash model exposed by the
@@ -101,11 +101,11 @@ class Config:
     WORKFLOW_LLM_MODEL = os.environ.get('WORKFLOW_LLM_MODEL', 'google/gemini-3.7-flash')
 
     # --- NEW: Centralized model lists ---
-    GEMINI_MODELS = os.environ.get('GEMINI_MODELS', 'gemini-2.0-flash,gemini-3.0-flash,gemma-4-26b-a4b-it').split(',')
-    OPENAI_MODELS = os.environ.get('OPENAI_MODELS', 'gpt-4o').split(',')
+    GEMINI_MODELS = os.environ.get('GEMINI_MODELS', 'gemini-3.0-flash,gemma-4-26b-a4b-it').split(',')
+    OPENAI_MODELS = os.environ.get('OPENAI_MODELS', '').split(',')
     OPENROUTER_MODELS = os.environ.get(
         'OPENROUTER_MODELS',
-        'google/gemini-3.7-flash,openai/gpt-4o',
+        'google/gemini-3.7-flash',
     ).split(',')
     OPENROUTER_LIVE_TRANSCRIPTION_MODELS = [
         model.strip()
@@ -127,12 +127,9 @@ class Config:
         "openrouter": "OpenRouter",
         "OPENROUTER": "OpenRouter",
         # Specific Models (add more as needed for display)
-        "gemini-2.0-flash": "Gemini 2.0 Flash",
         "gemini-3.0-flash": "Gemini 3.0 Flash",
         "gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
-        "gpt-4o": "OpenAI GPT-4o",
         "google/gemini-3.7-flash": "Gemini 3.7 Flash (OpenRouter)",
-        "openai/gpt-4o": "OpenAI GPT-4o (OpenRouter)",
     }
     # --- END MODIFIED ---
 

@@ -19,6 +19,16 @@ TRANSCRIPTION_MODELS = [
     {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None},
 ]
 
+# Key status used by the profile/role form fixtures: one OpenRouter
+# transcription slug so the openrouter option resolves to a real model.
+OPENROUTER_KEY_STATUS = {
+    "provider_keys": {
+        "openrouter": [
+            {"model_name": "openai/gpt-transcribe", "model_purposes": ["transcription"]},
+        ],
+    },
+}
+
 
 @pytest.fixture
 def form_context():
@@ -30,7 +40,7 @@ def form_context():
         SUPPORTED_LANGUAGE_NAMES={"auto": "Automatic Detection"},
     )
     fake_user = SimpleNamespace(
-        is_authenticated=False,
+        is_authenticated=True,
         username="testuser",
         email="test@example.com",
     )
@@ -53,7 +63,25 @@ def form_context():
                 )
             )
             stack.enter_context(
-                patch("app.forms.llm_catalog_model.get_active_models", return_value=[])
+                patch("app.forms.llm_catalog_model.get_llm_model_options", return_value=[])
+            )
+            stack.enter_context(
+                patch(
+                    "app.forms.user_service.get_effective_key_status",
+                    return_value=OPENROUTER_KEY_STATUS,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "app.forms.user_service.get_aggregate_api_key_status",
+                    return_value=OPENROUTER_KEY_STATUS,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "app.forms.user_service.resolve_effective_openrouter_model",
+                    return_value="openai/gpt-transcribe",
+                )
             )
             yield
 
@@ -128,8 +156,8 @@ def test_profile_form_exposes_permitted_llm_model_choices(form_context):
             "permission_key": "use_api_google_gemini",
         },
         {
-            "code": "gpt-4o",
-            "display_name": "OpenAI GPT-4o",
+            "code": "gpt-4.1",
+            "display_name": "OpenAI GPT-4.1",
             "permission_key": None,
         },
         {
@@ -146,13 +174,18 @@ def test_profile_form_exposes_permitted_llm_model_choices(form_context):
     )
 
     with patch("app.forms.current_user", authenticated_user), patch(
-        "app.forms.llm_catalog_model.get_active_models", return_value=llm_models
+        "app.forms.llm_catalog_model.get_llm_model_options", return_value=llm_models
+    ), patch(
+        "app.forms.user_service.get_effective_key_status",
+        return_value=OPENROUTER_KEY_STATUS,
+    ), patch(
+        "app.forms.user_service.resolve_effective_openrouter_model", return_value=None
     ):
         form = UserProfileForm(data=_form_data(UserProfileForm))
 
     expected_model_choices = [
         ("gemini-3.0-flash", "Gemini 3.0 Flash"),
-        ("gpt-4o", "OpenAI GPT-4o"),
+        ("gpt-4.1", "OpenAI GPT-4.1"),
     ]
     workflow_choices = list(form.default_workflow_model.choices or [])
     auxiliary_choices = list(form.default_title_generation_model.choices or [])
@@ -336,7 +369,7 @@ def test_scoped_transcription_key_only_expands_the_matching_catalog_model():
             "provider_keys": {
                 "openai": [
                     {"model_name": "gpt-transcribe", "model_purposes": ["transcription"]},
-                    {"model_name": "gpt-4o", "model_purposes": ["llm"]},
+                    {"model_name": "gpt-4.1", "model_purposes": ["llm"]},
                 ],
             },
         },
@@ -396,7 +429,7 @@ def test_live_model_catalog_deduplicates_configured_and_user_models(form_context
 
 def test_context_resolves_openrouter_label_after_loading_key_status():
     app_source = open("app/__init__.py", encoding="utf-8").read()
-    key_status_call = "initial_key_status = user_service.get_user_api_key_status(user.id)"
+    key_status_call = "initial_key_status = user_service.get_effective_key_status(user)"
     effective_model_call = "user_service.resolve_effective_openrouter_model(user, initial_key_status)"
 
     assert app_source.index(key_status_call) < app_source.index(effective_model_call)

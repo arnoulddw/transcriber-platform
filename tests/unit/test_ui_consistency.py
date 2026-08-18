@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -46,32 +47,49 @@ def test_role_label_translations_match_the_updated_source_strings():
         assert 'msgid "Default Workflow Model"' not in source
 
 
-def test_admin_pricing_options_are_model_specific_and_include_saved_models(monkeypatch):
+def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monkeypatch):
     _set_minimal_app_environment(monkeypatch)
     from app.admin_panel.routes import build_pricing_options
 
     with patch(
-        "app.admin_panel.routes.llm_catalog_model.get_active_models",
-        return_value=[
-            {"code": "gemini-3.0-flash", "display_name": "Gemini 3.0 Flash"},
-        ],
-    ), patch(
-        "app.admin_panel.routes.user_api_key_model.get_distinct_model_names",
-        return_value=["openai/gpt-4o-transcribe", "google/gemini-3.7-flash"],
-    ), patch(
         "app.admin_panel.routes.transcription_catalog_model.get_active_models",
         return_value=[
-            {"code": "whisper", "display_name": "OpenAI"},
+            {"code": "whisper", "display_name": "OpenAI Whisper"},
             {"code": "openrouter", "display_name": "OpenRouter"},
+        ],
+    ), patch(
+        "app.admin_panel.routes.user_service.get_aggregate_api_key_status",
+        return_value={
+            "provider_keys": {
+                "openrouter": [
+                    {"model_name": "openai/gpt-4o-transcribe", "model_purposes": ["transcription"]},
+                ],
+            },
+        },
+    ), patch(
+        "app.admin_panel.routes.transcription_catalog_model.get_live_models",
+        return_value=[{"code": "gpt-live-transcribe", "display_name": "GPT Live Transcribe"}],
+    ), patch(
+        "app.admin_panel.routes.llm_catalog_model.get_llm_model_options",
+        return_value=[
+            {"code": "gemini-3.0-flash", "display_name": "Gemini 3.0 Flash"},
         ],
     ):
         options = build_pricing_options()
 
+    # Transcription section: transcription models only (normal + live + user slugs),
+    # never LLM models and never a bare provider name.
+    assert "gemini-3.0-flash" not in options["transcription"]
+    assert options["transcription"]["whisper"] == "OpenAI Whisper"
     assert options["transcription"]["openai/gpt-4o-transcribe"] == "openai/gpt-4o-transcribe"
-    assert options["transcription"]["google/gemini-3.7-flash"] == "google/gemini-3.7-flash"
-    assert options["title_generation"]["gemini-3.0-flash"] == "gemini-3.0-flash"
-    assert options["workflow"] == options["title_generation"]
+    assert options["transcription"]["gpt-live-transcribe"] == "GPT Live Transcribe"
     assert "OpenRouter" not in options["transcription"].values()
+    assert "openrouter" not in options["transcription"]
+    # LLM sections receive LLM models only.
+    assert options["title_generation"]["gemini-3.0-flash"] == "Gemini 3.0 Flash"
+    assert options["workflow"] == options["title_generation"]
+    assert "whisper" not in options["title_generation"]
+    assert "openai/gpt-4o-transcribe" not in options["title_generation"]
 
 
 def test_admin_cost_template_uses_the_same_model_option_shape_for_all_sections():
@@ -117,8 +135,8 @@ def test_admin_default_model_grid_order_matches_user_settings():
 class _Cursor:
     def __init__(self):
         self.rows = [
-            {"model_slug": "gpt-4o"},
-            {"model_slug": "openai/gpt-4o"},
+            {"model_slug": "gpt-4.1"},
+            {"model_slug": "openai/gpt-4.1-mini"},
             {"model_slug": ""},
         ]
 
@@ -137,7 +155,7 @@ def test_saved_api_key_model_names_are_read_from_model_slug_column(monkeypatch):
     with patch.object(user_api_key, "get_cursor", return_value=cursor):
         names = user_api_key.get_distinct_model_names()
 
-    assert names == ["gpt-4o", "openai/gpt-4o"]
+    assert names == ["gpt-4.1", "openai/gpt-4.1-mini"]
     assert "model_slug" in cursor.sql
     assert "DISTINCT" in cursor.sql
 
@@ -215,3 +233,83 @@ def test_pricing_fallbacks_use_model_defaults_not_provider_names():
     assert "WORKFLOW_LLM_MODEL" in pricing_service
     assert "TITLE_GENERATION_LLM_PROVIDER" not in pricing_service
     assert "WORKFLOW_LLM_PROVIDER" not in pricing_service
+
+
+def test_expand_models_skips_generic_openrouter_when_no_slug_is_known():
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
+
+    assert [model["code"] for model in expanded] == ["whisper"]
+    assert all(model["code"] != "openrouter" for model in expanded)
+
+
+def test_expand_models_uses_configured_slug_when_present():
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {"provider_keys": {"openrouter": [
+            {"model_name": "x-ai/grok-stt-1.0", "model_purposes": ["transcription"]},
+        ]}},
+    )
+
+    assert [(model["code"], model.get("model_name")) for model in expanded] == [
+        ("openrouter", "x-ai/grok-stt-1.0"),
+    ]
+
+
+def test_llm_model_options_merge_user_added_llm_slugs(monkeypatch):
+    _set_minimal_app_environment(monkeypatch)
+    from app.models import llm_catalog
+
+    with patch(
+        "app.models.llm_catalog.get_active_models",
+        return_value=[{"code": "gemini-3.0-flash", "display_name": "Gemini 3.0 Flash"}],
+    ):
+        options = llm_catalog.get_llm_model_options(
+            {
+                "provider_keys": {
+                    "gemini": [
+                        {"model_name": "gemini-2.5-pro", "model_purposes": ["llm"]},
+                        {"model_name": "Google", "model_purposes": ["llm"], "provider_wide": True},
+                    ],
+                    "openrouter": [
+                        {"model_name": "openai/gpt-4.1-mini", "model_purposes": ["llm"]},
+                        {"model_name": "nvidia/llama-3.1", "model_purposes": ["transcription"]},
+                    ],
+                },
+            }
+        )
+
+    assert [(m["code"], m.get("required_api_key")) for m in options] == [
+        ("gemini-3.0-flash", None),
+        ("gemini-2.5-pro", "gemini"),
+        ("openai/gpt-4.1-mini", "openrouter"),
+    ]
+
+
+def test_effective_key_status_aggregates_for_admins_but_not_users(monkeypatch):
+    _set_minimal_app_environment(monkeypatch)
+    from app.services import user_service
+
+    admin = SimpleNamespace(id=1, role=SimpleNamespace(access_admin_panel=True))
+    regular = SimpleNamespace(id=2, role=SimpleNamespace(access_admin_panel=False))
+    with patch.object(
+        user_service, "get_aggregate_api_key_status", return_value={"aggregated": True}
+    ) as aggregate, patch.object(
+        user_service, "get_user_api_key_status", return_value={"own": True}
+    ) as own:
+        assert user_service.get_effective_key_status(admin) == {"aggregated": True}
+        assert user_service.get_effective_key_status(regular) == {"own": True}
+        aggregate.assert_called_once_with()
+        own.assert_called_once_with(2)

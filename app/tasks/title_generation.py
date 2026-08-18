@@ -33,7 +33,7 @@ from limits import parse # Import the parse function from the limits library
 # --- Constants ---
 TITLE_GENERATION_RATE_LIMIT = "10 per minute" # Example rate limit
 TITLE_GENERATION_TIMEOUT_SECONDS = 30 # Timeout for the LLM call
-DEFAULT_TITLE_GENERATION_FALLBACK_MODELS = ("gemini-2.0-flash",)
+DEFAULT_TITLE_GENERATION_FALLBACK_MODELS = ("gemini-3.0-flash",)
 
 # Utils
 from app.utils.title_utils import (

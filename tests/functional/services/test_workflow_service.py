@@ -45,7 +45,7 @@ def workflow_user(app, logged_in_client_with_permissions):
         else:
             print("[TEST] Failed to create workflow role for workflow_user fixture")
         app.config["WORKFLOW_LLM_PROVIDER"] = "GEMINI"
-        app.config["WORKFLOW_LLM_MODEL"] = "gemini-2.0-flash"
+        app.config["WORKFLOW_LLM_MODEL"] = "gemini-3.0-flash"
         return user
 
 

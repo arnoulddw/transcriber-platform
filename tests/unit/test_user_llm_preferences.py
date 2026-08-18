@@ -16,7 +16,7 @@ def llm_app_context():
         SECRET_KEY="test-secret",
         LLM_PROVIDERS=["GEMINI", "OPENAI", "OPENROUTER"],
         GEMINI_MODELS=["gemini-3.0-flash"],
-        OPENAI_MODELS=["gpt-4o"],
+        OPENAI_MODELS=["gpt-4.1"],
         OPENROUTER_MODELS=["google/gemini-3.7-flash"],
     )
     with app.app_context():
@@ -44,11 +44,11 @@ def test_resolve_user_model_preference_returns_catalog_provider(llm_app_context)
 
 def test_resolve_user_model_preference_rejects_model_without_permission(llm_app_context):
     user = SimpleNamespace(
-        default_title_generation_model="gpt-4o",
+        default_title_generation_model="gpt-4.1",
         has_permission=Mock(return_value=False),
     )
     catalog_entry = {
-        "code": "gpt-4o",
+        "code": "gpt-4.1",
         "provider": "OPENAI",
         "permission_key": "use_api_openai",
         "is_active": True,
@@ -154,7 +154,7 @@ def test_title_generation_uses_user_auxiliary_model(llm_app_context):
     ), patch.object(
         title_generation.llm_service,
         "resolve_user_model_preference",
-        return_value=("OPENAI", "gpt-4o"),
+        return_value=("OPENAI", "gpt-4.1"),
     ), patch.object(
         title_generation.llm_catalog_model,
         "get_default_title_generation_model_code",
@@ -175,4 +175,4 @@ def test_title_generation_uses_user_auxiliary_model(llm_app_context):
         title_generation.generate_title_task(app, "transcription-2", 7)
 
     thread_args = create_thread.call_args.kwargs["args"]
-    assert thread_args[-2:] == ("OPENAI", "gpt-4o")
+    assert thread_args[-2:] == ("OPENAI", "gpt-4.1")

@@ -370,9 +370,85 @@ def delete_user_api_key_by_id(user_id: int, key_id: int) -> None:
     if not user_api_key_model.delete_api_key_by_id(user_id, key_id):
         raise KeyNotFoundError("API key not found.")
 
-def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
-    """Return configured provider/model key metadata without plaintext keys."""
-    logger = get_logger(__name__, user_id=user_id, component="UserService")
+def _collect_key_status_entries(
+    status: Dict[str, Any],
+    records: List[Dict[str, Any]],
+    security_svc: SecurityService,
+    logger,
+    user: Optional[Any] = None,
+) -> None:
+    """
+    Fills ``status['provider_keys']`` from API key records.
+    ``user`` is optional: it only supplies legacy OpenRouter default names for
+    provider-wide keys, so aggregated (admin) status can reuse the same logic.
+    """
+    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
+    provider_labels = {
+        'openai': 'OpenAI',
+        'assemblyai': 'AssemblyAI',
+        'gemini': 'Google',
+        'openrouter': 'OpenRouter',
+    }
+    for record in records:
+        provider = str(record.get('provider_code') or '').lower()
+        if provider not in providers:
+            continue
+        encrypted_key = record.get('encrypted_key')
+        if not isinstance(encrypted_key, str) or not encrypted_key:
+            continue
+        try:
+            decrypted_key = security_svc.decrypt_data(encrypted_key)
+        except (InvalidToken, ValueError, TypeError):
+            logger.warning("Skipping an unreadable API key status entry for provider '%s'.", provider)
+            continue
+        if not decrypted_key:
+            continue
+
+        model_name = str(record.get('model_slug') or '').strip()
+        raw_purposes = str(record.get('model_purposes') or '').strip()
+        purposes = [
+            purpose
+            for purpose in raw_purposes.split(',')
+            if purpose in {'transcription', 'llm', 'live'}
+        ]
+        if not purposes:
+            purposes = ['transcription']
+        if not model_name:
+            if provider == 'openrouter':
+                legacy_names = [
+                    getattr(user, 'default_openrouter_model', None),
+                    getattr(user, 'default_openrouter_llm_model', None),
+                ] if user is not None else []
+                model_names = [str(name).strip() for name in legacy_names if str(name or '').strip()]
+                if not model_names:
+                    model_names = [provider_labels[provider]]
+            else:
+                model_names = [provider_labels[provider]]
+        else:
+            model_names = [model_name]
+
+        for model_name in model_names:
+            entry = {
+                'key_id': record.get('id'),
+                'model_name': model_name,
+                'provider_wide': not bool(record.get('model_slug')),
+                'last_three': decrypted_key[-3:],
+                'model_purposes': purposes,
+            }
+            if provider == 'openrouter':
+                if record.get('model_slug'):
+                    entry['model_slug'] = model_name
+            existing_names = {
+                item.get('model_name') or item.get('model_slug')
+                for item in status['provider_keys'][provider]
+            }
+            if model_name in existing_names:
+                continue
+            status['provider_keys'][provider].append(entry)
+
+
+def _new_empty_key_status() -> Dict[str, Any]:
+    """Fresh key-status shape shared by per-user and aggregated status builders."""
     providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
     status: Dict[str, Any] = {
         provider: False for provider in providers
@@ -389,6 +465,14 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
             'keys': []
         }
     })
+    return status
+
+
+def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
+    """Return configured provider/model key metadata without plaintext keys."""
+    logger = get_logger(__name__, user_id=user_id, component="UserService")
+    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
+    status = _new_empty_key_status()
     try:
         user = user_model.get_user_by_id(user_id)
         if not user:
@@ -400,69 +484,8 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
             allow_public = False
 
         security_svc: SecurityService = get_security_service()
-        provider_labels = {
-            'openai': 'OpenAI',
-            'assemblyai': 'AssemblyAI',
-            'gemini': 'Google',
-            'openrouter': 'OpenRouter',
-        }
         records = user_api_key_model.get_api_key_records_by_user(user_id)
-        for record in records:
-            provider = str(record.get('provider_code') or '').lower()
-            if provider not in providers:
-                continue
-            encrypted_key = record.get('encrypted_key')
-            if not isinstance(encrypted_key, str) or not encrypted_key:
-                continue
-            try:
-                decrypted_key = security_svc.decrypt_data(encrypted_key)
-            except (InvalidToken, ValueError, TypeError):
-                logger.warning("Skipping an unreadable API key status entry for provider '%s'.", provider)
-                continue
-            if not decrypted_key:
-                continue
-
-            model_name = str(record.get('model_slug') or '').strip()
-            raw_purposes = str(record.get('model_purposes') or '').strip()
-            purposes = [
-                purpose
-                for purpose in raw_purposes.split(',')
-                if purpose in {'transcription', 'llm', 'live'}
-            ]
-            if not purposes:
-                purposes = ['transcription']
-            if not model_name:
-                if provider == 'openrouter':
-                    legacy_names = [
-                        getattr(user, 'default_openrouter_model', None),
-                        getattr(user, 'default_openrouter_llm_model', None),
-                    ]
-                    model_names = [str(name).strip() for name in legacy_names if str(name or '').strip()]
-                    if not model_names:
-                        model_names = [provider_labels[provider]]
-                else:
-                    model_names = [provider_labels[provider]]
-            else:
-                model_names = [model_name]
-
-            for model_name in model_names:
-                entry = {
-                    'key_id': record.get('id'),
-                    'model_name': model_name,
-                    'provider_wide': not bool(record.get('model_slug')),
-                    'last_three': decrypted_key[-3:],
-                    'model_purposes': purposes,
-                }
-                if provider == 'openrouter':
-                    if record.get('model_slug'):
-                        entry['model_slug'] = model_name
-                existing_names = {
-                    item.get('model_name') or item.get('model_slug')
-                    for item in status['provider_keys'][provider]
-                }
-                if model_name in existing_names:
-                    continue
-                status['provider_keys'][provider].append(entry)
+        _collect_key_status_entries(status, records, security_svc, logger, user)
 
         for provider in providers:
             status[provider] = bool(status['provider_keys'][provider])
@@ -484,6 +507,52 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         logger.error(f"Error checking API key status: {e}", exc_info=True)
     return status
 
+
+def get_aggregate_api_key_status() -> Dict[str, Any]:
+    """Return key status aggregated across every user's API keys.
+
+    Used for admin-facing model dropdowns so administrators see every model
+    added by every user, not just their own keyring.
+    """
+    logger = get_logger(__name__, component="UserService")
+    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
+    status = _new_empty_key_status()
+    try:
+        security_svc: SecurityService = get_security_service()
+        records = user_api_key_model.get_all_api_key_records()
+        _collect_key_status_entries(status, records, security_svc, logger)
+
+        for provider in providers:
+            status[provider] = bool(status['provider_keys'][provider])
+        status['openrouter_keys'] = [
+            {
+                'model_slug': entry.get('model_slug'),
+                'last_three': entry.get('last_three'),
+            }
+            for entry in status['provider_keys']['openrouter']
+        ]
+        logger.debug(f"Aggregated API key status checked: {status}")
+    except Exception as e:
+        logger.error(f"Error checking aggregated API key status: {e}", exc_info=True)
+    return status
+
+
+def get_effective_key_status(user: Optional[Any]) -> Dict[str, Any]:
+    """Return the key status that drives model dropdowns for ``user``.
+
+    Admins (roles with ``access_admin_panel``) see every model added by every
+    user; regular users see exactly their own models so dropdowns stay
+    consistent across pages.
+    """
+    if not user:
+        return {}
+    role = getattr(user, 'role', None)
+    if role and getattr(role, 'access_admin_panel', False):
+        return get_aggregate_api_key_status()
+    user_id = getattr(user, 'id', None)
+    if user_id is None:
+        return {}
+    return get_user_api_key_status(user_id)
 
 def resolve_effective_openrouter_model(
     user: Any,

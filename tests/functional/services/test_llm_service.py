@@ -40,7 +40,7 @@ def mock_dependencies(monkeypatch, app):
     """Mocks all external dependencies for the llm_service."""
     # Mock get_llm_client
     mock_llm_client = MagicMock()
-    mock_llm_client.model_name = 'gemini-2.0-flash'
+    mock_llm_client.model_name = 'gemini-3.0-flash'
     mock_llm_client.generate_text.return_value = "Mocked LLM response"
     mock_get_llm_client = MagicMock(return_value=mock_llm_client)
     monkeypatch.setattr('app.services.llm_service.get_llm_client', mock_get_llm_client)
@@ -67,8 +67,8 @@ def mock_dependencies(monkeypatch, app):
     app.config['DEPLOYMENT_MODE'] = 'multi'
     app.config['GEMINI_API_KEY'] = 'global_gemini_key'
     app.config['OPENAI_API_KEY'] = 'global_openai_key'
-    app.config['WORKFLOW_LLM_MODEL'] = 'gemini-2.0-flash'
-    app.config['TITLE_GENERATION_LLM_MODEL'] = 'gemini-2.0-flash'
+    app.config['WORKFLOW_LLM_MODEL'] = 'gemini-3.0-flash'
+    app.config['TITLE_GENERATION_LLM_MODEL'] = 'gemini-3.0-flash'
 
     # Yield the mocks in a dictionary for tests to access and modify
     yield {
@@ -224,7 +224,7 @@ def test_cost_calculation_is_triggered(client, mock_dependencies):
             operation_type='workflow'
         )
     
-    mock_dependencies['pricing_service'].assert_called_with(item_type='workflow', item_key='gemini-2.0-flash')
+    mock_dependencies['pricing_service'].assert_called_with(item_type='workflow', item_key='gemini-3.0-flash')
     mock_dependencies['llm_operation_model'].update_llm_operation_cost.assert_called_with(123, 0.001)
 
 def test_cost_calculation_is_skipped_if_no_op_type(client, mock_dependencies):

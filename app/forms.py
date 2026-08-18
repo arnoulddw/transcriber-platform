@@ -14,6 +14,7 @@ from flask import current_app
 
 from app.models import transcription_catalog as transcription_catalog_model
 from app.models import llm_catalog as llm_catalog_model
+from app.services import user_service
 from app.services.openrouter import normalize_openrouter_model
 try:
     from .models.user import get_user_by_username, get_user_by_email
@@ -282,10 +283,33 @@ class UserProfileForm(FlaskForm):
         except Exception as catalog_err:
             logging.warning(f"[FORMS] Failed to load transcription models from catalog: {catalog_err}", exc_info=True)
             catalog_models = []
-        for model in catalog_models:
+        key_status: dict = {}
+        if current_user.is_authenticated:
+            try:
+                key_status = user_service.get_effective_key_status(current_user)
+            except Exception as key_err:
+                logging.warning(f"[FORMS] Failed to load key status for profile form: {key_err}", exc_info=True)
+        try:
+            effective_openrouter_model = (
+                user_service.resolve_effective_openrouter_model(current_user, key_status)
+                if current_user.is_authenticated else None
+            )
+        except Exception as openrouter_err:
+            logging.warning(f"[FORMS] Failed to resolve OpenRouter model for profile form: {openrouter_err}", exc_info=True)
+            effective_openrouter_model = None
+        try:
+            available_models = transcription_catalog_model.expand_models_for_ui(
+                catalog_models, key_status, effective_openrouter_model
+            )
+        except Exception as expand_err:
+            logging.warning(f"[FORMS] Failed to expand transcription models for profile form: {expand_err}", exc_info=True)
+            available_models = catalog_models
+        for model in available_models:
             permission_key = model.get('permission_key')
             if not permission_key or (current_user.is_authenticated and current_user.has_permission(permission_key)):
-                model_choices.append((model['code'], model['display_name']))
+                model_code = str(model.get('code') or '').strip()
+                if model_code:
+                    model_choices.append((model_code, model.get('display_name') or model_code))
         # --- MODIFICATION END ---
         self.default_transcription_model.choices = model_choices
 
@@ -294,10 +318,27 @@ class UserProfileForm(FlaskForm):
         # defaults.
         llm_choices = [('', _('-- Use System Default --'))]
         try:
-            catalog_llm_models = llm_catalog_model.get_active_models()
+            catalog_llm_models = llm_catalog_model.get_llm_model_options(key_status)
         except Exception as catalog_err:
             logging.warning(f"[FORMS] Failed to load LLM models from catalog: {catalog_err}", exc_info=True)
             catalog_llm_models = []
+        # Mirror the key-availability filter applied by the global context so
+        # the User Settings dropdown matches the rest of the app.
+        availability_status = dict(key_status)
+        for service in ('openai', 'assemblyai', 'gemini', 'openrouter'):
+            availability_status[service] = bool(availability_status.get(service))
+            try:
+                if current_app.config.get(f'{service.upper()}_API_KEY'):
+                    availability_status[service] = True
+            except RuntimeError:
+                # No application context (unit tests): global keys unknown.
+                pass
+        try:
+            catalog_llm_models = llm_catalog_model.filter_models_by_api_key_status(
+                catalog_llm_models, availability_status
+            )
+        except Exception as filter_err:
+            logging.warning(f"[FORMS] Failed to filter LLM models for profile form: {filter_err}", exc_info=True)
         for model in catalog_llm_models:
             model_code = (model.get('code') or '').strip()
             if not model_code:
@@ -315,7 +356,7 @@ class UserProfileForm(FlaskForm):
 
         live_choices = [('', _('-- Use System Default --'))]
         try:
-            live_models = transcription_catalog_model.get_live_models()
+            live_models = transcription_catalog_model.get_live_models(key_status)
         except Exception as catalog_err:
             logging.warning(f"[FORMS] Failed to load live transcription models from catalog: {catalog_err}", exc_info=True)
             live_models = []
@@ -484,6 +525,14 @@ class AdminRoleForm(FlaskForm):
 
         placeholder_choice = [('', '-- Use System Default --')]
 
+        # Admins see the union of every user's configured keys so role
+        # defaults can reference any model present in the deployment.
+        try:
+            admin_key_status = user_service.get_aggregate_api_key_status()
+        except Exception as key_err:
+            logging.warning(f"[FORMS] Failed to load aggregated key status for admin role form: {key_err}", exc_info=True)
+            admin_key_status = {}
+
         # Populate transcription model choices
         transcription_choices = list(placeholder_choice)
         try:
@@ -492,8 +541,16 @@ class AdminRoleForm(FlaskForm):
             logging.warning(f"[FORMS] Failed to load transcription models from catalog for admin role form: {catalog_err}", exc_info=True)
             catalog_models = []
 
+        try:
+            expanded_models = transcription_catalog_model.expand_models_for_ui(
+                catalog_models, admin_key_status
+            )
+        except Exception as expand_err:
+            logging.warning(f"[FORMS] Failed to expand transcription models for admin role form: {expand_err}", exc_info=True)
+            expanded_models = catalog_models
+
         seen_transcription_codes = set()
-        for model in catalog_models:
+        for model in expanded_models:
             model_code = (model.get('code') or '').strip()
             if not model_code or model_code in seen_transcription_codes:
                 continue
@@ -509,7 +566,7 @@ class AdminRoleForm(FlaskForm):
         llm_choices = list(placeholder_choice)
         seen_llm_models = set()
         try:
-            catalog_llm_models = llm_catalog_model.get_active_models()
+            catalog_llm_models = llm_catalog_model.get_llm_model_options(admin_key_status)
         except Exception as catalog_err:
             logging.warning(f"[FORMS] Failed to load LLM models from catalog for admin role form: {catalog_err}", exc_info=True)
             catalog_llm_models = []
@@ -531,7 +588,7 @@ class AdminRoleForm(FlaskForm):
 
         live_choices = list(placeholder_choice)
         try:
-            live_models = transcription_catalog_model.get_live_models()
+            live_models = transcription_catalog_model.get_live_models(admin_key_status)
         except Exception as catalog_err:
             logging.warning(f"[FORMS] Failed to load live transcription models from catalog for admin role form: {catalog_err}", exc_info=True)
             live_models = []

@@ -354,6 +354,26 @@ def get_api_key_records_by_user(
         return []
 
 
+def get_all_api_key_records() -> List[Dict[str, Any]]:
+    """Return API key records for every user (used for admin model aggregation)."""
+    sql = """
+        SELECT id, user_id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
+        FROM user_api_keys
+        ORDER BY COALESCE(last_used_at, updated_at, created_at) DESC, id DESC
+    """
+    cursor = get_cursor()
+    try:
+        cursor.execute(sql)
+        return cursor.fetchall()
+    except MySQLError as err:
+        logging.error(
+            "[DB:UserApiKey] Error fetching all API key records: %s",
+            err,
+            exc_info=True,
+        )
+        return []
+
+
 def get_distinct_model_names() -> List[str]:
     """Return the non-empty model names configured in user-managed API keys."""
     cursor = get_cursor()
