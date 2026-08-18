@@ -101,6 +101,7 @@ function calculateExpectedProgressData(apiChoice, fileSizeMB, audioLengthMin, sc
 async function refreshCsrfToken() {
     const response = await fetch('/api/csrf-token', {
         method: 'GET',
+        cache: 'no-store',
         headers: { 'Accept': 'application/json' }
     });
 
