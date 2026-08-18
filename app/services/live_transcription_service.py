@@ -71,18 +71,26 @@ def _resolve_live_model(user, requested: Optional[str] = None) -> str:
     return model
 
 
-def _resolve_openai_api_key(user, model: Optional[str] = None) -> str:
+def _resolve_provider(user, model: str) -> str:
+    return current_app.config.get('LIVE_TRANSCRIPTION_PROVIDERS', {}).get(model, 'openai')
+
+
+def _resolve_provider_api_key(user, provider: str, model: Optional[str] = None) -> str:
     mode = current_app.config["DEPLOYMENT_MODE"]
     if mode == "multi":
-        api_key = user_service.get_decrypted_api_key(user.id, "openai", model)
+        api_key = user_service.get_decrypted_api_key(user.id, provider, model)
         if api_key:
             return api_key
         if check_permission(user, "allow_api_key_management"):
-            raise MissingApiKeyError(_("OpenAI API key is not configured."))
-    api_key = current_app.config.get("OPENAI_API_KEY")
+            raise MissingApiKeyError(_("%(provider)s API key is not configured.", provider=provider.title()))
+    api_key = current_app.config.get(f"{provider.upper()}_API_KEY")
     if not api_key:
-        raise MissingApiKeyError(_("OpenAI API key is not configured."))
+        raise MissingApiKeyError(_("%(provider)s API key is not configured.", provider=provider.title()))
     return api_key
+
+
+def _resolve_openai_api_key(user, model: Optional[str] = None) -> str:
+    return _resolve_provider_api_key(user, "openai", model)
 
 
 def _validate_settings(user, language_code: str, context_prompt: str) -> tuple[str, str]:
@@ -141,7 +149,12 @@ def create_session(
         raise LiveTranscriptionValidationError(_("A WebRTC session offer is required."))
     language, prompt = _validate_settings(user, language_code, context_prompt)
     model = _resolve_live_model(user, requested_model)
-    api_key = _resolve_openai_api_key(user, model)
+    provider = _resolve_provider(user, model)
+    if provider != "openai":
+        raise LiveTranscriptionValidationError(
+            _("The selected Live transcription provider is not supported by this runtime yet.")
+        )
+    api_key = _resolve_provider_api_key(user, provider, model)
     session_config = build_session_config(model, language, prompt)
 
     max_retries = max(

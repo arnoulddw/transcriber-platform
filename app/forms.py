@@ -413,13 +413,13 @@ class AdminRoleForm(FlaskForm):
         validators=[Length(max=120)],
     )
     default_title_generation_model = SelectField(
-        _('Default Title Generation Model'),
+        _('Default Auxiliary LLM Model'),
         validators=[],
         choices=[],
         validate_choice=False
     )
     default_workflow_model = SelectField(
-        _('Default Workflow Model'),
+        _('Default Workflow LLM Model'),
         validators=[],
         choices=[],
         validate_choice=False

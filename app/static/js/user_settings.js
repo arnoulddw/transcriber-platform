@@ -88,32 +88,10 @@ function setOpenRouterApiKeySuggestion(force = false) {
 
 function updateModelSettings(service) {
     const modelInput = document.getElementById('apiKeyOpenrouterModel');
-    const keyInput = document.getElementById('apiKeyInput');
     const openrouterHint = document.getElementById('openrouterModelHint');
-    const liveSettings = document.getElementById('liveModelSettings');
-    const liveModelSelect = document.getElementById('apiKeyLiveModel');
-    const purposeInputs = document.querySelectorAll('input[name="model_purpose"]');
     if (!modelInput) return;
 
     if (openrouterHint) openrouterHint.classList.toggle('hidden', service !== 'openrouter');
-    purposeInputs.forEach(input => { input.disabled = !service; });
-    if (liveModelSelect) liveModelSelect.disabled = !service;
-
-    const selectedPurpose = document.querySelector('input[name="model_purpose"]:checked')?.value || 'transcription';
-    const showLive = selectedPurpose === 'live';
-    if (liveSettings) liveSettings.classList.toggle('hidden', !showLive);
-
-    if (showLive && liveModelSelect && liveModelSelect.value) {
-        const selectedOption = liveModelSelect.options[liveModelSelect.selectedIndex];
-        modelInput.value = selectedOption?.dataset.modelName || liveModelSelect.value;
-        if (selectedOption?.dataset.provider && service !== selectedOption.dataset.provider) {
-            const providerSelect = document.getElementById('apiKeyServiceSelect');
-            if (providerSelect && providerSelect.querySelector(`option[value="${selectedOption.dataset.provider}"]`)) {
-                providerSelect.value = selectedOption.dataset.provider;
-                service = selectedOption.dataset.provider;
-            }
-        }
-    }
     setApiKeySuggestion(true);
 }
 
@@ -275,7 +253,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const apiKeyInput = document.getElementById('apiKeyInput');
     const modelNameInput = document.getElementById('apiKeyOpenrouterModel');
-    const liveModelSelect = document.getElementById('apiKeyLiveModel');
     const purposeInputs = document.querySelectorAll('input[name="model_purpose"]');
     if (modelNameInput) {
         modelNameInput.addEventListener('input', () => {
@@ -285,9 +262,6 @@ document.addEventListener('DOMContentLoaded', function() {
     purposeInputs.forEach(input => {
         input.addEventListener('change', () => updateModelSettings(apiKeyServiceSelect?.value || ''));
     });
-    if (liveModelSelect) {
-        liveModelSelect.addEventListener('change', () => updateModelSettings(apiKeyServiceSelect?.value || ''));
-    }
     if (apiKeyInput) {
         apiKeyInput.addEventListener('input', () => {
             if (apiKeyInput.value !== openRouterSuggestedMask) {
@@ -701,14 +675,10 @@ function handleApiKeySave(event) {
     const serviceSelect = document.getElementById('apiKeyServiceSelect');
     const keyInput = document.getElementById('apiKeyInput');
     const modelNameInput = document.getElementById('apiKeyOpenrouterModel');
-    const liveModelSelect = document.getElementById('apiKeyLiveModel');
     const submitButton = form.querySelector('button[type="submit"]');
 
     const service = serviceSelect?.value || '';
     const purpose = document.querySelector('input[name="model_purpose"]:checked')?.value || 'transcription';
-    if (purpose === 'live' && liveModelSelect?.value && modelNameInput) {
-        modelNameInput.value = liveModelSelect.value;
-    }
     const modelName = modelNameInput?.value.trim() || '';
     const apiKey = keyInput?.value.trim() || '';
     const isMaskedKey = /^\*{3}.{3}$/.test(apiKey);

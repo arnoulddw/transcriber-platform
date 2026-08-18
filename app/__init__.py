@@ -448,7 +448,7 @@ def create_app(config_class=Config) -> Flask:
             {
                 'code': model_code,
                 'display_name': all_provider_names_from_config.get(model_code, model_code),
-                'provider': 'openai',
+                'provider': app.config.get('LIVE_TRANSCRIPTION_PROVIDERS', {}).get(model_code, 'openai'),
             }
             for model_code in live_model_codes
         ]
