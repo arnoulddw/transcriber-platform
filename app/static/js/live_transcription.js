@@ -2,6 +2,45 @@
     'use strict';
 
     const MAX_SESSION_DURATION_MS = 120 * 60 * 1000;
+    const OPENROUTER_CHUNK_SECONDS = 3;
+
+    function encodePcm16Wav(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        const writeString = (offset, value) => {
+            for (let index = 0; index < value.length; index += 1) {
+                view.setUint8(offset + index, value.charCodeAt(index));
+            }
+        };
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+        samples.forEach((sample, index) => {
+            const clipped = Math.max(-1, Math.min(1, sample));
+            view.setInt16(44 + index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+        });
+        return buffer;
+    }
+
+    function arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+        }
+        return global.btoa(binary);
+    }
 
     class LiveTranscriptReducer {
         constructor() {
@@ -118,7 +157,9 @@
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             MAX_SESSION_DURATION_MS,
+            OPENROUTER_CHUNK_SECONDS,
             LiveTranscriptReducer,
+            encodePcm16Wav,
             createCompleteOffer,
             remainingSessionMilliseconds,
             waitForDataChannelOpen,
@@ -197,6 +238,14 @@
         let stopping = false;
         let followingLive = true;
         let returningToLive = false;
+        let liveTransport = 'openai-webrtc';
+        let audioProcessor = null;
+        let audioInputSource = null;
+        let openrouterSamples = [];
+        let openrouterSampleRate = 16000;
+        let openrouterChunkTimer = null;
+        let openrouterChunkSequence = 0;
+        let openrouterChunkPromise = Promise.resolve();
 
         function setError(message) {
             elements.error.textContent = message || '';
@@ -392,9 +441,74 @@
                 });
             }
             stream = null;
+            if (openrouterChunkTimer) global.clearInterval(openrouterChunkTimer);
+            openrouterChunkTimer = null;
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor.onaudioprocess = null;
+            }
+            audioProcessor = null;
+            if (audioInputSource) audioInputSource.disconnect();
+            audioInputSource = null;
+            openrouterSamples = [];
             if (audioContext) await audioContext.close().catch(() => {});
             audioContext = null;
             analyser = null;
+        }
+
+        function appendOpenrouterTranscript(text, sequence) {
+            if (!text) return;
+            const itemId = `openrouter-${sequence}`;
+            reducer.apply({
+                type: 'conversation.item.input_audio_transcription.completed',
+                item_id: itemId,
+                transcript: text,
+            });
+            renderTranscript();
+        }
+
+        function flushOpenrouterChunk() {
+            if (!sessionToken || !openrouterSamples.length) return;
+            const samples = Float32Array.from(openrouterSamples);
+            openrouterSamples = [];
+            const audioData = arrayBufferToBase64(encodePcm16Wav(samples, openrouterSampleRate));
+            const sequence = openrouterChunkSequence;
+            openrouterChunkSequence += 1;
+            openrouterChunkPromise = openrouterChunkPromise
+                .then(() => postJson('/api/live/chunk', {
+                    session_token: sessionToken,
+                    audio_data: audioData,
+                    audio_format: 'wav',
+                    sequence,
+                }))
+                .then((result) => appendOpenrouterTranscript(result.transcript, result.sequence))
+                .catch((error) => {
+                    setError(error.message);
+                });
+        }
+
+        function resetOpenrouterCapture() {
+            openrouterChunkSequence = 0;
+            openrouterChunkPromise = Promise.resolve();
+            openrouterSamples = [];
+        }
+
+        function startOpenrouterCapture(activeStream) {
+            if (!audioContext) throw new Error(labels.unsupported);
+            audioInputSource = audioContext.createMediaStreamSource(activeStream);
+            audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+            openrouterSampleRate = audioContext.sampleRate;
+            audioProcessor.onaudioprocess = (event) => {
+                const channel = event.inputBuffer.getChannelData(0);
+                openrouterSamples.push(...channel);
+                event.outputBuffer.getChannelData(0).fill(0);
+            };
+            audioInputSource.connect(audioProcessor);
+            audioProcessor.connect(audioContext.destination);
+            openrouterChunkTimer = global.setInterval(
+                flushOpenrouterChunk,
+                OPENROUTER_CHUNK_SECONDS * 1000,
+            );
         }
 
         async function postJson(url, body, keepalive = false) {
@@ -432,7 +546,7 @@
         }
 
         async function startListening() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !global.RTCPeerConnection) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 setError(labels.unsupported);
                 return;
             }
@@ -462,7 +576,31 @@
                 await listMicrophones();
                 startVolumeMeter(stream);
 
-                peerConnection = new RTCPeerConnection();
+                const selectedModel = elements.model?.selectedOptions?.[0];
+                const requestedTransport = selectedModel?.dataset.provider === 'openrouter'
+                    || (elements.model?.value || '').includes('/');
+
+                if (!requestedTransport && !global.RTCPeerConnection) {
+                    throw new Error(labels.unsupported);
+                }
+                liveTransport = requestedTransport ? 'openrouter-sse' : 'openai-webrtc';
+                peerConnection = requestedTransport ? null : new RTCPeerConnection();
+                if (liveTransport === 'openrouter-sse') {
+                    const session = await postJson('/api/live/session', {
+                        sdp: '',
+                        language_code: elements.language.value,
+                        model: elements.model ? elements.model.value : '',
+                        context_prompt: elements.contextPrompt ? elements.contextPrompt.value.trim() : '',
+                    });
+                    sessionToken = session.session_token;
+                    stopSignalSent = false;
+                    resetOpenrouterCapture();
+                    startOpenrouterCapture(stream);
+                    setStatus('live', labels.listening);
+                    setAction(labels.stop, 'stop', false, true);
+                    startTimer();
+                    return;
+                }
                 stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
                 dataChannel = peerConnection.createDataChannel('oai-events');
                 dataChannel.onmessage = (message) => {
@@ -531,6 +669,11 @@
             stopTimer();
             if (stopAudioImmediately) stopAudioInput();
 
+            if (liveTransport === 'openrouter-sse') {
+                flushOpenrouterChunk();
+                await openrouterChunkPromise;
+            }
+
             if (dataChannel && dataChannel.readyState === 'open') {
                 dataChannel.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
                 await wait(800);
@@ -576,6 +719,8 @@
             renderTranscript();
             sessionToken = null;
             stopSignalSent = false;
+            liveTransport = 'openai-webrtc';
+            resetOpenrouterCapture();
             unsavedTranscript = false;
             startedAt = null;
             elements.timer.textContent = '00:00';

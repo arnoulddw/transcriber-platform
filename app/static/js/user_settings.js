@@ -92,12 +92,55 @@ function updateModelSettings(service) {
     if (!modelInput) return;
 
     if (openrouterHint) openrouterHint.classList.toggle('hidden', service !== 'openrouter');
+    updateModelPurposePreview();
     setApiKeySuggestion(true);
 }
 
 // Compatibility alias used by older callers.
 function updateOpenRouterModelSettings(service) {
     updateModelSettings(service);
+}
+
+const MODEL_PURPOSE_LABELS = {
+    transcription: 'Transcription',
+    llm: 'LLM',
+    live: 'Live',
+};
+
+function createModelPurposeBadges(purposes) {
+    const badges = document.createElement('span');
+    badges.className = 'inline-flex flex-wrap items-center gap-1';
+    const normalized = Array.isArray(purposes) && purposes.length
+        ? purposes
+        : ['transcription'];
+    normalized.forEach(purpose => {
+        const label = MODEL_PURPOSE_LABELS[purpose] || MODEL_PURPOSE_LABELS.transcription;
+        const badge = document.createElement('span');
+        badge.className = 'badge badge-muted text-xs';
+        badge.textContent = `[${label}]`;
+        badge.dataset.modelPurpose = purpose;
+        badges.appendChild(badge);
+    });
+    return badges;
+}
+
+function appendModelLabel(content, modelName, purposes, providerLabel) {
+    const model = document.createElement('span');
+    model.className = 'text-sm text-text-strong';
+    model.textContent = modelName === providerLabel
+        ? modelName
+        : `${modelName} (${providerLabel})`;
+    content.append(model, createModelPurposeBadges(purposes));
+}
+
+function updateModelPurposePreview() {
+    const container = document.getElementById('modelPurposePreviewBadges');
+    if (!container) return;
+    container.replaceChildren(
+        ...createModelPurposeBadges([
+            document.querySelector('input[name="model_purpose"]:checked')?.value || 'transcription',
+        ]).children,
+    );
 }
 
 function openApiKeyModalDialog() {
@@ -262,6 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
     purposeInputs.forEach(input => {
         input.addEventListener('change', () => updateModelSettings(apiKeyServiceSelect?.value || ''));
     });
+    updateModelPurposePreview();
     if (apiKeyInput) {
         apiKeyInput.addEventListener('input', () => {
             if (apiKeyInput.value !== openRouterSuggestedMask) {
@@ -519,12 +563,15 @@ function renderProviderKeyRows(service, keys) {
         const row = document.createElement('div');
         row.className = 'flex justify-between items-center gap-3';
 
-        const label = document.createElement('span');
-        label.className = 'text-sm text-text-strong';
         const modelName = entry.model_name || entry.model_slug || providerLabels[service] || service;
-        label.textContent = modelName === providerLabels[service]
-            ? modelName
-            : `${modelName} (${providerLabels[service] || service})`;
+        const label = document.createElement('div');
+        label.className = 'flex min-w-0 flex-wrap items-center';
+        appendModelLabel(
+            label,
+            modelName,
+            entry.model_purposes,
+            providerLabels[service] || service,
+        );
 
         const actions = document.createElement('div');
         actions.className = 'flex items-center';
@@ -540,7 +587,7 @@ function renderProviderKeyRows(service, keys) {
         if (!entry.provider_wide && (entry.model_name || entry.model_slug)) {
             deleteBtn.dataset.modelSlug = entry.model_name || entry.model_slug;
         }
-        deleteBtn.setAttribute('aria-label', `Delete ${label.textContent} key`);
+        deleteBtn.setAttribute('aria-label', `Delete ${modelName} key`);
         deleteBtn.innerHTML = '<i class="material-icons text-base">delete</i>';
         actions.append(status, deleteBtn);
         row.append(label, actions);

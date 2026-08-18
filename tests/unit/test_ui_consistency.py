@@ -145,6 +145,18 @@ def test_live_purpose_keeps_the_entered_model_name():
     assert "formData.set('model_name', modelName);" in script
 
 
+def test_api_key_entries_render_explicit_model_purpose_badges():
+    template = Path("app/templates/layout/modals/api_key_modal.html").read_text(encoding="utf-8")
+    script = Path("app/static/js/user_settings.js").read_text(encoding="utf-8")
+    service = Path("app/services/user_service.py").read_text(encoding="utf-8")
+
+    assert "MODEL_PURPOSE_LABELS" in script
+    assert "badge badge-muted text-xs" in script
+    assert "textContent = `[${label}]`" in script
+    assert "model_purposes" in service
+    assert "modelPurposePreviewBadges" in template
+
+
 def test_pricing_model_keys_are_not_rewritten_to_provider_names():
     pricing_model = Path("app/models/pricing.py").read_text(encoding="utf-8")
 

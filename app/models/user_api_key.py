@@ -19,6 +19,7 @@ def init_db_command() -> None:
                 user_id INT NOT NULL,
                 provider_code VARCHAR(80) NOT NULL,
                 model_slug VARCHAR(120) NOT NULL DEFAULT '',
+                model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription',
                 encrypted_key MEDIUMTEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -46,6 +47,7 @@ def init_db_command() -> None:
         # Add columns introduced after the original provider-wide schema.
         for col_name, col_def, position in (
             ("model_slug", "VARCHAR(120) NOT NULL DEFAULT ''", "AFTER provider_code"),
+            ("model_purposes", "VARCHAR(64) NOT NULL DEFAULT 'transcription'", "AFTER model_slug"),
             ("last_used_at", "TIMESTAMP NULL DEFAULT NULL", "AFTER updated_at"),
         ):
             cursor.execute("SHOW COLUMNS FROM user_api_keys LIKE %s", (col_name,))
@@ -110,20 +112,45 @@ def upsert_api_key(
     provider_code: str,
     encrypted_key: str,
     model_slug: Optional[str] = None,
+    model_purpose: Optional[str] = None,
 ) -> bool:
     provider = provider_code.lower()
     stored_model_slug = _stored_model_slug(provider, model_slug)
-    sql = """
-        INSERT INTO user_api_keys (user_id, provider_code, model_slug, encrypted_key, last_used_at)
-        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-        ON DUPLICATE KEY UPDATE
-            encrypted_key = VALUES(encrypted_key),
-            updated_at = CURRENT_TIMESTAMP,
-            last_used_at = CURRENT_TIMESTAMP
-    """
+    if model_purpose is None:
+        # Preserve the legacy write shape for callers that predate purpose
+        # metadata. New rows receive the database default.
+        sql = """
+            INSERT INTO user_api_keys (user_id, provider_code, model_slug, encrypted_key, last_used_at)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON DUPLICATE KEY UPDATE
+                encrypted_key = VALUES(encrypted_key),
+                updated_at = CURRENT_TIMESTAMP,
+                last_used_at = CURRENT_TIMESTAMP
+        """
+        params = (user_id, provider, stored_model_slug, encrypted_key)
+    else:
+        purpose = str(model_purpose).strip().lower()
+        if purpose not in {"transcription", "llm", "live"}:
+            raise ValueError(f"Invalid model purpose: {purpose}")
+        sql = """
+            INSERT INTO user_api_keys (
+                user_id, provider_code, model_slug, model_purposes, encrypted_key, last_used_at
+            )
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON DUPLICATE KEY UPDATE
+                encrypted_key = VALUES(encrypted_key),
+                model_purposes = IF(
+                    FIND_IN_SET(VALUES(model_purposes), model_purposes),
+                    model_purposes,
+                    CONCAT_WS(',', NULLIF(model_purposes, ''), VALUES(model_purposes))
+                ),
+                updated_at = CURRENT_TIMESTAMP,
+                last_used_at = CURRENT_TIMESTAMP
+        """
+        params = (user_id, provider, stored_model_slug, purpose, encrypted_key)
     cursor = get_cursor()
     try:
-        cursor.execute(sql, (user_id, provider, stored_model_slug, encrypted_key))
+        cursor.execute(sql, params)
         get_db().commit()
         return True
     except MySQLError as err:
@@ -145,7 +172,7 @@ def get_api_key_record(
     stored_model_slug = _stored_model_slug(provider, model_slug)
     if stored_model_slug and provider != "openrouter":
         sql = """
-            SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
+            SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
             WHERE user_id = %s
               AND provider_code = %s
@@ -158,7 +185,7 @@ def get_api_key_record(
         params = (user_id, provider, stored_model_slug, stored_model_slug)
     elif stored_model_slug and provider == "openrouter":
         sql = """
-            SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
+            SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
             WHERE user_id = %s
               AND provider_code = %s
@@ -170,7 +197,7 @@ def get_api_key_record(
         params = (user_id, provider, stored_model_slug)
     elif provider == "openrouter":
         sql = """
-            SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
+            SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
             WHERE user_id = %s
               AND provider_code = %s
@@ -181,7 +208,7 @@ def get_api_key_record(
         params = (user_id, provider)
     else:
         sql = """
-            SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
+            SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
             WHERE user_id = %s
               AND provider_code = %s
@@ -305,7 +332,7 @@ def get_api_key_records_by_user(
     provider_code: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     sql = """
-        SELECT id, provider_code, model_slug, encrypted_key, created_at, updated_at, last_used_at
+        SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
         FROM user_api_keys
         WHERE user_id = %s
     """

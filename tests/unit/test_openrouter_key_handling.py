@@ -64,7 +64,11 @@ def test_save_masked_openrouter_key_reuses_saved_key_for_new_slug():
     get_key.assert_called_once_with(7, "openrouter", "x-ai/grok-stt-1.0")
     security_service.encrypt_data.assert_called_once_with(OPENROUTER_KEY)
     upsert.assert_called_once_with(
-        7, "openrouter", "encrypted", "x-ai/grok-stt-1.0"
+        7,
+        "openrouter",
+        "encrypted",
+        "x-ai/grok-stt-1.0",
+        model_purpose="transcription",
     )
 
 
@@ -79,6 +83,7 @@ def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
         {
             "provider_code": "openrouter",
             "model_slug": "x-ai/grok-stt-1.0",
+            "model_purposes": "transcription,live",
             "encrypted_key": "encrypted-new",
         },
         {
@@ -109,6 +114,10 @@ def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
     assert status["openrouter_keys"] == [
         {"model_slug": "x-ai/grok-stt-1.0", "last_three": "XYZ"},
         {"model_slug": "openai/gpt-4o-mini", "last_three": "ABC"},
+    ]
+    assert status["provider_keys"]["openrouter"][0]["model_purposes"] == [
+        "transcription",
+        "live",
     ]
 
 
@@ -202,6 +211,7 @@ def test_schema_creates_replacement_index_before_dropping_legacy_index():
         {"Type": "timestamp"},
         {"Type": "timestamp"},
         {"Field": "model_slug"},
+        {"Field": "model_purposes"},
         {"Field": "last_used_at"},
         None,
         {"Key_name": "uq_user_provider"},

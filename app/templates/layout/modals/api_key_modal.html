@@ -64,6 +64,10 @@
                     </label>
                 </div>
                 <p class="form-hint">{{ _('Choose whether this model should handle audio transcription, live transcription, or titles and workflows.') }}</p>
+                <div id="modelPurposePreview" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted" aria-live="polite">
+                    <span>{{ _('Usage tags:') }}</span>
+                    <span id="modelPurposePreviewBadges" class="inline-flex flex-wrap items-center gap-1"></span>
+                </div>
             </fieldset>
             {{ ui.button(_('Save Key'), variant='primary', type='submit', icon='save', icon_position='end', extra_classes='btn-save') }}
         </form>

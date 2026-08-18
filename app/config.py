@@ -69,8 +69,8 @@ class Config:
     )
     LIVE_TRANSCRIPTION_PROVIDERS = {
         model.strip(): os.environ.get(
-            f"LIVE_TRANSCRIPTION_PROVIDER_{model.strip().upper().replace('-', '_').replace('.', '_')}",
-            'openai',
+            f"LIVE_TRANSCRIPTION_PROVIDER_{model.strip().upper().replace('-', '_').replace('.', '_').replace('/', '_')}",
+            'openrouter' if '/' in model.strip() else 'openai',
         ).strip().lower()
         for model in os.environ.get('LIVE_TRANSCRIPTION_MODELS', LIVE_TRANSCRIPTION_MODEL).split(',')
         if model.strip()
@@ -107,6 +107,11 @@ class Config:
         'OPENROUTER_MODELS',
         'google/gemini-3.7-flash,openai/gpt-4o',
     ).split(',')
+    OPENROUTER_LIVE_TRANSCRIPTION_MODELS = [
+        model.strip()
+        for model in os.environ.get('OPENROUTER_LIVE_TRANSCRIPTION_MODELS', '').split(',')
+        if model.strip()
+    ]
     # --- END NEW ---
 
     API_PROVIDER_NAME_MAP = {

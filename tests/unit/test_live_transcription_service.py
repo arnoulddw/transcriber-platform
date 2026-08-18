@@ -1,3 +1,4 @@
+import base64
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -22,6 +23,14 @@ def live_app():
     )
     Babel(app)
     return app
+
+
+def test_openrouter_model_slugs_default_to_openrouter_transport(live_app):
+    live_app.config.update(LIVE_TRANSCRIPTION_PROVIDERS={})
+
+    with live_app.app_context():
+        assert service._resolve_provider(None, "openai/whisper-1") == "openrouter"
+        assert service._resolve_provider(None, "gpt-live-transcribe") == "openai"
 
 
 def test_build_session_config_omits_languages_for_auto():
@@ -69,6 +78,134 @@ def test_create_session_posts_multipart_without_exposing_api_key(live_app, monke
     assert call.kwargs["headers"]["Authorization"] == "Bearer server-only-openai-key"
     assert "server-only-openai-key" not in result["session_token"]
     assert call.kwargs["files"]["sdp"][1] == "offer-sdp"
+
+
+def test_create_session_routes_openrouter_to_sse_without_webrtc(live_app, monkeypatch):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["openai/whisper-1"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"openai/whisper-1": "openrouter"},
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+    )
+    user = SimpleNamespace(id=42)
+    post = MagicMock()
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        result = service.create_session(
+            user, "", "auto", "", requested_model="openai/whisper-1"
+        )
+
+    assert result["transport"] == "openrouter-sse"
+    assert result["answer_sdp"] == ""
+    post.assert_not_called()
+
+
+def test_live_model_from_config_is_allowed_for_openrouter(live_app, monkeypatch):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["openai/whisper-1"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"openai/whisper-1": "openrouter"},
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+    )
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    with live_app.app_context():
+        assert service._resolve_live_model(
+            SimpleNamespace(id=42), "openai/whisper-1"
+        ) == "openai/whisper-1"
+
+
+def test_live_model_rejects_openrouter_slug_not_listed_as_stt(live_app):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["google/gemini-3.7-flash"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"google/gemini-3.7-flash": "openrouter"},
+    )
+
+    with live_app.app_context(), pytest.raises(service.LiveTranscriptionValidationError):
+        service._resolve_live_model(SimpleNamespace(id=42), "google/gemini-3.7-flash")
+
+
+def test_configured_openrouter_stt_model_can_be_enabled_explicitly(live_app):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["vendor/new-stt"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"vendor/new-stt": "openrouter"},
+        OPENROUTER_LIVE_TRANSCRIPTION_MODELS=["vendor/new-stt"],
+    )
+
+    with live_app.app_context():
+        assert service._resolve_live_model(SimpleNamespace(id=42), "vendor/new-stt") == "vendor/new-stt"
+
+
+def test_openrouter_live_chunk_ignores_sse_comments_and_accumulates_text(live_app, monkeypatch):
+    class FakeStreamResponse:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def iter_lines(self):
+            return [
+                ": OPENROUTER PROCESSING",
+                'data: {"choices":[{"delta":{"content":"Hello "}}]}',
+                "",
+                'data: {"choices":[{"delta":{"content":"world"}}]}',
+                "",
+                "data: [DONE]",
+            ]
+
+    live_app.config.update(
+        DEPLOYMENT_MODE="single",
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+    )
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 42,
+            "transcription_id": "openrouter-live-job",
+            "started_at": 1000.0,
+            "context_prompt_used": False,
+            "provider": "openrouter",
+            "model": "openai/whisper-1",
+            "language": "en",
+        },
+    )
+    stream = MagicMock(return_value=FakeStreamResponse())
+    monkeypatch.setattr(service.httpx, "stream", stream)
+    audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
+
+    with live_app.app_context():
+        result = service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 3
+        )
+
+    assert result == {"sequence": 3, "transcript": "Hello world"}
+    assert stream.call_args.args[:2] == (
+        "POST",
+        "https://openrouter.ai/api/v1/chat/completions",
+    )
+    assert stream.call_args.kwargs["json"]["stream"] is True
+    assert stream.call_args.kwargs["json"]["messages"][0]["content"][1]["input_audio"]["format"] == "wav"
+
+
+def test_openrouter_live_chunk_rejects_non_openrouter_session(live_app, monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 42,
+            "provider": "openai",
+            "model": "gpt-live-transcribe",
+        },
+    )
+
+    with live_app.app_context(), pytest.raises(service.LiveTranscriptionValidationError):
+        service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", "cmFuZG9t", "wav", 0
+        )
 
 
 def test_hangup_session_stops_the_openai_call(live_app, monkeypatch):

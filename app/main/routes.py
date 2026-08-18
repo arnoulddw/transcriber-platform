@@ -206,20 +206,13 @@ def live():
         and not (
             check_permission(current_user, 'use_api_openai')
             or check_permission(current_user, 'use_api_openai_live_transcribe')
+            or check_permission(current_user, 'use_api_openrouter')
         )
     ):
         abort(403)
     return render_template(
         'live.html',
         live_languages=transcription_catalog_model.get_language_map(),
-        live_transcription_models=[
-            {
-                'code': model_code,
-                'display_name': current_app.config.get('API_PROVIDER_NAME_MAP', {}).get(model_code, model_code),
-                'provider': current_app.config.get('LIVE_TRANSCRIPTION_PROVIDERS', {}).get(model_code, 'openai'),
-            }
-            for model_code in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', [])
-        ],
     )
 
 @main_bp.route('/manage-prompts')
