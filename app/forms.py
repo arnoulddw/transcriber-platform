@@ -314,10 +314,15 @@ class UserProfileForm(FlaskForm):
             self.default_workflow_model.data = ''
 
         live_choices = [('', _('-- Use System Default --'))]
-        for model_code in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []):
-            model_code = str(model_code).strip()
+        try:
+            live_models = transcription_catalog_model.get_live_models()
+        except Exception as catalog_err:
+            logging.warning(f"[FORMS] Failed to load live transcription models from catalog: {catalog_err}", exc_info=True)
+            live_models = []
+        for model in live_models:
+            model_code = str(model.get('code') or '').strip()
             if model_code:
-                live_choices.append((model_code, current_app.config.get('API_PROVIDER_NAME_MAP', {}).get(model_code, model_code)))
+                live_choices.append((model_code, str(model.get('display_name') or model_code)))
         self.default_live_transcription_model.choices = live_choices
         if self.default_live_transcription_model.data is None:
             self.default_live_transcription_model.data = ''
@@ -525,12 +530,17 @@ class AdminRoleForm(FlaskForm):
         self._assign_choices(self.default_workflow_model, list(llm_choices))
 
         live_choices = list(placeholder_choice)
-        for raw_model in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []):
-            model_code = str(raw_model).strip()
+        try:
+            live_models = transcription_catalog_model.get_live_models()
+        except Exception as catalog_err:
+            logging.warning(f"[FORMS] Failed to load live transcription models from catalog for admin role form: {catalog_err}", exc_info=True)
+            live_models = []
+        for model in live_models:
+            model_code = str(model.get('code') or '').strip()
             if model_code:
                 live_choices.append((
                     model_code,
-                    current_app.config.get('API_PROVIDER_NAME_MAP', {}).get(model_code, model_code),
+                    str(model.get('display_name') or model_code),
                 ))
         self._assign_choices(self.default_live_transcription_model, live_choices)
 

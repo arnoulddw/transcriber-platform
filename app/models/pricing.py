@@ -118,8 +118,7 @@ def update_prices(pricing_data: Dict[str, Dict[str, float]]) -> None:
     try:
         for item_type, models in pricing_data.items():
             for item_key, price in models.items():
-                # --- FIX: Ensure consistency by storing all keys in uppercase ---
-                cursor.execute(sql, (item_type, item_key.lower(), price))
+                cursor.execute(sql, (item_type, str(item_key).strip(), price))
         get_db().commit()
         logging.debug(f"{log_prefix} Database prices updated successfully.")
     except MySQLError as err:

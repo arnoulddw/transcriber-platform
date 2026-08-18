@@ -40,8 +40,7 @@
                 <input id="apiKeyOpenrouterModel" type="text" name="model_name"
                        class="input-control" autocomplete="off"
                        placeholder="{{ _('gpt-4o-transcribe') }}">
-                <p class="form-hint">{{ _('Use the provider model name. Leave it blank to manage a legacy provider-wide key. OpenRouter models must use the vendor/model format.') }}</p>
-                <p id="openrouterModelHint" class="form-hint hidden">{{ _('Enter the model slug exactly as shown in OpenRouter, for ex. openai/gpt-4o-mini ') }}</p>
+                <p id="modelNameHint" class="form-hint">{{ _('Enter the model name exactly as shown by the provider.') }}</p>
             </div>
             <div>
                 <label for="apiKeyInput" class="form-label">{{ _('API Key') }}</label>
@@ -49,23 +48,21 @@
             </div>
             <fieldset>
                 <legend class="form-label">{{ _('Use this model for') }}</legend>
-                <div id="modelPurpose" class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="{{ _('Model purpose') }}">
-                    <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
+                <div id="modelPurpose" class="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="{{ _('Model purpose') }}">
+                    <label class="flex min-w-0 cursor-pointer items-center justify-center rounded-md border border-border-default px-2 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
                         <input class="peer sr-only" type="radio" name="model_purpose" value="transcription" checked>
-                        <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Transcription') }}</span>
+                        <span class="w-full rounded-md px-2 py-1 text-center leading-5 transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Transcription') }}</span>
                     </label>
-                    <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
+                    <label class="flex min-w-0 cursor-pointer items-center justify-center rounded-md border border-border-default px-2 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
                         <input class="peer sr-only" type="radio" name="model_purpose" value="llm">
-                        <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('LLM') }}</span>
+                        <span class="w-full rounded-md px-2 py-1 text-center leading-5 transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('LLM') }}</span>
                     </label>
-                    <label class="flex cursor-pointer items-center justify-center rounded-md border border-border-default px-3 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
+                    <label class="flex min-w-0 cursor-pointer items-center justify-center rounded-md border border-border-default px-2 py-2 text-sm text-text-muted transition hover:border-primary peer-focus:ring-2 peer-focus:ring-primary">
                         <input class="peer sr-only" type="radio" name="model_purpose" value="live">
-                        <span class="w-full rounded-md px-2 py-1 text-center transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Live') }}</span>
+                        <span class="w-full rounded-md px-2 py-1 text-center leading-5 transition peer-checked:bg-primary/10 peer-checked:font-semibold peer-checked:text-primary">{{ _('Live') }}</span>
                     </label>
                 </div>
-                <p class="form-hint">{{ _('Choose whether this model should handle audio transcription, live transcription, or titles and workflows.') }}</p>
                 <div id="modelPurposePreview" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted" aria-live="polite">
-                    <span>{{ _('Usage tags:') }}</span>
                     <span id="modelPurposePreviewBadges" class="inline-flex flex-wrap items-center gap-1"></span>
                 </div>
             </fieldset>

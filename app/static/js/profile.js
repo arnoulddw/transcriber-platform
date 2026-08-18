@@ -126,10 +126,14 @@ function populateProfileLiveModelSelect(select) {
     if (!select) return;
     while (select.options.length > 0) select.remove(0);
     select.appendChild(new Option('-- Use System Default --', ''));
+    const seenCodes = new Set();
     (window.LIVE_TRANSCRIPTION_MODELS || []).forEach(model => {
         const code = typeof model === 'string' ? model : model.code;
         const label = typeof model === 'string' ? model : (model.display_name || model.code);
-        if (code) select.appendChild(new Option(label, code));
+        if (code && !seenCodes.has(code)) {
+            seenCodes.add(code);
+            select.appendChild(new Option(label, code));
+        }
     });
 }
 
@@ -275,8 +279,11 @@ async function loadProfileData() {
     const userPermissions = window.USER_PERMISSIONS || {};
     const apiKeyStatus = window.API_KEY_STATUS || {};
     const missingKeyMarker = ' (API Key Missing)';
+    const seenTranscriptionModels = new Set();
     catalogModels.forEach(model => {
         if (model.permission_key && !userPermissions[model.permission_key]) return;
+        if (seenTranscriptionModels.has(model.code)) return;
+        seenTranscriptionModels.add(model.code);
 
         const opt = new Option(model.display_name || model.code, model.code);
         if (model.model_name) opt.dataset.modelName = model.model_name;

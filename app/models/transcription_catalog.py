@@ -114,8 +114,12 @@ def get_active_models() -> List[Dict[str, Optional[str]]]:
     cursor.execute(sql)
     rows = cursor.fetchall() or []
     models: List[Dict[str, Optional[str]]] = []
+    seen_codes: set[str] = set()
     for row in rows:
         code = row["code"]
+        if not code or code in seen_codes:
+            continue
+        seen_codes.add(code)
         display_name = _apply_display_name_override(code, row["display_name"])
         models.append(
             {
@@ -129,50 +133,188 @@ def get_active_models() -> List[Dict[str, Optional[str]]]:
     return models
 
 
+def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[str, Optional[str]]]:
+    """Return the de-duplicated live transcription model catalog for UI consumers."""
+    config = current_app.config
+    name_map: Dict[str, str] = config.get("API_PROVIDER_NAME_MAP", {}) or {}
+    providers: Dict[str, str] = config.get("LIVE_TRANSCRIPTION_PROVIDERS", {}) or {}
+    default_model = config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
+    configured_models = config.get("LIVE_TRANSCRIPTION_MODELS") or [default_model]
+    if isinstance(configured_models, str):
+        configured_models = configured_models.split(",")
+
+    live_models: List[Dict[str, Optional[str]]] = []
+    seen_codes: set[str] = set()
+
+    def append_model(code: str, provider: Optional[str] = None) -> None:
+        normalized_code = str(code or "").strip()
+        if not normalized_code or normalized_code in seen_codes:
+            return
+        seen_codes.add(normalized_code)
+        live_models.append({
+            "code": normalized_code,
+            "display_name": name_map.get(normalized_code, normalized_code) or normalized_code,
+            "provider": provider or providers.get(
+                normalized_code,
+                "openrouter" if "/" in normalized_code else "openai",
+            ) or "openai",
+        })
+
+    for raw_model in configured_models:
+        normalized_model = str(raw_model or "").strip()
+        append_model(normalized_model, providers.get(normalized_model))
+
+    status = key_status or {}
+    provider_keys = status.get("provider_keys") or {}
+    for entry in provider_keys.get("openrouter", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        purposes = entry.get("model_purposes") or []
+        if isinstance(purposes, str):
+            purposes = purposes.split(",")
+        if "live" not in purposes:
+            continue
+        append_model(
+            str(entry.get("model_slug") or entry.get("model_name") or "").strip(),
+            "openrouter",
+        )
+
+    return live_models
+
+
+def _model_purposes(entry: Dict[str, Any]) -> set[str]:
+    """Return normalized purposes for a saved key status entry."""
+    raw_purposes = entry.get("model_purposes")
+    if isinstance(raw_purposes, str):
+        raw_purposes = raw_purposes.split(",")
+    if not isinstance(raw_purposes, (list, tuple, set)):
+        return set()
+    return {
+        str(purpose).strip().lower()
+        for purpose in raw_purposes
+        if str(purpose).strip().lower() in {"transcription", "llm", "live"}
+    }
+
+
+def _is_transcription_key(entry: Dict[str, Any]) -> bool:
+    """Keep legacy entries while excluding keys explicitly scoped elsewhere."""
+    purposes = _model_purposes(entry)
+    return not purposes or "transcription" in purposes
+
+
+def _key_entries_for_model(
+    model: Dict[str, Optional[str]],
+    status: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Collect key metadata for a catalog model without duplicating aliases."""
+    provider = str(model.get("code") or "").strip().lower()
+    required_key = str(model.get("required_api_key") or "").strip().lower()
+    provider_keys = status.get("provider_keys") or {}
+    candidate_names = [required_key, provider]
+    if provider in {"whisper", "gpt-transcribe", "gpt-4o-transcribe"}:
+        candidate_names.append("openai")
+    if provider == "openrouter":
+        candidate_names.append("openrouter")
+
+    entries: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for candidate in candidate_names:
+        if not candidate:
+            continue
+        raw_entries = list(provider_keys.get(candidate) or [])
+        legacy_entries = status.get(f"{candidate}_keys")
+        if isinstance(legacy_entries, list):
+            raw_entries.extend(legacy_entries)
+        if candidate == "openrouter":
+            raw_entries.extend(status.get("openrouter_keys") or [])
+        for entry in raw_entries:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+            purposes = ",".join(sorted(_model_purposes(entry)))
+            identity = (name, str(bool(entry.get("provider_wide"))), purposes)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            entries.append(entry)
+    return entries
+
+
 def expand_models_for_ui(
     models: List[Dict[str, Optional[str]]],
     key_status: Optional[Dict[str, Any]] = None,
     fallback_openrouter_model: Optional[str] = None,
 ) -> List[Dict[str, Optional[str]]]:
-    """Expand provider catalog entries into selectable provider/model entries."""
-    status = key_status or {}
-    provider_keys = status.get("provider_keys") or {}
-    legacy_openrouter_keys = status.get("openrouter_keys") or []
-    fallback_names = {
-        "openrouter": [fallback_openrouter_model] if fallback_openrouter_model else [],
-    }
+    """Return one selectable entry per catalog model or configured OpenRouter slug.
 
+    The database catalog contains the canonical transcription models. A saved
+    provider key is only allowed to expand the matching catalog model; otherwise
+    every OpenAI key would be copied onto every OpenAI transcription option.
+    OpenRouter remains the one provider whose user-entered vendor/model slugs
+    are selectable additions to the catalog.
+    """
+    status = key_status or {}
     expanded: List[Dict[str, Optional[str]]] = []
+    seen_entries: set[tuple[str, str]] = set()
+
+    def append_once(entry: Dict[str, Optional[str]]) -> None:
+        code = str(entry.get("code") or "").strip()
+        model_name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+        identity = (code, model_name if code == "openrouter" else "")
+        if code and identity not in seen_entries:
+            seen_entries.add(identity)
+            expanded.append(entry)
+
     for model in models:
         provider = str(model.get("code") or "").strip().lower()
-        raw_entries = provider_keys.get(provider) or (
-            legacy_openrouter_keys if provider == "openrouter" else []
-        )
-        if provider in {"whisper", "gpt-transcribe", "gpt-4o-transcribe"}:
-            raw_entries = provider_keys.get(provider) or provider_keys.get("openai") or []
-        names = []
-        for entry in raw_entries:
-            if not isinstance(entry, dict) or entry.get("provider_wide"):
-                continue
-            name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
-            if name and name not in names:
-                names.append(name)
-        for name in fallback_names.get(provider, []):
-            if name and name not in names:
-                names.append(name)
+        entries = [
+            entry
+            for entry in _key_entries_for_model(model, status)
+            if _is_transcription_key(entry)
+        ]
 
-        if not names:
-            expanded.append(dict(model))
+        if provider == "openrouter":
+            names: List[str] = []
+            for entry in entries:
+                if entry.get("provider_wide"):
+                    continue
+                name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+                if name and name not in names:
+                    names.append(name)
+            if fallback_openrouter_model and fallback_openrouter_model.strip() not in names:
+                names.append(fallback_openrouter_model.strip())
+            if not names:
+                append_once(dict(model))
+                continue
+            for name in names:
+                append_once({
+                    **model,
+                    "model_name": name,
+                    "model_slug": name,
+                    "display_name": name,
+                })
             continue
-        for name in names:
-            expanded.append({
+
+        catalog_code = str(model.get("code") or "").strip()
+        matching_entry = next(
+            (
+                entry
+                for entry in entries
+                if not entry.get("provider_wide")
+                and str(entry.get("model_name") or entry.get("model_slug") or "").strip() == catalog_code
+            ),
+            None,
+        )
+        if matching_entry:
+            append_once({
                 **model,
-                "model_name": name,
-                "model_slug": name if provider == "openrouter" else None,
-                "display_name": name,
+                "model_name": catalog_code,
+                "model_slug": None,
+                "display_name": model.get("display_name") or catalog_code,
             })
-    # Preserve the provider catalog entry when no saved model-specific key
-    # exists. The UI can still present the provider and request a model name.
+        else:
+            append_once(dict(model))
+
     return expanded
 
 

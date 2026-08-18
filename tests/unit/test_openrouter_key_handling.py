@@ -195,10 +195,8 @@ def test_api_key_modal_contract_contains_requested_copy_and_selected_state():
     ).read()
     script = open("app/static/js/user_settings.js", encoding="utf-8").read()
 
-    assert (
-        "Enter the model slug exactly as shown in OpenRouter, for ex. openai/gpt-4o-mini "
-        in template
-    )
+    assert 'id="modelNameHint"' in template
+    assert "Enter the OpenRouter model as vendor/model." in script
     assert "peer-checked:bg-primary/10" in template
     assert "openrouter_keys" in script
     assert "***${" in script

@@ -438,23 +438,8 @@ def create_app(config_class=Config) -> Flask:
         api_name_map_for_frontend_subset = {
             model['code']: model['display_name'] for model in catalog_models
         }
-        live_model = app.config.get('LIVE_TRANSCRIPTION_MODEL', 'gpt-live-transcribe')
-        live_model_codes = [
-            str(model_code).strip()
-            for model_code in app.config.get('LIVE_TRANSCRIPTION_MODELS', [live_model])
-            if str(model_code).strip()
-        ]
-        live_transcription_models = [
-            {
-                'code': model_code,
-                'display_name': all_provider_names_from_config.get(model_code, model_code),
-                'provider': app.config.get('LIVE_TRANSCRIPTION_PROVIDERS', {}).get(
-                    model_code,
-                    'openrouter' if '/' in model_code else 'openai',
-                ),
-            }
-            for model_code in live_model_codes
-        ]
+        live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
+        live_model_codes = [model['code'] for model in live_transcription_models]
         for live_entry in live_transcription_models:
             api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
 
@@ -489,20 +474,10 @@ def create_app(config_class=Config) -> Flask:
                     'allow_speaker_diarization': role.allow_speaker_diarization
                 }
 
-            configured_live_models = {
-                str(entry.get('model_slug') or entry.get('model_name') or '').strip()
-                for entry in (initial_key_status.get('provider_keys', {}).get('openrouter', []) or [])
-                if 'live' in (entry.get('model_purposes') or [])
-            }
-            for model_code in sorted(model for model in configured_live_models if model):
-                if any(item.get('code') == model_code for item in live_transcription_models):
-                    continue
-                live_transcription_models.append({
-                    'code': model_code,
-                    'display_name': all_provider_names_from_config.get(model_code, model_code),
-                    'provider': 'openrouter',
-                })
-                api_name_map_for_frontend_subset[model_code] = live_transcription_models[-1]['display_name']
+            live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
+            live_model_codes = [model['code'] for model in live_transcription_models]
+            for live_entry in live_transcription_models:
+                api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
         elif not is_multi:
              initial_key_status = {
                  'openai': bool(app.config.get('OPENAI_API_KEY')),
@@ -523,6 +498,12 @@ def create_app(config_class=Config) -> Flask:
                  'manage_workflow_templates': False, 'allow_auto_title_generation': True,
                  'allow_speaker_diarization': True
              }
+
+        if not is_multi:
+            live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
+            live_model_codes = [model['code'] for model in live_transcription_models]
+            for live_entry in live_transcription_models:
+                api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
 
         if user or not is_multi:
             can_use_user_keys = not is_multi or bool(

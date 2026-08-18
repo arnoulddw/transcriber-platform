@@ -51,12 +51,6 @@ def test_admin_pricing_options_are_model_specific_and_include_saved_models(monke
     from app.admin_panel.routes import build_pricing_options
 
     with patch(
-        "app.admin_panel.routes.display_mapping_service.get_transcription_display_map",
-        return_value={
-            "whisper": "OpenAI",
-            "openrouter": "OpenRouter",
-        },
-    ), patch(
         "app.admin_panel.routes.llm_catalog_model.get_active_models",
         return_value=[
             {"code": "gemini-3.0-flash", "display_name": "Gemini 3.0 Flash"},
@@ -97,6 +91,27 @@ def test_admin_default_model_grid_keeps_labels_on_one_line():
     assert "lg:grid-cols-4 gap-6 items-start" in template
     assert template.count("form-label whitespace-nowrap") == 4
     assert "Default Title Generation Model" not in template
+
+
+def test_admin_default_model_grid_order_matches_user_settings():
+    role_template = Path("app/templates/admin/create_edit_role.html").read_text(encoding="utf-8")
+    settings_template = Path("app/templates/layout/modals/profile_modal.html").read_text(encoding="utf-8")
+
+    role_fields = [
+        role_template.index("form.default_transcription_model"),
+        role_template.index("form.default_live_transcription_model"),
+        role_template.index("form.default_workflow_model"),
+        role_template.index("form.default_title_generation_model"),
+    ]
+    settings_fields = [
+        settings_template.index("profileDefaultModel"),
+        settings_template.index("profileDefaultLiveModel"),
+        settings_template.index("profileDefaultWorkflowModel"),
+        settings_template.index("profileDefaultAuxiliaryModel"),
+    ]
+
+    assert role_fields == sorted(role_fields)
+    assert settings_fields == sorted(settings_fields)
 
 
 class _Cursor:
@@ -152,15 +167,51 @@ def test_api_key_entries_render_explicit_model_purpose_badges():
 
     assert "MODEL_PURPOSE_LABELS" in script
     assert "badge badge-muted text-xs" in script
-    assert "textContent = `[${label}]`" in script
+    assert "badge.textContent = label" in script
+    assert "textContent = `[${label}]`" not in script
     assert "model_purposes" in service
     assert "modelPurposePreviewBadges" in template
+
+
+def test_api_key_modal_uses_provider_specific_model_help_and_mobile_purpose_layout():
+    template = Path("app/templates/layout/modals/api_key_modal.html").read_text(encoding="utf-8")
+    script = Path("app/static/js/user_settings.js").read_text(encoding="utf-8")
+
+    assert 'id="modelNameHint"' in template
+    assert "Enter the OpenAI model name only, without the vendor prefix." in script
+    assert "Enter the Google model name only, without the vendor prefix." in script
+    assert "Enter the OpenRouter model as vendor/model." in script
+    assert "grid grid-cols-1 gap-2 sm:grid-cols-3" in template
+    assert "Usage tags:" not in template
+    assert "Choose whether this model should handle" not in template
+    assert "Use the provider model name" not in template
+
+
+def test_transcription_selectors_dedupe_catalog_codes():
+    index_template = Path("app/templates/index.html").read_text(encoding="utf-8")
+    profile_script = Path("app/static/js/profile.js").read_text(encoding="utf-8")
+    catalog = Path("app/models/transcription_catalog.py").read_text(encoding="utf-8")
+
+    assert "seen_transcription_models = namespace(codes=[])" in index_template
+    assert "const seenTranscriptionModels = new Set();" in profile_script
+    assert "seen_codes: set[str] = set()" in catalog
+    assert "get_live_models" in catalog
 
 
 def test_pricing_model_keys_are_not_rewritten_to_provider_names():
     pricing_model = Path("app/models/pricing.py").read_text(encoding="utf-8")
 
-    assert "cursor.execute(sql, (item_type, item_key.lower(), price))" in pricing_model
+    assert "cursor.execute(sql, (item_type, str(item_key).strip(), price))" in pricing_model
+    assert "item_key.lower()" not in pricing_model
     assert "item_key.upper()" not in pricing_model
     assert "TITLE_GENERATION_LLM_PROVIDER" not in pricing_model
     assert "WORKFLOW_LLM_PROVIDER" not in pricing_model
+
+
+def test_pricing_fallbacks_use_model_defaults_not_provider_names():
+    pricing_service = Path("app/services/pricing_service.py").read_text(encoding="utf-8")
+
+    assert "TITLE_GENERATION_LLM_MODEL" in pricing_service
+    assert "WORKFLOW_LLM_MODEL" in pricing_service
+    assert "TITLE_GENERATION_LLM_PROVIDER" not in pricing_service
+    assert "WORKFLOW_LLM_PROVIDER" not in pricing_service
