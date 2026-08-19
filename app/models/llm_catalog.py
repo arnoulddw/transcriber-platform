@@ -36,6 +36,10 @@ _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
     },
 }
 
+# Columns that may carry the "default model" flag; used by _get_default_code
+# to guard against SQL injection via a caller-supplied column name.
+_ALLOWED_DEFAULT_COLUMNS = {"is_default", "is_default_title", "is_default_workflow"}
+
 # Default metadata for known models. Extend this mapping as new models are added.
 def init_db_command() -> None:
     """

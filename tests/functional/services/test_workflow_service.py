@@ -90,13 +90,13 @@ def test_start_workflow_success(app, workflow_user):
     assert operation_id == 55
     mock_create.assert_called_once_with(
         user_id=workflow_user.id,
-        provider="OPENROUTER",
+        provider="GEMINI",
         operation_type="workflow",
         input_text="Summarize this transcript.",
         transcription_id=transcription_id,
         prompt_id=None,
         status="pending",
-        model="google/gemini-3.7-flash",
+        model="gemini-3.0-flash",
     )
     mock_thread.assert_called_once()
     mock_thread.return_value.start.assert_called_once()

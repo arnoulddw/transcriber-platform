@@ -3,6 +3,44 @@
 import pytest
 import json
 
+# Standard test models registered into the catalog by clean_db. Models only
+# exist in the catalog after an admin/user saves an API key, so functional
+# tests that transcribe with a fixed api_choice must mirror that by
+# registering the rows (register_model_from_provider is exactly what
+# save_user_api_key calls).
+TEST_CATALOG_MODELS = [
+    ("openai", "whisper", "whisper", "transcription"),
+    ("openai", "gpt-4o-transcribe", "gpt-4o-transcribe", "transcription"),
+    ("openai", "gpt-transcribe", "gpt-transcribe", "transcription"),
+    ("assemblyai", "assemblyai", "assemblyai", "transcription"),
+    # NOTE: no bare "openrouter" row — OpenRouter is a provider, not a model;
+    # tests that need OpenRouter mock get_active_models with slug entries.
+]
+
+
+def _register_test_catalog_models() -> None:
+    """Register the standard test models into the transcription catalog.
+
+    Mirrors the production key-save flow (save_user_api_key →
+    register_model_from_provider) so permission checks and dropdowns in
+    functional tests resolve like they do for a configured instance.
+    """
+    try:
+        from app.models import transcription_catalog as catalog_model
+        for provider, code, display_name, purpose in TEST_CATALOG_MODELS:
+            catalog_model.register_model_from_provider(
+                provider=provider,
+                code=code,
+                display_name=display_name,
+                model_purpose=purpose,
+            )
+    except Exception as exc:  # pragma: no cover - diagnostic only
+        import logging
+        logging.getLogger(__name__).warning(
+            "Failed to register test catalog models: %s", exc
+        )
+
+
 @pytest.fixture(scope='function')
 def clean_db(app):
     """Truncate all tables in the test database and reset auto-increment."""
@@ -24,6 +62,9 @@ def clean_db(app):
         # Reset centralized catalog tables to ensure consistent test state
         cursor.execute("TRUNCATE TABLE transcription_models_catalog")
         cursor.execute("TRUNCATE TABLE transcription_languages_catalog")
+        # Register the standard test models, mimicking what happens when an
+        # admin saves API keys (models enter the catalog via key-save only).
+        _register_test_catalog_models()
         # Explicitly reset auto-increment to ensure fresh IDs
         cursor.execute("ALTER TABLE roles AUTO_INCREMENT = 1")
         cursor.execute("ALTER TABLE users AUTO_INCREMENT = 1")
