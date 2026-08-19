@@ -227,19 +227,23 @@ class Config:
         'gpt-transcribe': {
             'duration_s': None,
             'size_mb': 25,
-            'rate_limit_rpm': None
+            'rate_limit_rpm': None,
+            'response_style': 'languages_array',
         },
         'gpt-4o-transcribe': {
             # OpenAI enforces a hard 1400 second cap on GPT-4o Transcribe uploads.
             # Stay slightly under the limit so borderline files are chunked automatically.
             'duration_s': 420,
             'size_mb': 25,
-            'rate_limit_rpm': 500  # requests per minute
+            'rate_limit_rpm': 500,  # requests per minute
+            'response_style': 'standard',
         },
         'whisper': {
             'duration_s': None,
             'size_mb': 25,
-            'rate_limit_rpm': 50
+            'rate_limit_rpm': 50,
+            'api_model_name': 'whisper-1',
+            'response_style': 'whisper',
         },
         'assemblyai': {
             'duration_s': None,
