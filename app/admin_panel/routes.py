@@ -82,7 +82,7 @@ def build_pricing_options():
         aggregated_status = {}
 
     try:
-        transcription_options = transcription_catalog_model.expand_models_for_ui(
+        transcription_options = transcription_catalog_model.build_model_options(
             transcription_catalog, aggregated_status
         )
     except Exception as expand_err:
@@ -111,8 +111,11 @@ def build_pricing_options():
     def _sorted(mapping: Dict[str, str]) -> Dict[str, str]:
         return dict(sorted(mapping.items(), key=lambda item: item[1].lower()))
 
+    # The transcription bucket inherits the canonical catalog ordering from
+    # build_model_options (catalog order, OpenRouter slugs alphabetical) so it
+    # matches the other model dropdowns; LLM buckets keep their own sort.
     return {
-        'transcription': _sorted(transcription_map),
+        'transcription': dict(transcription_map),
         'title_generation': _sorted(dict(llm_map)),
         'workflow': _sorted(dict(llm_map)),
     }

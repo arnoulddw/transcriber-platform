@@ -525,7 +525,7 @@ def create_app(config_class=Config) -> Flask:
             user_service.resolve_effective_openrouter_model(user, initial_key_status)
             if user else None
         )
-        available_transcription_models = transcription_catalog_model.expand_models_for_ui(
+        available_transcription_models = transcription_catalog_model.build_model_options(
             catalog_models,
             initial_key_status,
             effective_openrouter_model,

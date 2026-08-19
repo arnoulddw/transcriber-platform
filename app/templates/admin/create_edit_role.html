@@ -45,7 +45,14 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
                     <div class="min-w-0">
                         <label for="{{ form.default_transcription_model.id }}" class="form-label whitespace-nowrap">{{ form.default_transcription_model.label.text }}</label>
-                        {{ form.default_transcription_model(class="input-select" + (" border-red-500" if form.default_transcription_model.errors else ""), id=form.default_transcription_model.id) }}
+                        <select name="{{ form.default_transcription_model.id }}" id="{{ form.default_transcription_model.id }}" class="input-select{{ ' border-red-500' if form.default_transcription_model.errors }}">
+                            <option value="">-- Use System Default --</option>
+                            {% for model in form.transcription_model_options %}
+                                {% set is_current = model.code == form.default_transcription_model.data and (model.code != 'openrouter' or (model.model_name or '') == (form.default_openrouter_model.data or '')) %}
+                                <option value="{{ model.code }}"{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if is_current %} selected{% endif %}>{{ model.display_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" name="default_openrouter_model" id="roleDefaultOpenrouterModel" value="{{ form.default_openrouter_model.data or '' }}">
                         {% if form.default_transcription_model.errors %}
                             <p class="form-error">{{ form.default_transcription_model.errors[0] }}</p>
                         {% endif %}
@@ -221,4 +228,25 @@
         </div>
     </form>
     {% endcall %}
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script nonce="{{ csp_nonce }}">
+    (function () {
+        'use strict';
+        // Each OpenRouter transcription model is a separate option; keep the
+        // hidden slug field in sync with the selected option so the role's
+        // default OpenRouter model round-trips through the form.
+        const select = document.getElementById('{{ form.default_transcription_model.id }}');
+        const slugInput = document.getElementById('roleDefaultOpenrouterModel');
+        if (!select || !slugInput) return;
+        function syncOpenRouterSlug() {
+            const option = select.selectedOptions && select.selectedOptions[0];
+            slugInput.value = option && option.value === 'openrouter' ? (option.dataset.modelName || '') : '';
+        }
+        select.addEventListener('change', syncOpenRouterSlug);
+        syncOpenRouterSlug();
+    })();
+    </script>
 {% endblock %}

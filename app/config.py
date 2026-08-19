@@ -116,8 +116,8 @@ class Config:
 
     API_PROVIDER_NAME_MAP = {
         # Transcription Providers
-        "assemblyai": "AssemblyAI",
-        "whisper": "OpenAI",
+        "assemblyai": "AssemblyAI Universal",
+        "whisper": "OpenAI Whisper",
         "gpt-4o-transcribe": "OpenAI GPT-4o Transcribe",
         "gpt-transcribe": "OpenAI GPT Transcribe",
         "gpt-live-transcribe": "OpenAI GPT Live Transcribe",

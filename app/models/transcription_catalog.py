@@ -319,6 +319,46 @@ def expand_models_for_ui(
     return expanded
 
 
+def build_model_options(
+    catalog_models: List[Dict[str, Optional[str]]],
+    key_status: Optional[Dict[str, Any]] = None,
+    fallback_openrouter_model: Optional[str] = None,
+) -> List[Dict[str, Optional[str]]]:
+    """Return the canonical de-duplicated transcription model option list.
+
+    Every catalog code appears at most once, except OpenRouter entries which
+    stay **per slug** so each configured transcription model remains
+    selectable. All dropdown consumers (home page, user settings modal, admin
+    role form, costs page) must source their options from here so the lists
+    cannot drift apart.
+    """
+    expanded = expand_models_for_ui(catalog_models, key_status, fallback_openrouter_model)
+
+    # Canonical ordering: every catalog code keeps its catalog order; the
+    # OpenRouter slugs (already one option per slug) are sorted alphabetically
+    # inside the openrouter group so all four dropdowns render identically.
+    or_entries = sorted(
+        (e for e in expanded if e.get("code") == "openrouter"),
+        key=lambda e: str(e.get("model_name") or "").lower(),
+    )
+    others = [e for e in expanded if e.get("code") != "openrouter"]
+    first_or = next(
+        (i for i, e in enumerate(expanded) if e.get("code") == "openrouter"),
+        len(others),
+    )
+
+    options: List[Dict[str, Optional[str]]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in others[:first_or] + or_entries + others[first_or:]:
+        code = str(entry.get("code") or "").strip()
+        identity = (code, entry.get("model_name") or "") if code == "openrouter" else (code, "")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        options.append(entry)
+    return options
+
+
 def get_model_by_code(code: str) -> Optional[Dict[str, Optional[str]]]:
     if not code:
         return None

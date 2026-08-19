@@ -298,7 +298,7 @@ class UserProfileForm(FlaskForm):
             logging.warning(f"[FORMS] Failed to resolve OpenRouter model for profile form: {openrouter_err}", exc_info=True)
             effective_openrouter_model = None
         try:
-            available_models = transcription_catalog_model.expand_models_for_ui(
+            available_models = transcription_catalog_model.build_model_options(
                 catalog_models, key_status, effective_openrouter_model
             )
         except Exception as expand_err:
@@ -542,12 +542,36 @@ class AdminRoleForm(FlaskForm):
             catalog_models = []
 
         try:
-            expanded_models = transcription_catalog_model.expand_models_for_ui(
+            expanded_models = transcription_catalog_model.build_model_options(
                 catalog_models, admin_key_status
             )
         except Exception as expand_err:
             logging.warning(f"[FORMS] Failed to expand transcription models for admin role form: {expand_err}", exc_info=True)
-            expanded_models = catalog_models
+            expanded_models = list(catalog_models)
+
+        # Keep the role's current OpenRouter slug selectable even when it is no
+        # longer offered by the catalog, so saving the form cannot silently drop it.
+        current_slug = str(self.default_openrouter_model.data or '').strip()
+        if current_slug:
+            slug_known = any(
+                model.get('code') == 'openrouter'
+                and (model.get('model_name') or '') == current_slug
+                for model in expanded_models
+            )
+            if not slug_known:
+                expanded_models = [*expanded_models, {
+                    'code': 'openrouter',
+                    'model_name': current_slug,
+                    'model_slug': current_slug,
+                    'display_name': current_slug,
+                    'permission_key': 'use_api_openrouter',
+                    'required_api_key': 'openrouter',
+                }]
+
+        # Each OpenRouter slug is a distinct option (rendered manually by the
+        # template), so the form carries the canonical per-slug list for the
+        # role editor while the dropdown value stays the plain model code.
+        self.transcription_model_options = list(expanded_models)
 
         seen_transcription_codes = set()
         for model in expanded_models:
