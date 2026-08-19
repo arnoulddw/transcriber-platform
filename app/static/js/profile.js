@@ -282,8 +282,12 @@ async function loadProfileData() {
     const seenTranscriptionModels = new Set();
     catalogModels.forEach(model => {
         if (model.permission_key && !userPermissions[model.permission_key]) return;
-        if (seenTranscriptionModels.has(model.code)) return;
-        seenTranscriptionModels.add(model.code);
+        // OpenRouter options are unique per slug, all other codes once.
+        const modelKey = model.code === 'openrouter'
+            ? `openrouter:${model.model_name || model.model_slug || ''}`
+            : model.code;
+        if (seenTranscriptionModels.has(modelKey)) return;
+        seenTranscriptionModels.add(modelKey);
 
         const opt = new Option(model.display_name || model.code, model.code);
         if (model.model_name) opt.dataset.modelName = model.model_name;

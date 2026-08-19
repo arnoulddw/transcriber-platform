@@ -211,9 +211,14 @@ def test_transcription_selectors_dedupe_catalog_codes():
     profile_script = Path("app/static/js/profile.js").read_text(encoding="utf-8")
     catalog = Path("app/models/transcription_catalog.py").read_text(encoding="utf-8")
 
-    assert "seen_transcription_models = namespace(codes=[])" in index_template
+    # Selectors dedupe by (code, openrouter slug) so every OpenRouter
+    # transcription model renders as its own option instead of collapsing.
+    assert "seen_transcription_models = namespace(keys=[])" in index_template
+    assert "option_key = (model.code ~ '|' ~ (model.model_name or ''))" in index_template
     assert "const seenTranscriptionModels = new Set();" in profile_script
+    assert "openrouter:${model.model_name || model.model_slug || ''}" in profile_script
     assert "seen_codes: set[str] = set()" in catalog
+    assert "def build_model_options(" in catalog
     assert "get_live_models" in catalog
 
 
@@ -267,6 +272,39 @@ def test_expand_models_uses_configured_slug_when_present():
     assert [(model["code"], model.get("model_name")) for model in expanded] == [
         ("openrouter", "x-ai/grok-stt-1.0"),
     ]
+
+
+def test_build_model_options_keeps_each_openrouter_slug_separate():
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
+        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+    ]
+    status = {
+        "provider_keys": {
+            "openrouter": [
+                # Listed in reverse alphabetical order on purpose: the canonical
+                # options sort the slugs alphabetically.
+                {"model_name": "x-ai/grok-stt-1.0", "model_purposes": ["transcription"]},
+                {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
+            ],
+        },
+    }
+
+    options = transcription_catalog.build_model_options(models, status)
+
+    # Catalog order is preserved (gpt-4o-transcribe before whisper as passed),
+    # and OpenRouter slugs are sorted alphabetically within their group.
+    assert [(m["code"], m.get("model_name")) for m in options] == [
+        ("gpt-4o-transcribe", None),
+        ("whisper", None),
+        ("openrouter", "qwen/qwen3-asr-1.7b"),
+        ("openrouter", "x-ai/grok-stt-1.0"),
+    ]
+    # Other catalog codes are still deduplicated to a single option.
+    assert len([m for m in options if m["code"] == "whisper"]) == 1
 
 
 def test_llm_model_options_merge_user_added_llm_slugs(monkeypatch):
@@ -335,3 +373,27 @@ def test_all_jinja_templates_parse_without_escaping_artifacts():
         # No stray JSON-escape backslashes before quotes may appear anywhere
         # (they are both a Jinja parse hazard and invalid HTML).
         assert not re.search(r"\\\"", source), f"escaped-quote artifact in {path}"
+
+
+def test_transcription_model_display_names_are_model_names_not_provider_labels(monkeypatch):
+    """Model dropdowns must never expose bare provider labels as models.
+
+    The production API_PROVIDER_NAME_MAP drives catalog display names; the
+    whisper/assemblyai entries were provider labels ("OpenAI", "AssemblyAI"),
+    which leaked into every model dropdown (home, user settings, admin role,
+    costs). Regression guard: each transcription model must display as an
+    actual model name.
+    """
+    _set_minimal_app_environment(monkeypatch)
+    from app.config import Config
+
+    name_map = Config.API_PROVIDER_NAME_MAP
+    assert name_map["whisper"] == "OpenAI Whisper"
+    assert name_map["assemblyai"] == "AssemblyAI Universal"
+    assert name_map["gpt-4o-transcribe"] == "OpenAI GPT-4o Transcribe"
+    assert name_map["gpt-transcribe"] == "OpenAI GPT Transcribe"
+    # Bare provider labels are not valid model display names in any catalog.
+    banned = {"OpenAI", "AssemblyAI", "OpenRouter", "Google Gemini"}
+    transcription_codes = {"whisper", "assemblyai", "gpt-4o-transcribe", "gpt-transcribe"}
+    for code in transcription_codes:
+        assert name_map[code] not in banned, f"{code} hides behind a provider label"

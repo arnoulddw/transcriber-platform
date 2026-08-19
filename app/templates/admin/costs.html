@@ -17,7 +17,7 @@
                     <label for="transcription-model" class="form-label">{{ _('Model') }}</label>
                     <select id="transcription-model" class="input-select pricing-model-select" data-type="transcription">
                         <option value="">{{ _('Choose a model') }}</option>
-                        {% for key, name in pricing_options.transcription.items()|sort %}<option value="{{ key }}">{{ name }}</option>{% endfor %}
+                        {% for key, name in pricing_options.transcription.items() %}<option value="{{ key }}">{{ name }}</option>{% endfor %}
                     </select>
                     <label for="transcription-price" class="form-label mt-4">{{ _('Price per Minute ($)') }}</label>
                     <input type="number" step="0.00001" min="0" id="transcription-price" class="input-control pricing-value">

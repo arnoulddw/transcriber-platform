@@ -581,3 +581,66 @@ def test_service_passes_new_llm_model_preferences():
         default_title_generation_model="gemma-4-26b-a4b-it",
         default_workflow_model="google/gemini-3.7-flash",
     )
+
+
+def test_admin_role_form_exposes_each_openrouter_slug_as_option(form_context):
+    from unittest.mock import patch
+
+    from app.forms import AdminRoleForm
+
+    with patch(
+        "app.forms.user_service.get_aggregate_api_key_status",
+        return_value={
+            "provider_keys": {
+                "openrouter": [
+                    # Reverse alphabetical on purpose: the canonical options
+                    # list sorts slugs alphabetically.
+                    {"model_name": "x-ai/grok-stt-1.0", "model_purposes": ["transcription"]},
+                    {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
+                ],
+            },
+        },
+    ):
+        form = AdminRoleForm()
+
+    or_options = [m for m in form.transcription_model_options if m.get("code") == "openrouter"]
+    assert [m.get("model_name") for m in or_options] == ["qwen/qwen3-asr-1.7b", "x-ai/grok-stt-1.0"]
+    assert [m.get("display_name") for m in or_options] == ["qwen/qwen3-asr-1.7b", "x-ai/grok-stt-1.0"]
+
+    # The WTForms choices keep the plain model code as the option value so
+    # validation and persistence keep working; the per-slug options are
+    # exposed separately for the template.
+    values = [c[0] for c in form.default_transcription_model.choices or []]
+    assert "openrouter" in values
+
+    # A submitted slug (any of the options) validates against the choices.
+    submit = AdminRoleForm(
+        data={
+            "name": "test-role",
+            "default_transcription_model": "openrouter",
+            "default_openrouter_model": "x-ai/grok-stt-1.0",
+        }
+    )
+    assert submit.validate() is True
+    assert submit.default_openrouter_model.data == "x-ai/grok-stt-1.0"
+
+
+def test_admin_role_form_keeps_current_openrouter_slug_when_catalog_changes(form_context):
+    from unittest.mock import patch
+
+    from app.forms import AdminRoleForm
+
+    with patch(
+        "app.forms.user_service.get_aggregate_api_key_status",
+        return_value={"provider_keys": {"openrouter": []}},
+    ):
+        form = AdminRoleForm(
+            obj=SimpleNamespace(
+                name="legacy-role",
+                default_transcription_model="openrouter",
+                default_openrouter_model="legacy/slug-1",
+            )
+        )
+
+    or_options = [m for m in form.transcription_model_options if m.get("code") == "openrouter"]
+    assert "legacy/slug-1" in [m.get("model_name") for m in or_options]
