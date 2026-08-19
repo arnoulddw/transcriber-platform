@@ -2,7 +2,7 @@
 
 **Self-hosted AI transcription platform for teams, SMBs and individuals who need control over their data, users, API keys and transcription costs.**
 
-Transcriber Platform turns audio into organized text through a web UI, a public transcription API and reusable AI workflows. It supports **OpenAI GPT-4o Transcribe**, **OpenAI Whisper**, **AssemblyAI Universal** and LLM providers such as **OpenAI** and **Google Gemini** for titles, summaries and custom post-processing.
+Transcriber Platform turns audio into organized text through a web UI, a public transcription API and reusable AI workflows. It supports three fixed transcription providers — **OpenAI**, **AssemblyAI** and **OpenRouter** — plus LLM providers such as **OpenAI**, **Google Gemini** and **OpenRouter** for titles, summaries and custom post-processing. Models are not pre-seeded: each model becomes available the moment an admin or user saves an API key for it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, or any OpenRouter STT slug).
 
 Use it as a simple personal transcription app in `single` mode, or run it as a team platform in `multi` mode with authentication, RBAC, per-user API keys, public API keys, usage limits, admin analytics, cost tracking and workflow templates.
 
@@ -24,9 +24,9 @@ Use it as a simple personal transcription app in `single` mode, or run it as a t
 ## ✨ Key Features
 
 ### Core Functionality
--   **Multiple Transcription APIs:** Choose from OpenAI GPT-4o Transcribe, OpenAI Whisper, AssemblyAI Universal or the optional OpenRouter provider (bring your own model slug, e.g. `openai/gpt-transcribe`).
+-   **Three Fixed Transcription Providers:** OpenAI, AssemblyAI and OpenRouter. Models are not bundled with the app — saving an API key for a model (via **Manage API Keys**) registers it in the catalog and makes it available. With OpenRouter you bring your own model slug (e.g. `openai/gpt-transcribe`).
 -   **Speaker Diarization (AssemblyAI):** Toggle speaker labels to identify who said what on supported jobs.
--   **Large File Handling:** Enforces a 200MB upload limit and automatically splits OpenAI-bound files over provider limits into chunks for processing.
+-   **Large File Handling:** Enforces a 200MB upload limit and automatically splits files over each model's provider limit into chunks for processing.
 -   **AI-Powered Title Generation:** Automatically generates a concise title for each transcription.
 -   **Custom AI Workflows:** Execute custom prompts (ex. summarize, extract action items) on transcribed text using LLMs like OpenAI models, Google Gemini or OpenRouter; save reusable workflows from the UI and edit or delete workflow results.
 -   **Pre-Applied Workflows:** Select a saved workflow before upload so the transcript and AI analysis are produced together.
@@ -52,6 +52,7 @@ Use it as a simple personal transcription app in `single` mode, or run it as a t
 -   **Comprehensive Admin Panel:**
     -   **User Management:** View and manage all users and their usage.
     -   **Role Management:** Create and edit roles, permissions, model defaults and usage quotas.
+    -   **Model Management:** The **Models** page shows every registered model and lets you rename its display name. The catalog `display_name` is the single source of truth — dropdowns, history, logs and analytics all follow it.
     -   **Usage, Cost & Performance Analytics:** Dashboards for transcription minutes, workflows, language/model distribution, API expenses, user insights and errors.
     -   **System-wide Templates:** Create language-specific or all-language workflow templates available to users.
     -   **Pricing Controls:** Maintain transcription, title-generation and workflow pricing inputs used for cost analytics.
@@ -74,7 +75,7 @@ Get the platform running in under 5 minutes. This is the recommended method.
     cp .env.example .env
     nano .env 
     ```
-    -   **Crucially, you must set:** `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_USER`, `MYSQL_DB` and the API keys for the providers you want to use (`OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`).
+    -   **Crucially, you must set:** `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_USER`, `MYSQL_DB` and the API keys for the providers you want to use (`OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`). Model availability is driven by the keys saved in the app — see [Usage Guide](#-usage-guide).
     -   For multi-user mode, also set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to create your admin account.
 
 3.  **Build and Run**
@@ -92,8 +93,8 @@ This section provides more detailed setup instructions.
 ### Prerequisites
 
 -   **API Keys:** You need API keys for the services you plan to use:
-    -   [OpenAI](https://platform.openai.com/) (for Whisper, GPT-4o Transcribe and LLM workflows)
-    -   [AssemblyAI (Universal model)](https://www.assemblyai.com/)
+    -   [OpenAI](https://platform.openai.com/) (for Whisper, GPT-4o Transcribe, GPT-Transcribe and LLM workflows)
+    -   [AssemblyAI](https://www.assemblyai.com/) (transcription with speaker diarization)
     -   [Google Gemini](https://ai.google.dev/) (for title generation and LLM workflows)
     -   [OpenRouter](https://openrouter.ai/) (optional; provide your own model slug for transcription and LLM operations)
 -   **Docker & Docker Compose:** Required for the recommended installation method.
@@ -122,17 +123,17 @@ The application is configured using environment variables in a `.env` file. The 
 | `OPENROUTER_API_KEY` | Your API key for OpenRouter (transcription and LLM operations). | (none) |
 | `ANTHROPIC_API_KEY` | Reserved for future Anthropic LLM support. | (none) |
 | **Provider, Model & Language Settings** | | |
-| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers to seed into the active catalog. Remove `openrouter` if you want to hide OpenRouter. | `assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe,openrouter` |
-| `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription API on load (`gpt-transcribe`, `gpt-4o-transcribe`, `whisper`, `assemblyai`). | `gpt-4o-transcribe` |
+| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers the app can talk to. Fixed list; admins cannot add providers, only models (registered when API keys are saved). | `assemblyai,openai,openrouter` |
+| `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription provider on load. Must be one of `TRANSCRIPTION_PROVIDERS`. | `openai` |
 | `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`, `OPENROUTER`). | `GEMINI` |
 | `LLM_MODEL` | General fallback LLM model for direct or legacy LLM calls. | (none) |
 | `TITLE_GENERATION_LLM_PROVIDER` | Provider used for generated transcript titles. | `GEMINI` |
 | `TITLE_GENERATION_LLM_MODEL` | Auxiliary model used for generated transcript titles and other auxiliary tasks when a user has no preference. | `gemma-4-26b-a4b-it` |
 | `WORKFLOW_LLM_PROVIDER` | Provider used for workflow runs when the model catalog cannot infer it. | `OPENROUTER` |
 | `WORKFLOW_LLM_MODEL` | Model used for workflow runs when a user has no preference. | `google/gemini-3.7-flash` |
-| `GEMINI_MODELS` | Comma-separated Gemini models to seed into the LLM catalog. | `gemini-3.0-flash,gemma-4-26b-a4b-it` |
-| `OPENAI_MODELS` | Comma-separated OpenAI LLM models to seed into the LLM catalog. | *(empty)* |
-| `OPENROUTER_MODELS` | Comma-separated OpenRouter model slugs to seed into the LLM catalog for title/workflow model defaults. | `google/gemini-3.7-flash` |
+| `GEMINI_MODELS` | Legacy: previously seeded Gemini models into the LLM catalog. No longer used — LLM models register when API keys are saved. | `gemini-3.0-flash,gemma-4-26b-a4b-it` |
+| `OPENAI_MODELS` | Legacy: previously seeded OpenAI LLM models into the LLM catalog. No longer used. | *(empty)* |
+| `OPENROUTER_MODELS` | Legacy: previously seeded OpenRouter model slugs into the LLM catalog for title/workflow defaults. No longer used. | `google/gemini-3.7-flash` |
 | `DEFAULT_LANGUAGE` | Default transcription language on load (`auto`, `en`, `es`, etc.). | `auto` |
 | `SUPPORTED_LANGUAGE_CODES` | Comma-separated language codes to seed into the active language catalog (ex. `en,nl,fr,es`). | `en,nl,fr,es` |
 | **Database (MySQL)** | | |
@@ -224,11 +225,11 @@ The application is configured using environment variables in a `.env` file. The 
 1.  **Access the Application:** Open the application in your web browser.
 2.  **Authentication (Multi-User Mode):**
     *   Register for an account or log in.
-    *   Navigate to "Manage API Keys" to add your personal API keys for OpenAI, AssemblyAI and Gemini if your role can manage keys. Otherwise, the app uses configured global fallback keys.
+    *   Navigate to "Manage API Keys" to add your personal API keys for OpenAI, AssemblyAI, Gemini and OpenRouter if your role can manage keys. Otherwise, the app uses the configured global fallback keys. For each key you also enter the **model name** exactly as the provider knows it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, or an OpenRouter slug like `openai/gpt-transcribe`) and what to use it for (transcription, LLM workflows, or both). Saving a key registers that model in the catalog and makes it selectable — nothing is available before keys are saved.
     *   Use profile settings to choose your interface language, default transcription language and model, workflow LLM model, auxiliary LLM model and automatic title generation preference.
 3.  **Upload Audio:** Click the "File" button to select an audio file.
 4.  **Configure Transcription:**
-    *   Select your preferred API (GPT-4o Transcribe, Whisper, AssemblyAI, etc.).
+    *   Select your preferred model from the ones registered under your saved keys (display names as shown in the catalog; admins can rename them in the Admin Panel → Models).
     *   Choose the audio language or leave it on "Automatic Detection."
     *   (Optional) Provide a context prompt to improve accuracy.
     *   (Optional) Enable speaker diarization when using AssemblyAI to label speakers in the transcript.
@@ -265,7 +266,7 @@ The polling endpoint returns a machine-readable status while the job is running,
 
 ## 🛠️ For Developers
 
-Database schema setup, migrations, default roles, catalog seeding and initial admin creation are handled automatically on startup behind a runtime initialization marker. The CLI also exposes manual commands:
+Database schema setup, migrations, default roles, language-catalog seeding and initial admin creation are handled automatically on startup behind a runtime initialization marker. Model catalogs are intentionally not seeded — models register when API keys are saved. The CLI also exposes manual commands:
 
 ```bash
 export FLASK_APP=app
@@ -287,9 +288,13 @@ Run tests with the dedicated MySQL test container:
 
 ```bash
 docker compose -f docker-compose.test.yml up -d
-env MYSQL_TEST_HOST=127.0.0.1 MYSQL_TEST_PORT=3308 venv/bin/pytest -q
+env MYSQL_HOST=127.0.0.1 MYSQL_PORT=3308 MYSQL_USER=test MYSQL_PASSWORD=test MYSQL_DB=test_db \
+    MYSQL_TEST_HOST=127.0.0.1 MYSQL_TEST_PORT=3308 MYSQL_TEST_USER=test MYSQL_TEST_PASSWORD=test MYSQL_TEST_DB=test_db \
+    venv/bin/pytest -q
 docker compose -f docker-compose.test.yml down
 ```
+
+Both the plain `MYSQL_*` (config guard) and `MYSQL_TEST_*` (functional suite) variable sets are required. Unit tests run without a database.
 
 ## 🤔 Troubleshooting
 
