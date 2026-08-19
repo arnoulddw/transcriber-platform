@@ -592,3 +592,38 @@ def costs():
         logging.error(f"{log_prefix} Failed to load costs page: {e}", exc_info=True)
         flash("An unexpected error occurred while loading the costs page.", "danger")
         return render_template('admin/costs.html', metrics={'error': 'Failed to load costs data.'})
+
+
+@admin_panel_bp.route('/models')
+@admin_required
+def models():
+    """Renders the Models page (rename display names per category)."""
+    log_prefix = f"[ROUTE:AdminPanel:Models:User:{current_user.id}]"
+    logging.debug(f"{log_prefix} Accessing models page.")
+
+    def _rename_options(models: list) -> Dict[str, str]:
+        """{code: display_name} for catalog rows (display_name authoritative)."""
+        return {str(m.get('code') or '').strip(): (m.get('display_name') or m.get('code') or '').strip() for m in models if m.get('code')}
+
+    try:
+        transcription = transcription_catalog_model.get_all_active_models('transcription') or []
+    except Exception as e:
+        logging.warning(f"{log_prefix} Failed to load transcription models: {e}", exc_info=True)
+        transcription = []
+    try:
+        live = transcription_catalog_model.get_all_active_models('live') or []
+    except Exception as e:
+        logging.warning(f"{log_prefix} Failed to load live models: {e}", exc_info=True)
+        live = []
+    try:
+        llm = llm_catalog_model.get_active_models() or []
+    except Exception as e:
+        logging.warning(f"{log_prefix} Failed to load LLM models: {e}", exc_info=True)
+        llm = []
+
+    model_options = {
+        'transcription': _rename_options(transcription),
+        'live': _rename_options(live),
+        'llm': _rename_options(llm),
+    }
+    return render_template('admin/models.html', model_options=model_options)

@@ -71,6 +71,11 @@
                               {% if request.endpoint == 'admin_panel.costs' %}bg-primary text-white{% else %}text-text-strong hover:bg-surface-muted hover:text-text-strong{% endif %}">
                         <i class="material-icons mr-3">monetization_on</i>Costs
                     </a>
+                    <a href="{{ url_for('admin_panel.models') }}"
+                       class="flex items-center px-3 py-2 rounded-md text-sm font-medium
+                              {% if request.endpoint == 'admin_panel.models' %}bg-primary text-white{% else %}text-text-strong hover:bg-surface-muted hover:text-text-strong{% endif %}">
+                        <i class="material-icons mr-3">model_training</i>Models
+                    </a>
  
                      <div class="border-t border-border-default my-2"></div>
  

@@ -306,7 +306,7 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     profile_script = open("app/static/js/profile.js", encoding="utf-8").read()
     main_init = open("app/static/js/main_init.js", encoding="utf-8").read()
 
-    assert "gpt-transcribe,openrouter" in config
+    assert "assemblyai,openai,openrouter" in config
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
     assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
     assert "data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL" in profile_script
@@ -343,10 +343,13 @@ def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
 
     expanded = transcription_catalog.expand_models_for_ui(
         models,
-        {"openrouter_keys": [
-            {"model_slug": "x-ai/grok-stt-1.0"},
-            {"model_slug": "openai/gpt-transcribe"},
-        ]},
+        {
+            "openai": True,
+            "openrouter_keys": [
+                {"model_slug": "x-ai/grok-stt-1.0"},
+                {"model_slug": "openai/gpt-transcribe"},
+            ],
+        },
     )
 
     assert [(model["code"], model["display_name"], model.get("model_slug")) for model in expanded] == [
@@ -409,20 +412,28 @@ def test_live_model_catalog_deduplicates_configured_and_user_models(form_context
     from flask import current_app
 
     current_app.config.update(
-        API_PROVIDER_NAME_MAP={"gpt-live-transcribe": "GPT Live", "vendor/live": "Vendor Live"},
         LIVE_TRANSCRIPTION_MODEL="gpt-live-transcribe",
         LIVE_TRANSCRIPTION_MODELS=["gpt-live-transcribe", "gpt-live-transcribe"],
         LIVE_TRANSCRIPTION_PROVIDERS={"gpt-live-transcribe": "openai"},
     )
 
-    live_models = transcription_catalog.get_live_models({
-        "provider_keys": {
-            "openrouter": [
-                {"model_slug": "vendor/live", "model_purposes": ["live"]},
-                {"model_slug": "vendor/live", "model_purposes": ["live"]},
-            ],
-        },
-    })
+    # Catalog live rows come from the DB; mock it so the unit test stays
+    # DB-free while exercising the dedupe against saved OpenRouter slugs.
+    fake_cursor = Mock()
+    fake_cursor.execute.return_value = None
+    fake_cursor.fetchall.return_value = [
+        {"code": "gpt-live-transcribe", "display_name": "GPT Live", "required_api_key": "openai"},
+    ]
+    with patch.object(transcription_catalog, "get_cursor", return_value=fake_cursor), \
+         patch.object(transcription_catalog, "get_db"):
+        live_models = transcription_catalog.get_live_models({
+            "provider_keys": {
+                "openrouter": [
+                    {"model_slug": "vendor/live", "model_purposes": ["live"]},
+                    {"model_slug": "vendor/live", "model_purposes": ["live"]},
+                ],
+            },
+        })
 
     assert [model["code"] for model in live_models] == ["gpt-live-transcribe", "vendor/live"]
 

@@ -35,6 +35,9 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
     WORD_BOOST_MAX_TERMS = 20
     WORD_BOOST_MAX_WORDS_PER_TERM = 4
 
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "assemblyai"
+
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
         """Initializes the client and sets API-specific limits from config."""
         super().__init__(api_key, config)
@@ -55,9 +58,6 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
 
 
     # --- Implementation of Abstract Methods ---
-
-    def _get_api_name(self) -> str:
-        return "AssemblyAI Universal"
 
     def _initialize_client(self, api_key: str) -> None:
         """Configures the AssemblyAI SDK."""

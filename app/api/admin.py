@@ -12,6 +12,8 @@ from app.services import admin_management_service, pricing_service
 from app.services.admin_management_service import AdminServiceError # Specific exception
 from app.services.pricing_service import PricingServiceError
 from app.extensions import limiter
+from app.models import llm_catalog as llm_catalog_model
+from app.models import transcription_catalog as transcription_catalog_model
  
  # Define the Blueprint
 # The first argument is the blueprint name, used in url_for() calls (e.g., url_for('admin.list_users'))
@@ -374,3 +376,37 @@ def manage_pricing():
     except Exception as e:
         logging.error(f"{log_prefix} Unexpected error retrieving pricing: {e}", exc_info=True)
         return jsonify(error="An unexpected error occurred while retrieving pricing."), 500
+
+
+@admin_bp.route('/models/rename', methods=['POST'])
+@admin_required
+@limiter.limit("30 per minute")
+def rename_catalog_model():
+    """API endpoint to rename a catalog model display name (Models page)."""
+    log_prefix = f"[API:Admin:Models:User:{current_user.id}]"
+    data = request.get_json()
+    if not data:
+        return jsonify(error="Invalid JSON payload"), 400
+
+    category = str(data.get('category') or '').strip()
+    code = str(data.get('code') or '').strip()
+    display_name = str(data.get('display_name') or '').strip()
+
+    if category not in ('transcription', 'live', 'llm'):
+        return jsonify(error="Invalid model category."), 400
+    if not code or not display_name:
+        return jsonify(error="Model code and display name are required."), 400
+    if len(display_name) > 120:
+        return jsonify(error="Display name must be 120 characters or fewer."), 400
+
+    try:
+        if category == 'llm':
+            renamed = llm_catalog_model.rename_model(code, display_name)
+        else:
+            renamed = transcription_catalog_model.rename_model(code, display_name)
+        if not renamed:
+            return jsonify(error="Model not found in catalog."), 404
+        return jsonify(success=True, message="Model renamed successfully.")
+    except Exception as e:
+        logging.error(f"{log_prefix} Unexpected error renaming model: {e}", exc_info=True)
+        return jsonify(error="An unexpected error occurred while renaming the model."), 500

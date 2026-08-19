@@ -5,6 +5,9 @@ from .openai_base import OpenAIBaseTranscriptionClient
 
 
 class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "openrouter"
+
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
         super().__init__(api_key, config)
         api_limits = self.config.get("API_LIMITS", {}).get("openrouter", {})
@@ -12,9 +15,6 @@ class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
         size_mb = api_limits.get("size_mb")
         if size_mb is not None:
             self.SPLIT_THRESHOLD_BYTES = size_mb * 1024 * 1024
-
-    def _get_api_name(self) -> str:
-        return "OpenRouter"
 
     def _get_additional_openai_client_kwargs(self) -> Dict[str, Any]:
         return {

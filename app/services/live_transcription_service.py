@@ -96,16 +96,23 @@ def _resolve_live_model(user, requested: Optional[str] = None) -> str:
         for value in current_app.config.get("LIVE_TRANSCRIPTION_MODELS", [])
         if str(value).strip()
     }
-    if user and current_app.config.get("DEPLOYMENT_MODE") == "multi":
+    if user:
         try:
             key_status = user_service.get_user_api_key_status(user.id)
-            for entry in (key_status.get("provider_keys", {}).get("openrouter", []) or []):
-                purposes = entry.get("model_purposes", []) or []
-                model_name = str(entry.get("model_slug") or entry.get("model_name") or "").strip()
-                if "live" in purposes and model_name:
-                    allowed_models.add(model_name)
+            # Catalog-registered live models (normal + OpenRouter) are the
+            # canonical source; key purposes keep legacy OpenRouter slugs.
+            for entry in transcription_catalog_model.get_live_models(key_status):
+                code = entry.get("code")
+                if code:
+                    allowed_models.add(code)
+            if current_app.config.get("DEPLOYMENT_MODE") == "multi":
+                for entry in (key_status.get("provider_keys", {}).get("openrouter", []) or []):
+                    purposes = entry.get("model_purposes", []) or []
+                    model_name = str(entry.get("model_slug") or entry.get("model_name") or "").strip()
+                    if "live" in purposes and model_name:
+                        allowed_models.add(model_name)
         except Exception:
-            LOGGER.debug("Could not add user-configured OpenRouter Live models.", exc_info=True)
+            LOGGER.debug("Could not add user-configured Live models.", exc_info=True)
     configured_provider = str(provider_config.get(model, "")).strip().lower()
     is_openrouter_model = configured_provider == "openrouter" or "/" in model
     if is_openrouter_model:

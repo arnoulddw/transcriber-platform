@@ -326,7 +326,7 @@ def test_process_transcription_permission_denied(
             )
 
             mock_transcription_model.set_job_error.assert_called_once_with(
-                job_id, "ERROR: Permission denied to use the 'AssemblyAI Universal' API."
+                job_id, "ERROR: Permission denied to use the 'assemblyai' API."
             )
 
 

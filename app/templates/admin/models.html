@@ -1,0 +1,60 @@
+{% extends "admin/base_admin.html" %}
+{% import "layout/components/ui_helpers.html" as ui %}
+
+{% block subtitle %}Models{% endblock %}
+
+{% block admin_content %}
+    <p class="text-sm text-text-muted mb-6">{{ _('Rename how models are displayed across the app.') }}</p>
+
+    <div class="table-card p-6 space-y-4 mb-8">
+        <h2 class="card-title mb-6">{{ _('Model Display Names') }}</h2>
+        <form id="models-form" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Transcription Models -->
+                <div class="flex-1">
+                    <h3 class="section-title">{{ _('Transcription Models') }}</h3>
+                    <label for="transcription-model" class="form-label">{{ _('Model') }}</label>
+                    <select id="transcription-model" class="input-select model-rename-select" data-type="transcription">
+                        <option value="">{{ _('Choose a model') }}</option>
+                        {% for code, name in model_options.transcription.items() %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+                    </select>
+                    <label for="transcription-display-name" class="form-label mt-4">{{ _('Display Name') }}</label>
+                    <input type="text" id="transcription-display-name" class="input-control model-rename-input" data-type="transcription" maxlength="120">
+                    <button type="button" class="ui-btn ui-btn--primary mt-4 save-model-btn" data-type="transcription">{{ _('Save') }}</button>
+                </div>
+
+                <!-- Live Transcription Models -->
+                <div class="flex-1">
+                    <h3 class="section-title">{{ _('Live Transcription Models') }}</h3>
+                    <label for="live-transcription-model" class="form-label">{{ _('Model') }}</label>
+                    <select id="live-transcription-model" class="input-select model-rename-select" data-type="live">
+                        <option value="">{{ _('Choose a model') }}</option>
+                        {% for code, name in model_options.live.items() %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+                    </select>
+                    <label for="live-transcription-display-name" class="form-label mt-4">{{ _('Display Name') }}</label>
+                    <input type="text" id="live-transcription-display-name" class="input-control model-rename-input" data-type="live" maxlength="120">
+                    <button type="button" class="ui-btn ui-btn--primary mt-4 save-model-btn" data-type="live">{{ _('Save') }}</button>
+                </div>
+
+                <!-- LLM Models -->
+                <div class="flex-1">
+                    <h3 class="section-title">{{ _('LLM Models') }}</h3>
+                    <label for="llm-model" class="form-label">{{ _('Model') }}</label>
+                    <select id="llm-model" class="input-select model-rename-select" data-type="llm">
+                        <option value="">{{ _('Choose a model') }}</option>
+                        {% for code, name in model_options.llm.items() %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+                    </select>
+                    <label for="llm-display-name" class="form-label mt-4">{{ _('Display Name') }}</label>
+                    <input type="text" id="llm-display-name" class="input-control model-rename-input" data-type="llm" maxlength="120">
+                    <button type="button" class="ui-btn ui-btn--primary mt-4 save-model-btn" data-type="llm">{{ _('Save') }}</button>
+                </div>
+            </div>
+        </form>
+    </div>
+{% endblock %}
+
+{% block admin_scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/admin_models.js') }}"></script>
+{% endblock %}

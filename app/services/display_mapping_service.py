@@ -23,11 +23,10 @@ def _normalize_codes(codes: List[str]) -> List[str]:
 def get_transcription_display_map() -> Dict[str, str]:
     """
     Returns an ordered mapping of transcription provider codes to display names.
-    Pulls from the transcription catalog when available and falls back to config overrides.
+    Pulls from the transcription catalog (display_name is authoritative).
     """
     provider_codes = list(current_app.config.get("TRANSCRIPTION_PROVIDERS", []) or [])
     provider_codes.extend(current_app.config.get("LIVE_TRANSCRIPTION_MODELS", []) or [])
-    name_fallbacks = current_app.config.get("API_PROVIDER_NAME_MAP", {}) or {}
     try:
         catalog_models = transcription_catalog_model.get_active_models()
     except Exception as catalog_err:
@@ -47,14 +46,11 @@ def get_transcription_display_map() -> Dict[str, str]:
     normalized_codes = _normalize_codes(provider_codes)
     if not normalized_codes:
         normalized_codes = [code for code in catalog_display_map.keys() if code]
-    if not normalized_codes:
-        normalized_codes = [code for code in name_fallbacks.keys() if code]
 
     transcription_models: Dict[str, str] = {}
     for code in normalized_codes:
         transcription_models[code] = (
             catalog_display_map.get(code)
-            or name_fallbacks.get(code)
             or code
         )
     return transcription_models
@@ -63,9 +59,8 @@ def get_transcription_display_map() -> Dict[str, str]:
 def get_workflow_model_display_map() -> Dict[str, str]:
     """
     Returns an ordered mapping of LLM model codes to display names for workflow analytics.
-    Pulls from the LLM catalog and uses config overrides as needed.
+    Pulls from the LLM catalog (display_name is authoritative).
     """
-    name_fallbacks = current_app.config.get("API_PROVIDER_NAME_MAP", {}) or {}
     try:
         catalog_models = llm_catalog_model.get_active_models()
     except Exception as catalog_err:
@@ -81,7 +76,7 @@ def get_workflow_model_display_map() -> Dict[str, str]:
         code = (model.get("code") or "").strip()
         if not code or code in workflow_models:
             continue
-        display_name = model.get("display_name") or name_fallbacks.get(code) or code
+        display_name = model.get("display_name") or code
         workflow_models[code] = display_name
 
     if not workflow_models:
@@ -99,7 +94,7 @@ def get_workflow_model_display_map() -> Dict[str, str]:
                 ]
             )
         for code in fallback_codes:
-            display = name_fallbacks.get(code) or code or "LLM"
+            display = code or "LLM"
             workflow_models[code] = display
 
     return workflow_models

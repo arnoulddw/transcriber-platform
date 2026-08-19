@@ -14,6 +14,8 @@ class OpenAIGPT4OTranscribeClient(OpenAIBaseTranscriptionClient):
     Inherits common workflow from BaseTranscriptionClient.
     """
     API_MODEL_PARAM = "gpt-4o-transcribe"
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "gpt-4o-transcribe"
 
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
         """Initializes the client and sets API-specific limits from config."""
@@ -26,9 +28,6 @@ class OpenAIGPT4OTranscribeClient(OpenAIBaseTranscriptionClient):
         self.logger.debug(f"Limits set - Duration: {self.SPLIT_THRESHOLD_SECONDS}s, Size: {size_mb}MB")
 
     # --- Implementation of Abstract Methods ---
-
-    def _get_api_name(self) -> str:
-        return "OpenAI GPT-4o Transcribe"
 
     def _prepare_api_params(self, language_code: str, context_prompt: str, response_format: str,
                             is_chunk: bool, extra_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

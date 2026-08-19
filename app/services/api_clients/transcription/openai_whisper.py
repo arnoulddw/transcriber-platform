@@ -14,6 +14,8 @@ class OpenAIWhisperTranscriptionAPI(OpenAIBaseTranscriptionClient):
     Inherits common workflow from BaseTranscriptionClient.
     """
     MODEL_NAME = "whisper-1" # Model identifier for API calls
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "whisper"
     # MAX_CONCURRENT_CHUNKS is now inherited and set from config in BaseTranscriptionClient
 
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
@@ -27,9 +29,6 @@ class OpenAIWhisperTranscriptionAPI(OpenAIBaseTranscriptionClient):
         self.logger.debug("Limits set - Duration: %ss, Size: %sMB", self.SPLIT_THRESHOLD_SECONDS, size_mb)
 
     # --- Implementation of Abstract Methods ---
-
-    def _get_api_name(self) -> str:
-        return "OpenAI Whisper" # Updated name
 
     def _prepare_api_params(self, language_code: str, context_prompt: str, response_format: str,
                             is_chunk: bool, extra_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

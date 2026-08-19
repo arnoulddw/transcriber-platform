@@ -77,13 +77,16 @@ class Config:
     }
 
     # --- Provider Configuration (NEW) ---
+    # Providers the transcription pipeline can talk to. This list is fixed and
+    # seeded: the admin cannot add providers, only the models of these
+    # providers (models are registered when API keys are saved).
     TRANSCRIPTION_PROVIDERS = os.environ.get(
         'TRANSCRIPTION_PROVIDERS',
-        "assemblyai,whisper,gpt-4o-transcribe,gpt-transcribe,openrouter",
+        "assemblyai,openai,openrouter",
     ).split(',')
     LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
     # Default providers
-    DEFAULT_TRANSCRIPTION_PROVIDER = os.environ.get('DEFAULT_TRANSCRIPTION_PROVIDER', 'gpt-4o-transcribe')
+    DEFAULT_TRANSCRIPTION_PROVIDER = os.environ.get('DEFAULT_TRANSCRIPTION_PROVIDER', 'openai')
     LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'GEMINI').upper()
     LLM_MODEL = os.environ.get('LLM_MODEL')
     TITLE_GENERATION_LLM_PROVIDER = os.environ.get('TITLE_GENERATION_LLM_PROVIDER', 'GEMINI').upper()
@@ -113,25 +116,6 @@ class Config:
         if model.strip()
     ]
     # --- END NEW ---
-
-    API_PROVIDER_NAME_MAP = {
-        # Transcription Providers
-        "assemblyai": "AssemblyAI Universal",
-        "whisper": "OpenAI Whisper",
-        "gpt-4o-transcribe": "OpenAI GPT-4o Transcribe",
-        "gpt-transcribe": "OpenAI GPT Transcribe",
-        "gpt-live-transcribe": "OpenAI GPT Live Transcribe",
-        # LLM Providers
-        "GEMINI": "Google Gemini",
-        "OPENAI": "OpenAI",
-        "openrouter": "OpenRouter",
-        "OPENROUTER": "OpenRouter",
-        # Specific Models (add more as needed for display)
-        "gemini-3.0-flash": "Gemini 3.0 Flash",
-        "gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
-        "google/gemini-3.7-flash": "Gemini 3.7 Flash (OpenRouter)",
-    }
-    # --- END MODIFIED ---
 
     # --- Transcription Language Settings ---
     DEFAULT_LANGUAGE = os.environ.get('DEFAULT_LANGUAGE', 'auto')

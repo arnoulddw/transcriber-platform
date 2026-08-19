@@ -105,7 +105,7 @@ class BaseTranscriptionClient(ABC):
 
     @abstractmethod
     def _get_api_name(self) -> str:
-        """Return the display name of the API (e.g., "OpenAI Whisper", "AssemblyAI Universal")."""
+        """Return the display name of the API, resolved from the model catalog."""
         pass
 
     # --- Common Workflow Methods ---

@@ -43,19 +43,10 @@ from mysql.connector import Error as MySQLError
 from app.tasks.title_generation import generate_title_task
 
 
-_API_DISPLAY_NAME_FALLBACKS = {
-    'gpt-transcribe': 'OpenAI GPT Transcribe',
-    'gpt-4o-transcribe': 'OpenAI GPT-4o Transcribe',
-    'whisper': 'OpenAI Whisper',
-    'assemblyai': 'AssemblyAI Universal',
-    'openrouter': 'OpenRouter'
-}
-
-
 def _get_api_display_name(model_code: str) -> str:
     """
     Resolves a human-friendly display name for a transcription model using the catalog as primary source.
-    Falls back to predefined labels or title-cased code.
+    Falls back to title-cased code for log/error labels only.
     """
     try:
         model_metadata = transcription_catalog_model.get_model_by_code(model_code)
@@ -67,9 +58,7 @@ def _get_api_display_name(model_code: str) -> str:
             model_code,
             catalog_err,
         )
-    if model_code in _API_DISPLAY_NAME_FALLBACKS:
-        return _API_DISPLAY_NAME_FALLBACKS[model_code]
-    return model_code.replace('_', ' ').replace('-', ' ').title()
+    return model_code  # raw code — never an invented/humanized label
 
 def _update_progress(app: Flask, job_id: str, message: str, is_error: bool = False,
                      log_message: bool = True, **context) -> None:

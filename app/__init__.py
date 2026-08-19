@@ -433,8 +433,6 @@ def create_app(config_class=Config) -> Flask:
 
         supported_ui_languages = app.config.get('SUPPORTED_LANGUAGES', [])
 
-        all_provider_names_from_config = app.config.get('API_PROVIDER_NAME_MAP', {})
-
         api_name_map_for_frontend_subset = {
             model['code']: model['display_name'] for model in catalog_models
         }
@@ -575,7 +573,6 @@ def create_app(config_class=Config) -> Flask:
             supported_languages=supported_languages,
             SUPPORTED_UI_LANGS_CONFIG=supported_ui_languages,
             API_NAME_MAP_FRONTEND=api_name_map_for_frontend_subset,
-            API_PROVIDER_NAME_MAP=all_provider_names_from_config,
             TRANSCRIPTION_MODEL_CATALOG=available_transcription_models,
             live_transcription_models=live_transcription_models,
             LIVE_TRANSCRIPTION_MODELS=live_model_codes,

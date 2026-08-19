@@ -225,15 +225,18 @@ class UserProfileForm(FlaskForm):
     )
     default_transcription_model = SelectField(
         _('Default Transcription Model'),
-        validators=[] # Optional handled by form processing
+        validators=[], # Optional handled by form processing
+        validate_choice=False,
     )
     default_title_generation_model = SelectField(
         _('Default Auxiliary LLM Model'),
-        validators=[] # Optional handled by form processing
+        validators=[], # Optional handled by form processing
+        validate_choice=False,
     )
     default_workflow_model = SelectField(
         _('Default Workflow LLM Model'),
-        validators=[] # Optional handled by form processing
+        validators=[], # Optional handled by form processing
+        validate_choice=False,
     )
     default_live_transcription_model = SelectField(
         _('Default Live Transcription Model'),

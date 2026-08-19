@@ -52,10 +52,8 @@ def _supports_thinking_budget(model_name: Optional[str]) -> bool:
 class GeminiClient(BaseLLMClient):
     """Handles LLM requests using the Google Gemini API."""
 
-    # --- Implementation of Abstract Methods ---
-
-    def _get_api_name(self) -> str:
-        return "Google Gemini"
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "gemini"
 
     # --- MODIFIED: Accept config in _initialize_client ---
     def _initialize_client(self, api_key: str, config: Dict[str, Any]) -> None:

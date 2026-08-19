@@ -47,6 +47,35 @@ def test_role_label_translations_match_the_updated_source_strings():
         assert 'msgid "Default Workflow Model"' not in source
 
 
+def test_index_template_has_first_run_empty_state_warning_with_manage_api_keys_link():
+    index_template = Path("app/templates/index.html").read_text(encoding="utf-8")
+
+    # First-run blank state: warning rendered only when no models are available.
+    assert "{% if not transcription_models %}" in index_template
+    assert "ui.alert(level='warning', title=_('No transcription models configured')" in index_template
+    # Direct navigation: the warning carries a link that opens Manage API Keys.
+    assert "id=\"emptyStateApiKeysLink\"" in index_template
+    assert "_('Go to Manage API Keys')" in index_template
+    assert "allow_api_key_management" in index_template
+    # The link is wired to the existing modal opener.
+    assert "window.openApiKeyModalDialog" in index_template
+    # Admins without the permission get a plain "contact administrator" message.
+    assert "Contact your administrator to enable them" in index_template
+
+
+def test_profile_form_default_model_selects_do_not_reject_stale_defaults():
+    forms_source = Path("app/forms.py").read_text(encoding="utf-8")
+
+    # Defaults can point at models whose key is not (yet) configured; the
+    # profile form must not reject them or saving settings would break.
+    assert "default_transcription_model = SelectField(" in forms_source
+    assert "default_transcription_model) choices" not in forms_source
+    for field in ("default_transcription_model", "default_title_generation_model", "default_workflow_model"):
+        block_start = forms_source.index(f"{field} = SelectField(")
+        block = forms_source[block_start:block_start + 400]
+        assert "validate_choice=False" in block
+
+
 def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monkeypatch):
     _set_minimal_app_environment(monkeypatch)
     from app.admin_panel.routes import build_pricing_options
@@ -60,6 +89,7 @@ def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monke
     ), patch(
         "app.admin_panel.routes.user_service.get_aggregate_api_key_status",
         return_value={
+            "openai": True,
             "provider_keys": {
                 "openrouter": [
                     {"model_name": "openai/gpt-4o-transcribe", "model_purposes": ["transcription"]},
@@ -249,10 +279,24 @@ def test_expand_models_skips_generic_openrouter_when_no_slug_is_known():
         {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
     ]
 
-    expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
+    expanded = transcription_catalog.expand_models_for_ui(models, {"openai": True}, None)
 
     assert [model["code"] for model in expanded] == ["whisper"]
     assert all(model["code"] != "openrouter" for model in expanded)
+
+
+def test_expand_models_returns_empty_when_no_provider_key_exists():
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
+        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
+
+    assert expanded == []
 
 
 def test_expand_models_uses_configured_slug_when_present():
@@ -283,6 +327,7 @@ def test_build_model_options_keeps_each_openrouter_slug_separate():
         {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
     ]
     status = {
+        "openai": True,
         "provider_keys": {
             "openrouter": [
                 # Listed in reverse alphabetical order on purpose: the canonical
@@ -375,25 +420,30 @@ def test_all_jinja_templates_parse_without_escaping_artifacts():
         assert not re.search(r"\\\"", source), f"escaped-quote artifact in {path}"
 
 
-def test_transcription_model_display_names_are_model_names_not_provider_labels(monkeypatch):
-    """Model dropdowns must never expose bare provider labels as models.
+def test_providers_are_fixed_and_models_are_never_provider_labels(monkeypatch):
+    """Model dropdowns must expose models, not provider labels.
 
-    The production API_PROVIDER_NAME_MAP drives catalog display names; the
-    whisper/assemblyai entries were provider labels ("OpenAI", "AssemblyAI"),
-    which leaked into every model dropdown (home, user settings, admin role,
-    costs). Regression guard: each transcription model must display as an
-    actual model name.
+    After the display-name rework the legacy API_PROVIDER_NAME_MAP is gone:
+    models are registered at runtime from saved keys with the raw model name
+    as display name, and the provider list is fixed to the three transcription
+    backends. Regression guard: no provider label may leak in as a model's
+    display name, and providers are never treated as pre-seeded models.
     """
     _set_minimal_app_environment(monkeypatch)
     from app.config import Config
 
-    name_map = Config.API_PROVIDER_NAME_MAP
-    assert name_map["whisper"] == "OpenAI Whisper"
-    assert name_map["assemblyai"] == "AssemblyAI Universal"
-    assert name_map["gpt-4o-transcribe"] == "OpenAI GPT-4o Transcribe"
-    assert name_map["gpt-transcribe"] == "OpenAI GPT Transcribe"
-    # Bare provider labels are not valid model display names in any catalog.
-    banned = {"OpenAI", "AssemblyAI", "OpenRouter", "Google Gemini"}
-    transcription_codes = {"whisper", "assemblyai", "gpt-4o-transcribe", "gpt-transcribe"}
-    for code in transcription_codes:
-        assert name_map[code] not in banned, f"{code} hides behind a provider label"
+    # The legacy provider-label map is removed entirely.
+    assert not hasattr(Config, "API_PROVIDER_NAME_MAP")
+
+    # Providers are fixed and seeded; models are NOT (no whisper/gpt-4o codes).
+    assert Config.TRANSCRIPTION_PROVIDERS == ["assemblyai", "openai", "openrouter"]
+
+    # Registration defaults the display name to the raw model name, and the
+    # provider metadata carries only permission/key wiring — no display
+    # labels that could leak in as a model name.
+    from app.models import transcription_catalog
+    assert set(transcription_catalog._PROVIDER_METADATA) == {"assemblyai", "openai", "openrouter"}
+    assert all(
+        "display_name" not in (meta or {})
+        for meta in transcription_catalog._PROVIDER_METADATA.values()
+    )

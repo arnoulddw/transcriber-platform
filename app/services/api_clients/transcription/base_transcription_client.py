@@ -36,6 +36,9 @@ class BaseTranscriptionClient(ABC):
     SPLIT_THRESHOLD_BYTES: int = 25 * 1024 * 1024 # Default 25MB
     # NEW: Add duration threshold, can be overridden by subclasses
     SPLIT_THRESHOLD_SECONDS: Optional[int] = None
+    # The catalog model code this client represents (e.g. "whisper"). Used to
+    # resolve the display name from the catalog instead of hardcoding labels.
+    CATALOG_MODEL_CODE: str = ""
 
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
         """
@@ -49,6 +52,7 @@ class BaseTranscriptionClient(ABC):
             ValueError: If the API key is not provided.
             TranscriptionConfigurationError: If client initialization fails.
         """
+        self._api_name_cache: Optional[str] = None  # resolved lazily from the catalog
         if not api_key:
             api_name = self._get_api_name() # Get name from subclass
             get_logger(__name__).error(f"[{api_name}] API key is required but not provided.")
@@ -120,10 +124,42 @@ class BaseTranscriptionClient(ABC):
 
     # --- Abstract Methods (Must be implemented by subclasses) ---
 
-    @abstractmethod
     def _get_api_name(self) -> str:
-        """Return the display name of the API (e.g., "OpenAI Whisper", "AssemblyAI Universal")."""
-        pass
+        """Return the display name of this client's model.
+
+        Resolves from the transcription catalog (single source of truth for
+        display names, renamable on the Admin Models page). Falls back to a
+        neutral derived label when no catalog row exists yet (e.g. before any
+        key has been saved) or the catalog is unavailable. The result is
+        cached because it is called on every progress/log line.
+        """
+        if self._api_name_cache is not None:
+            return self._api_name_cache
+
+        code = self.CATALOG_MODEL_CODE.strip()
+        resolved: Optional[str] = None
+        if code:
+            try:
+                from app.models import transcription_catalog as catalog_model
+                row = catalog_model.get_model_by_code(code)
+                if row and row.get("display_name"):
+                    resolved = str(row["display_name"]).strip()
+            except Exception as exc:  # no DB/app context: keep neutral fallback
+                get_logger(__name__).debug(
+                    "Could not resolve catalog display name for '%s': %s", code, exc
+                )
+
+        if not resolved:
+            # No configured display name: show the raw code, never an invented
+            # or humanized label. A missing catalog row stays visible.
+            resolved = self._fallback_code_label(code)
+        self._api_name_cache = resolved
+        return resolved
+
+    @staticmethod
+    def _fallback_code_label(code: str) -> str:
+        """Return the raw model code when the catalog has no display name."""
+        return code or "Transcription"
 
     @abstractmethod
     def _initialize_client(self, api_key: str) -> None:

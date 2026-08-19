@@ -38,10 +38,10 @@ class OpenAIClient(BaseLLMClient):
 
     DEFAULT_MODEL = "gpt-4.1" # Or another suitable default
 
-    # --- Implementation of Abstract Methods ---
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "openai"
 
-    def _get_api_name(self) -> str:
-        return "OpenAI LLM"
+    # --- Implementation of Abstract Methods ---
 
     def _initialize_client(self, api_key: str, config: Dict[str, Any]) -> None:
         """Initializes the OpenAI API client."""

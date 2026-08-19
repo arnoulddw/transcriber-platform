@@ -69,16 +69,6 @@ class TestConfig:
     OPENROUTER_MODELS = ['google/gemini-3.7-flash']
     DEFAULT_TRANSCRIPTION_PROVIDER = 'whisper'
     LLM_PROVIDER = 'GEMINI'
-    API_PROVIDER_NAME_MAP = {
-        "assemblyai": "AssemblyAI Universal",
-        "whisper": "OpenAI Whisper",
-        "gpt-4o-transcribe": "OpenAI GPT-4o Transcribe",
-        "gpt-transcribe": "OpenAI GPT Transcribe",
-        "GEMINI": "Google Gemini",
-        "OPENAI": "OpenAI",
-        "openrouter": "OpenRouter",
-        "OPENROUTER": "OpenRouter",
-    }
     SUPPORTED_LANGUAGES = ['en', 'es', 'fr', 'nl']
     SUPPORTED_LANGUAGE_NAMES = {
         'auto': 'Automatic Detection',

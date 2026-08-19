@@ -204,6 +204,32 @@ def save_user_api_key(
             logger.error(f"Failed to persist API key for service '{service}'.")
             raise DatabaseUpdateError("Failed to update API keys in the database.")
 
+        # Register the model in the catalog so it becomes selectable app-wide.
+        # Transcription/live keys register a transcription model row; LLM keys
+        # register an LLM model row. Display name defaults to the raw model
+        # name and is never overwritten on re-saves (admin renames stick).
+        if normalized_model_name:
+            try:
+                from app.models import transcription_catalog as transcription_catalog_model
+                from app.models import llm_catalog as llm_catalog_model
+                if model_purpose == 'llm':
+                    llm_catalog_model.register_model_from_provider(
+                        provider=service,
+                        code=normalized_model_name,
+                        display_name=normalized_model_name,
+                    )
+                else:
+                    transcription_catalog_model.register_model_from_provider(
+                        provider=service,
+                        code=normalized_model_name,
+                        display_name=normalized_model_name,
+                        model_purpose=model_purpose if model_purpose == 'live' else 'transcription',
+                    )
+            except Exception as catalog_err:
+                # The key itself is saved; catalog registration is best-effort
+                # so a catalog hiccup never fails the key save.
+                logger.error(f"Failed to register model '{normalized_model_name}' for service '{service}': {catalog_err}", exc_info=True)
+
         preference_field = None
         preference_kwargs = {}
         if model_purpose == 'live' and normalized_model_name:

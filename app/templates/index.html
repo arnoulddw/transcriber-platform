@@ -57,6 +57,19 @@
                     <input type="hidden" id="openrouterModelInput" name="model_name" value="{{ effective_openrouter_model or '' }}">
                     <p id="modelDescription" class="form-hint" aria-live="polite"></p>
                 </div>
+                {# First-run empty state: no usable keys/models yet #}
+                {% if not transcription_models %}
+                    {% if user_permissions.allow_api_key_management %}
+                        {% call ui.alert(level='warning', title=_('No transcription models configured'), extra_classes='mb-2') %}
+                            <p>{{ _('You need to go to Manage API Keys to add models.') }}</p>
+                            <p class="mt-1"><a href="#" id="emptyStateApiKeysLink" class="font-semibold underline hover:text-primary-dark">{{ _('Go to Manage API Keys') }}</a></p>
+                        {% endcall %}
+                    {% else %}
+                        {% call ui.alert(level='warning', title=_('No transcription models configured'), extra_classes='mb-2') %}
+                            <p>{{ _('No transcription models are available yet. Contact your administrator to enable them.') }}</p>
+                        {% endcall %}
+                    {% endif %}
+                {% endif %}
             </div>
 
             {# Language Select #}
@@ -399,6 +412,15 @@
              window.checkTranscribeButtonState();
         } else {
              console.error("checkTranscribeButtonState function not found.");
+        }
+
+        // First-run empty state: clicking "Go to Manage API Keys" opens the modal
+        const emptyStateApiKeysLink = document.getElementById('emptyStateApiKeysLink');
+        if (emptyStateApiKeysLink && typeof window.openApiKeyModalDialog === 'function') {
+            emptyStateApiKeysLink.addEventListener('click', function (event) {
+                event.preventDefault();
+                window.openApiKeyModalDialog();
+            });
         }
 
         var contextPromptElem = document.getElementById('contextPrompt');

@@ -12,6 +12,8 @@ class OpenAIGPTTranscribeClient(OpenAIBaseTranscriptionClient):
     """Transcribe recorded audio with the ``gpt-transcribe`` model."""
 
     API_MODEL_PARAM = "gpt-transcribe"
+    # Resolves display names from the catalog (single source of truth).
+    CATALOG_MODEL_CODE = "gpt-transcribe"
 
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
         super().__init__(api_key, config)
@@ -20,9 +22,6 @@ class OpenAIGPTTranscribeClient(OpenAIBaseTranscriptionClient):
         size_mb = api_limits.get("size_mb")
         if size_mb is not None:
             self.SPLIT_THRESHOLD_BYTES = size_mb * 1024 * 1024
-
-    def _get_api_name(self) -> str:
-        return "OpenAI GPT Transcribe"
 
     def _prepare_api_params(
         self,
