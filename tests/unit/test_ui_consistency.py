@@ -188,7 +188,8 @@ def test_api_key_entries_render_explicit_model_purpose_badges():
     assert "badge.textContent = label" in script
     assert "textContent = `[${label}]`" not in script
     assert "model_purposes" in service
-    assert "modelPurposePreviewBadges" in template
+    # The inline selection preview was removed; badges remain for configured keys.
+    assert "modelPurposePreview" not in template
 
 
 def test_api_key_modal_uses_provider_specific_model_help_and_mobile_purpose_layout():

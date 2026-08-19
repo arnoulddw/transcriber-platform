@@ -197,10 +197,11 @@ def test_api_key_modal_contract_contains_requested_copy_and_selected_state():
 
     assert 'id="modelNameHint"' in template
     assert "Enter the OpenRouter model as vendor/model." in script
-    # The entire purpose card turns blue when selected, not an inner span.
-    assert "has-[:checked]:bg-primary" in template
-    assert "has-[:checked]:text-white" in template
+    # The entire purpose card turns light blue when selected, not an inner span.
+    assert "has-[:checked]:bg-primary/10" in template
+    assert "has-[:checked]:text-primary" in template
     assert "peer-checked:bg-primary/10" not in template
+    assert "modelPurposePreview" not in template
     assert "openrouter_keys" in script
     assert "***${" in script
 

@@ -115,7 +115,6 @@ function updateModelSettings(service) {
     };
     modelInput.placeholder = hint.placeholder;
     if (modelHint) modelHint.textContent = hint.text;
-    updateModelPurposePreview();
     setApiKeySuggestion(true);
 }
 
@@ -154,16 +153,6 @@ function appendModelLabel(content, modelName, purposes, providerLabel) {
         ? modelName
         : `${modelName} (${providerLabel})`;
     content.append(model, createModelPurposeBadges(purposes));
-}
-
-function updateModelPurposePreview() {
-    const container = document.getElementById('modelPurposePreviewBadges');
-    if (!container) return;
-    container.replaceChildren(
-        ...createModelPurposeBadges([
-            document.querySelector('input[name="model_purpose"]:checked')?.value || 'transcription',
-        ]).children,
-    );
 }
 
 function openApiKeyModalDialog() {
@@ -328,7 +317,6 @@ document.addEventListener('DOMContentLoaded', function() {
     purposeInputs.forEach(input => {
         input.addEventListener('change', () => updateModelSettings(apiKeyServiceSelect?.value || ''));
     });
-    updateModelPurposePreview();
     if (apiKeyInput) {
         apiKeyInput.addEventListener('input', () => {
             if (apiKeyInput.value !== openRouterSuggestedMask) {
