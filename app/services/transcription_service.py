@@ -253,8 +253,12 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             if _check_for_cancellation(app, job_id):
                 was_cancelled = True; cancel_event.set(); raise InterruptedError("Job cancelled by user before API call.")
 
+            key_service_name = _resolve_transcription_provider(api_choice)
+            if key_service_name == 'assemblyai' and not api_model:
+                api_model = 'universal' if api_choice.casefold() == 'assemblyai' else api_choice
+
             extra_transcription_options = None
-            if api_choice == 'assemblyai' and speaker_diarization_enabled:
+            if key_service_name == 'assemblyai' and speaker_diarization_enabled:
                 if user and check_permission(user, 'allow_speaker_diarization'):
                     extra_transcription_options = {'speaker_diarization_enabled': True}
                     logger.info("Speaker diarization enabled for AssemblyAI job.")
@@ -271,7 +275,6 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             mode = current_app.config['DEPLOYMENT_MODE']
             try:
                 if mode == 'multi':
-                    key_service_name = _resolve_transcription_provider(api_choice)
                     api_key = get_decrypted_api_key(
                         user_id,
                         key_service_name,
@@ -304,7 +307,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             # No admin model key: fall back to global config.
                             logger.debug(f"User key not found and role does not allow key management. Falling back to global API key for '{api_display_name}'.")
                             key_env_var = None
-                            provider_for_key = _resolve_transcription_provider(api_choice)
+                            provider_for_key = key_service_name
                             if provider_for_key == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                             elif provider_for_key == 'openai': key_env_var = 'OPENAI_API_KEY'
                             elif provider_for_key == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'
@@ -317,7 +320,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             logger.debug(f"Using global API key for '{api_display_name}' (user key management disabled).")
                 elif mode == 'single':
                     key_env_var = None
-                    provider_for_key = _resolve_transcription_provider(api_choice)
+                    provider_for_key = key_service_name
                     if provider_for_key == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                     elif provider_for_key == 'openai': key_env_var = 'OPENAI_API_KEY'
                     elif provider_for_key == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'

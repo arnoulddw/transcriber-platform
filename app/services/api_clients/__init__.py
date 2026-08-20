@@ -29,6 +29,7 @@ from .exceptions import ApiClientError, TranscriptionApiError, LlmApiError, Tran
 # row's required_api_key — the single source of truth for dispatch.
 _LEGACY_PROVIDER_FALLBACK: Dict[str, str] = {
     "assemblyai": "assemblyai",
+    "universal": "assemblyai",
     "whisper": "openai",
     "gpt-4o-transcribe": "openai",
     "gpt-transcribe": "openai",
@@ -86,7 +87,7 @@ def get_transcription_client(provider_name: str, api_key: str, config: Dict[str,
             # and response style come from API_LIMITS[model_code].
             return OpenAIModelTranscriptionClient(provider_name, api_key, config)
         if provider == "assemblyai":
-            return AssemblyAITranscriptionAPI(api_key, config)
+            return AssemblyAITranscriptionAPI(api_key, config, model_code=provider_name)
         if provider == "openrouter":
             return OpenRouterTranscriptionClient(api_key, config)
         logging.error(f"[API Factory] Unsupported transcription provider requested: {provider_name}")

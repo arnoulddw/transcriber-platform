@@ -25,6 +25,7 @@ from app.models import user as user_model
 from app.models.user import User # For type hinting
 from app.services.user_service import MissingApiKeyError
 from app.services.openrouter import resolve_openrouter_model
+from app.services.api_clients import _resolve_transcription_provider
 from app.services.api_clients.exceptions import TranscriptionApiError
 from app.core.decorators import check_permission, check_usage_limits
 from app.extensions import limiter, build_user_limit_key, csrf
@@ -233,16 +234,21 @@ def transcribe_audio_public():
 
     try:
         submitted_model = request.form.get("model_name") or request.form.get("openrouter_model")
-        api_model = (
-            resolve_openrouter_model(
+        provider_for_choice = _resolve_transcription_provider(api_choice)
+        normalized_submitted_model = str(submitted_model or "").strip() or None
+        if provider_for_choice == "openrouter":
+            api_model = resolve_openrouter_model(
                 api_choice,
                 submitted_model,
                 getattr(user, "default_openrouter_model", None),
                 getattr(getattr(user, "role", None), "default_openrouter_model", None),
             )
-            if api_choice == "openrouter"
-            else (str(submitted_model or "").strip() or None)
-        )
+        elif provider_for_choice == "assemblyai":
+            api_model = normalized_submitted_model or (
+                "universal" if api_choice.casefold() == "assemblyai" else api_choice
+            )
+        else:
+            api_model = normalized_submitted_model
     except ValueError as model_err:
         logging.warning(f"{log_prefix} Invalid OpenRouter model: {model_err}")
         return jsonify({'error': str(model_err)}), 400
@@ -528,7 +534,8 @@ def transcribe_audio():
                 logging.warning(f"{job_log_prefix} Invalid pending_workflow_origin_prompt_id received: '{pending_workflow_origin_prompt_id_str}'. Ignoring.")
         diarization_flag_raw = request.form.get('speaker_diarization', '')
         speaker_diarization_enabled = str(diarization_flag_raw).strip().lower() in ('1', 'true', 'yes', 'on')
-        if api_choice != 'assemblyai':
+        provider_for_choice = _resolve_transcription_provider(api_choice)
+        if provider_for_choice != 'assemblyai':
             if speaker_diarization_enabled:
                 logging.info(f"{job_log_prefix} Speaker diarization requested but API '{api_choice}' does not support it. Ignoring flag.")
             speaker_diarization_enabled = False
@@ -544,16 +551,20 @@ def transcribe_audio():
             raise ValueError(f"Invalid transcription provider selected: {api_choice}")
 
         submitted_model = request.form.get("model_name") or request.form.get("openrouter_model")
-        api_model = (
-            resolve_openrouter_model(
+        normalized_submitted_model = str(submitted_model or "").strip() or None
+        if provider_for_choice == "openrouter":
+            api_model = resolve_openrouter_model(
                 api_choice,
                 submitted_model,
                 getattr(user, "default_openrouter_model", None),
                 getattr(getattr(user, "role", None), "default_openrouter_model", None),
             )
-            if api_choice == "openrouter"
-            else (str(submitted_model or "").strip() or None)
-        )
+        elif provider_for_choice == "assemblyai":
+            api_model = normalized_submitted_model or (
+                "universal" if api_choice.casefold() == "assemblyai" else api_choice
+            )
+        else:
+            api_model = normalized_submitted_model
 
         price = pricing_service.get_price(item_type='transcription', item_key=api_model or api_choice)
         cost_to_add = 0.0

@@ -110,6 +110,42 @@ def test_save_full_model_key_overrides_preloaded_provider_key():
     )
 
 
+def test_save_legacy_assemblyai_key_uses_the_universal_model_code():
+    app = _app()
+    user = SimpleNamespace(id=7)
+    security_service = Mock()
+    security_service.encrypt_data.return_value = "encrypted-assemblyai"
+
+    with app.app_context(), patch.object(
+        user_service.user_model, "get_user_by_id", return_value=user
+    ), patch.object(
+        user_service, "get_security_service", return_value=security_service
+    ), patch.object(
+        user_service.user_api_key_model, "upsert_api_key", return_value=True
+    ) as upsert, patch(
+        "app.models.transcription_catalog.register_model_from_provider"
+    ) as register:
+        assert user_service.save_user_api_key(
+            7,
+            "assemblyai",
+            "assemblyai-key",
+        ) is True
+
+    upsert.assert_called_once_with(
+        7,
+        "assemblyai",
+        "encrypted-assemblyai",
+        "universal",
+        model_purpose="transcription",
+    )
+    register.assert_called_once_with(
+        provider="assemblyai",
+        code="universal",
+        display_name="universal",
+        model_purpose="transcription",
+    )
+
+
 def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
     app = _app()
     user = SimpleNamespace(

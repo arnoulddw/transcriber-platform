@@ -221,7 +221,10 @@ def test_process_transcription_with_speaker_diarization(
 
             assert mock_client.transcribe.call_count == 1
             kwargs = mock_client.transcribe.call_args.kwargs
-            assert kwargs.get('extra_options') == {'speaker_diarization_enabled': True}
+            assert kwargs.get('extra_options') == {
+                'speaker_diarization_enabled': True,
+                'model': 'universal',
+            }
 
 
 def test_process_transcription_api_error(

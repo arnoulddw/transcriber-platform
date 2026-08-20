@@ -105,7 +105,7 @@ def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monke
     with patch(
         "app.admin_panel.routes.transcription_catalog_model.get_active_models",
         return_value=[
-            {"code": "whisper", "display_name": "OpenAI Whisper"},
+            {"code": "universal", "display_name": "AssemblyAI Universal"},
             {"code": "openrouter", "display_name": "OpenRouter"},
         ],
     ), patch(
@@ -113,6 +113,9 @@ def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monke
         return_value={
             "openai": True,
             "provider_keys": {
+                "assemblyai": [
+                    {"model_name": "universal", "model_purposes": ["transcription"]},
+                ],
                 "openrouter": [
                     {"model_name": "openai/gpt-4o-transcribe", "model_purposes": ["transcription"]},
                 ],
@@ -132,11 +135,16 @@ def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monke
     # Transcription section: transcription models only (normal + live + user slugs),
     # never LLM models and never a bare provider name.
     assert "gemini-3.0-flash" not in options["transcription"]
-    assert options["transcription"]["whisper"] == "OpenAI Whisper"
+    assert options["transcription"]["universal"] == "AssemblyAI Universal"
     assert options["transcription"]["openai/gpt-4o-transcribe"] == "openai/gpt-4o-transcribe"
     assert options["transcription"]["gpt-live-transcribe"] == "GPT Live Transcribe"
     assert "OpenRouter" not in options["transcription"].values()
     assert "openrouter" not in options["transcription"]
+    assert "whisper" not in options["transcription"]
+    assert list(options["transcription"].values()) == sorted(
+        options["transcription"].values(),
+        key=str.casefold,
+    )
     # LLM sections receive LLM models only.
     assert options["title_generation"]["gemini-3.0-flash"] == "Gemini 3.0 Flash"
     assert options["workflow"] == options["title_generation"]
@@ -219,6 +227,15 @@ def test_admin_pricing_route_only_passes_the_canonical_options_context():
     assert "transcription_models=transcription_models" not in route_source
     assert "title_generation_models=title_generation_models" not in route_source
     assert "workflow_models=workflow_models" not in route_source
+
+
+def test_admin_models_route_reuses_the_canonical_transcription_expansion():
+    route_source = Path("app/admin_panel/routes.py").read_text(encoding="utf-8")
+
+    assert "transcription_catalog_model.build_model_options(" in route_source
+    assert "get_all_active_models('transcription')" not in route_source
+    assert "Dynamic slugs" in route_source
+    assert "renameable catalog row" in route_source
 
 
 def test_live_purpose_keeps_the_entered_model_name():
@@ -375,12 +392,13 @@ def test_expand_models_uses_configured_slug_when_present():
     ]
 
 
-def test_build_model_options_keeps_each_openrouter_slug_separate():
+def test_build_model_options_keeps_each_openrouter_slug_separate(monkeypatch):
+    _set_minimal_app_environment(monkeypatch)
     from app.models import transcription_catalog
 
     models = [
         {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
-        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
+        {"code": "gpt-transcribe", "display_name": "OpenAI GPT Transcribe", "permission_key": None, "required_api_key": "openai"},
         {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
     ]
     status = {
@@ -388,11 +406,11 @@ def test_build_model_options_keeps_each_openrouter_slug_separate():
         "provider_keys": {
             "openai": [
                 {"model_name": "gpt-4o-transcribe", "model_purposes": ["transcription"]},
-                {"model_name": "whisper", "model_purposes": ["transcription"]},
+                {"model_name": "gpt-transcribe", "model_purposes": ["transcription"]},
             ],
             "openrouter": [
-                # Listed in reverse alphabetical order on purpose: the canonical
-                # options sort the slugs alphabetically.
+                # Listed in reverse alphabetical order on purpose: the final
+                # expanded options must sort all display names globally.
                 {"model_name": "x-ai/grok-stt-1.0", "model_purposes": ["transcription"]},
                 {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
             ],
@@ -401,16 +419,72 @@ def test_build_model_options_keeps_each_openrouter_slug_separate():
 
     options = transcription_catalog.build_model_options(models, status)
 
-    # Catalog order is preserved (gpt-4o-transcribe before whisper as passed),
-    # and OpenRouter slugs are sorted alphabetically within their group.
     assert [(m["code"], m.get("model_name")) for m in options] == [
+        ("gpt-transcribe", "gpt-transcribe"),
         ("gpt-4o-transcribe", "gpt-4o-transcribe"),
-        ("whisper", "whisper"),
         ("openrouter", "qwen/qwen3-asr-1.7b"),
         ("openrouter", "x-ai/grok-stt-1.0"),
     ]
     # Other catalog codes are still deduplicated to a single option.
-    assert len([m for m in options if m["code"] == "whisper"]) == 1
+    assert len([m for m in options if m["code"] == "gpt-transcribe"]) == 1
+
+
+def test_build_model_options_sorts_final_model_options_globally_by_display_name(monkeypatch):
+    _set_minimal_app_environment(monkeypatch)
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+        {"code": "universal", "display_name": "AssemblyAI Universal", "permission_key": None, "required_api_key": "assemblyai"},
+        {"code": "gpt-transcribe", "display_name": "OpenAI GPT Transcribe", "permission_key": None, "required_api_key": "openai"},
+        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
+    ]
+    status = {
+        "provider_keys": {
+            "assemblyai": [
+                {"model_name": "universal", "model_purposes": ["transcription"]},
+            ],
+            "openai": [
+                {"model_name": "gpt-transcribe", "model_purposes": ["transcription"]},
+                {"model_name": "gpt-4o-transcribe", "model_purposes": ["transcription"]},
+            ],
+            "openrouter": [
+                {"model_name": "xai/grok-stt-1.0", "model_purposes": ["transcription"]},
+                {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
+            ],
+        },
+    }
+
+    options = transcription_catalog.build_model_options(models, status)
+    display_names = [option["display_name"] for option in options]
+
+    assert display_names == sorted(display_names, key=str.casefold)
+    assert {"OpenAI", "AssemblyAI", "OpenRouter"}.isdisjoint(display_names)
+    assert "OpenRouter" not in display_names
+    assert [option.get("model_name") for option in options if option["code"] == "openrouter"] == [
+        "qwen/qwen3-asr-1.7b",
+        "xai/grok-stt-1.0",
+    ]
+
+
+def test_admin_model_rename_options_exclude_provider_rows_and_sort_by_display_name(monkeypatch):
+    _set_minimal_app_environment(monkeypatch)
+    from app.admin_panel.routes import _rename_options
+
+    rows = [
+        {"code": "openrouter", "display_name": "OpenRouter"},
+        {"code": "qwen/qwen3-asr-1.7b", "display_name": "qwen/qwen3-asr-1.7b"},
+        {"code": "universal", "display_name": "AssemblyAI Universal"},
+        {"code": "openai", "display_name": "OpenAI"},
+    ]
+
+    options = _rename_options(
+        rows,
+        excluded_codes={"openai", "assemblyai", "openrouter"},
+    )
+
+    assert list(options) == ["universal", "qwen/qwen3-asr-1.7b"]
+    assert list(options.values()) == ["AssemblyAI Universal", "qwen/qwen3-asr-1.7b"]
 
 
 def test_llm_model_options_merge_user_added_llm_slugs(monkeypatch):

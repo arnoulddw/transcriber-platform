@@ -4,8 +4,8 @@
 const mainInitLogPrefix = "[MainInitJS]";
 const initLogger = window.logger.scoped("MainInitJS");
 const LARGE_FILE_THRESHOLD_MB = 25; 
-const CONTEXT_PROMPT_SUPPORTED_APIS = ['gpt-transcribe', 'gpt-4o-transcribe', 'assemblyai'];
-const SPEAKER_DIARIZATION_SUPPORTED_APIS = ['assemblyai'];
+const CONTEXT_PROMPT_SUPPORTED_APIS = ['gpt-transcribe', 'gpt-4o-transcribe', 'universal', 'assemblyai'];
+const SPEAKER_DIARIZATION_SUPPORTED_APIS = ['universal', 'assemblyai'];
 const SPEAKER_BTN_DEFAULT_CLASSES = ['bg-white', 'text-gray-700', 'hover:bg-gray-50', 'border-gray-300'];
 const SPEAKER_BTN_ACTIVE_CLASSES = ['bg-green-600', 'text-white', 'hover:bg-green-700', 'border-green-600'];
 
@@ -204,6 +204,26 @@ function updateSelectedOpenRouterModel(selectedOption) {
     input.value = selectedOption?.dataset.modelName || selectedOption?.dataset.openrouterModel || '';
 }
 
+function supportsSelectedContextPrompt(selectedOption) {
+    if (!selectedOption) return false;
+    if (selectedOption.dataset.contextPromptSupported) {
+        return selectedOption.dataset.contextPromptSupported === 'true';
+    }
+    return CONTEXT_PROMPT_SUPPORTED_APIS.includes(selectedOption.value);
+}
+
+function hasSelectedModelPermission(provider, permissions = {}) {
+    if (!provider) return true;
+    if (provider === 'openai') {
+        return permissions.use_api_openai === true
+            || permissions.use_api_openai_gpt_4o_transcribe === true
+            || permissions.use_api_openai_whisper === true;
+    }
+    if (provider === 'assemblyai') return permissions.use_api_assemblyai === true;
+    if (provider === 'openrouter') return permissions.use_api_openrouter === true;
+    return false;
+}
+
 async function checkTranscribeButtonState() {
     const apiSelect = document.getElementById('apiSelect');
     const fileInput = document.getElementById('audioFile');
@@ -270,12 +290,12 @@ async function checkTranscribeButtonState() {
     const apiKeyRequired = selectedApiOption ? selectedApiOption.dataset.keyRequired : null;
     const isFileSelected = fileInput.files.length > 0;
     updateSelectedOpenRouterModel(selectedApiOption);
-    updateSpeakerDiarizationVisibility(selectedApiValue, permissions);
+    updateSpeakerDiarizationVisibility(selectedApiValue, permissions, selectedApiOption);
 
     if (toggleContextPromptBtn) {
         const currentPermissions = readinessData.permissions || {};
         const hasContextPermission = currentPermissions.allow_context_prompt === true;
-        const supportsContextPrompt = CONTEXT_PROMPT_SUPPORTED_APIS.includes(selectedApiValue);
+        const supportsContextPrompt = supportsSelectedContextPrompt(selectedApiOption);
         const canShowContextPromptButton = hasContextPermission && supportsContextPrompt;
 
         if (lastContextPromptVisibility !== canShowContextPromptButton) {
@@ -318,10 +338,7 @@ async function checkTranscribeButtonState() {
     }
 
     if (!disableReason) {
-        let canUseSelectedApi = false;
-        if (selectedApiValue === 'gpt-transcribe' || selectedApiValue === 'gpt-4o-transcribe' || selectedApiValue === 'whisper') canUseSelectedApi = permissions.use_api_openai || permissions.use_api_openai_gpt_4o_transcribe || permissions.use_api_openai_whisper;
-        else if (selectedApiValue === 'assemblyai') canUseSelectedApi = permissions.use_api_assemblyai;
-        else if (selectedApiValue === 'openrouter') canUseSelectedApi = permissions.use_api_openrouter;
+        const canUseSelectedApi = hasSelectedModelPermission(apiKeyRequired, permissions);
 
         if (!canUseSelectedApi || (selectedApiOption && selectedApiOption.disabled)) {
             const apiName = window.API_NAME_MAP_FRONTEND[selectedApiValue] || selectedApiValue;
@@ -332,7 +349,7 @@ async function checkTranscribeButtonState() {
 
     if (!disableReason) {
         const selectedModelName = selectedApiOption?.dataset.modelName || selectedApiOption?.dataset.openrouterModel || '';
-        if (selectedApiValue === 'openrouter' && !selectedModelName.includes('/')) {
+        if (apiKeyRequired === 'openrouter' && !selectedModelName.includes('/')) {
             disableReason = "Select an OpenRouter transcription model.";
         }
     }
@@ -496,9 +513,10 @@ function setSpeakerDiarizationState(isActive) {
     applySpeakerButtonStyles(isSpeakerDiarizationActive);
 }
 
-function updateSpeakerDiarizationVisibility(selectedApi, permissions = {}) {
+function updateSpeakerDiarizationVisibility(selectedApi, permissions = {}, selectedOption = null) {
     if (!speakerDiarizationBtnRef) return;
-    const supportsApi = selectedApi && SPEAKER_DIARIZATION_SUPPORTED_APIS.includes(selectedApi);
+    const supportsApi = selectedOption?.dataset.speakerDiarizationSupported === 'true'
+        || (selectedApi && SPEAKER_DIARIZATION_SUPPORTED_APIS.includes(selectedApi));
     const hasAssemblyPermission = permissions.use_api_assemblyai !== false;
     const hasDiarizationPermission = permissions.allow_speaker_diarization === true || (!window.IS_MULTI_USER && permissions.allow_speaker_diarization !== false);
     const shouldShow = supportsApi && hasAssemblyPermission && hasDiarizationPermission;

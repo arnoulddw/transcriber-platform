@@ -97,7 +97,7 @@ function updateModelSettings(service) {
             text: 'Enter the OpenAI model name only, without the vendor prefix.',
         },
         assemblyai: {
-            placeholder: 'universal-3-pro',
+            placeholder: 'universal',
             text: 'Enter the AssemblyAI model name only, without the vendor prefix.',
         },
         gemini: {
