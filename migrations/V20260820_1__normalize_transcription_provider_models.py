@@ -33,7 +33,7 @@ def _index_exists(cursor, table_name: str, index_name: str) -> bool:
         f"SHOW INDEX FROM {table_name} WHERE Key_name = %s",
         (index_name,),
     )
-    return cursor.fetchone() is not None
+    return bool(cursor.fetchall() or [])
 
 
 def _ensure_schema(cursor) -> None:

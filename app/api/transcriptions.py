@@ -369,7 +369,7 @@ def transcribe_audio_public():
         return jsonify({'error': _('We could not save or process the uploaded file. Please try again.')}), 500
 
     try:
-        pricing_key = api_model if api_choice.casefold() == "openrouter" else api_choice
+        pricing_key = api_model if provider_code == "openrouter" else api_choice
         price = pricing_service.get_price(item_type='transcription', item_key=pricing_key)
         cost_to_add = 0.0
         if price is not None:
@@ -637,7 +637,7 @@ def transcribe_audio():
             getattr(getattr(user, "role", None), "default_openrouter_model", None),
         )
 
-        pricing_key = api_model if api_choice.casefold() == "openrouter" else api_choice
+        pricing_key = api_model if provider_code == "openrouter" else api_choice
         price = pricing_service.get_price(item_type='transcription', item_key=pricing_key)
         cost_to_add = 0.0
         if price is not None:

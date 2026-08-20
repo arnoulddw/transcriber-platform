@@ -28,7 +28,7 @@ class TestTranscriptionManagement:
 
         # Prepare the data for the POST request
         data = {
-            "api_choice": "whisper",
+            "api_choice": "gpt-4o-transcribe",
             "language_code": "en",
             "audio_file": (io.BytesIO(b"test audio data"), SUCCESS_TEST_FILENAME),
         }
@@ -55,7 +55,7 @@ class TestTranscriptionManagement:
         """
         # Prepare the data for the POST request
         data = {
-            "api_choice": "whisper",
+            "api_choice": "gpt-4o-transcribe",
             "language_code": "en",
             "audio_file": (io.BytesIO(b"test data"), INVALID_TEST_FILENAME),
         }
@@ -183,8 +183,11 @@ class TestTranscriptionManagement:
             "app.api.transcriptions.transcription_catalog_model.get_active_models",
             return_value=[
                 {
-                    "code": "openrouter",
-                    "display_name": "OpenRouter",
+                    "code": model_slug,
+                    "model_key": f"openrouter:{model_slug}",
+                    "model_slug": model_slug,
+                    "provider_code": "openrouter",
+                    "display_name": "OpenAI GPT Transcribe",
                     "permission_key": "use_api_openrouter",
                     "required_api_key": "openrouter",
                     "is_default": False,
@@ -210,7 +213,7 @@ class TestTranscriptionManagement:
             response = logged_in_client_with_permissions.post(
                 url_for("transcriptions.transcribe_audio"),
                 data={
-                    "api_choice": "openrouter",
+                    "api_choice": f"openrouter:{model_slug}",
                     "openrouter_model": model_slug,
                     "language_code": "en",
                     "audio_file": (io.BytesIO(b"test audio data"), SUCCESS_TEST_FILENAME),
@@ -220,10 +223,10 @@ class TestTranscriptionManagement:
 
         assert response.status_code == 202
         mock_create_job.assert_called_once()
-        assert mock_create_job.call_args.kwargs["api_used"] == "openrouter"
+        assert mock_create_job.call_args.kwargs["api_used"] == f"openrouter:{model_slug}"
         assert mock_create_job.call_args.kwargs["api_model"] == model_slug
 
         mock_submit_transcription_job.assert_called_once()
         queued_args = mock_submit_transcription_job.call_args.args
-        assert queued_args[7] == "openrouter"
+        assert queued_args[7] == f"openrouter:{model_slug}"
         assert queued_args[-1] == model_slug

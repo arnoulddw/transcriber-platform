@@ -804,7 +804,7 @@ def _ensure_model_identity_index(cursor) -> None:
     cursor.execute(
         f"SHOW INDEX FROM {MODELS_TABLE} WHERE Key_name = 'uq_transcription_provider_model'"
     )
-    if cursor.fetchone() is None:
+    if not (cursor.fetchall() or []):
         cursor.execute(
             f"ALTER TABLE {MODELS_TABLE} ADD UNIQUE INDEX uq_transcription_provider_model (provider_code, code)"
         )
