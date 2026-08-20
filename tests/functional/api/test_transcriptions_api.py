@@ -424,7 +424,7 @@ def test_history_body_search_uses_fulltext_and_returns_preview(app, logged_in_cl
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
         assert user is not None
-        matching_id = _create_transcription(app, user.id)
+        matching_id = _create_transcription(app, user.id, has_transcription_warning=True)
         other_id = _create_transcription(app, user.id)
         cursor = transcription_model.get_cursor()
         cursor.execute(
@@ -445,5 +445,6 @@ def test_history_body_search_uses_fulltext_and_returns_preview(app, logged_in_cl
         )
 
     assert [item["id"] for item in results] == [matching_id]
+    assert results[0]["has_transcription_warning"] is True
     assert results[0]["transcription_preview"].startswith("A quasarvelocity")
     assert "transcription_text" not in results[0]
