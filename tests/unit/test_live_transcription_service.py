@@ -114,6 +114,31 @@ def test_live_model_from_config_is_allowed_for_openrouter(live_app, monkeypatch)
         ) == "openai/whisper-1"
 
 
+def test_canonical_live_model_reference_returns_provider_local_model(live_app):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["openai:gpt-live-transcribe"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"openai:gpt-live-transcribe": "openai"},
+    )
+
+    with live_app.app_context():
+        assert service._resolve_live_model(
+            SimpleNamespace(id=42), "openai:gpt-live-transcribe"
+        ) == "gpt-live-transcribe"
+
+
+def test_canonical_openrouter_live_model_reference_returns_slug(live_app):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["openrouter:openai/whisper-1"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"openrouter:openai/whisper-1": "openrouter"},
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+    )
+
+    with live_app.app_context():
+        assert service._resolve_live_model(
+            SimpleNamespace(id=42), "openrouter:openai/whisper-1"
+        ) == "openai/whisper-1"
+
+
 def test_live_model_rejects_openrouter_slug_not_listed_as_stt(live_app):
     live_app.config.update(
         LIVE_TRANSCRIPTION_MODELS=["google/gemini-3.7-flash"],

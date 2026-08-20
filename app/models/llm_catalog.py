@@ -13,6 +13,7 @@ from app.database import get_db, get_cursor
 logger = logging.getLogger(__name__)
 
 MODELS_TABLE = "llm_models_catalog"
+_ALLOWED_LLM_TABLES = {MODELS_TABLE}
 
 # Default metadata scoped by provider. Extend as new providers are introduced.
 # Display labels are intentionally absent: model display names come from the

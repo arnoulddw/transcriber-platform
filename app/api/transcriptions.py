@@ -25,14 +25,13 @@ from app.models import user as user_model
 from app.models.user import User # For type hinting
 from app.services.user_service import MissingApiKeyError
 from app.services.openrouter import resolve_openrouter_model
-from app.services.api_clients import _resolve_transcription_provider
 from app.services.api_clients.exceptions import TranscriptionApiError
 from app.core.decorators import check_permission, check_usage_limits
 from app.extensions import limiter, build_user_limit_key, csrf
 from app.tasks.transcription_queue import maybe_recover_abandoned_jobs, submit_transcription_job
 from mysql.connector import Error as MySQLError
 # --- ADDED: Import Optional ---
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 # --- END ADDED ---
 
 
@@ -84,6 +83,66 @@ def _client_safe_error_message(message: Optional[str]) -> str:
     )
     text = re.sub(r"(?i)\bbearer\s+[^\s,;]+", "Bearer [REDACTED]", text)
     return text[:1000]
+
+
+def _resolve_catalog_model_parameters(
+    api_choice: str,
+    model_lookup: Dict[str, Dict[str, Any]],
+    submitted_model: Optional[str] = None,
+    stored_openrouter_model: Optional[str] = None,
+    role_openrouter_model: Optional[str] = None,
+) -> Tuple[str, Optional[str]]:
+    """Resolve provider and provider-local model from one catalog selection.
+
+    Selectable values are model codes, never provider labels. The provider is
+    read from the catalog relationship. The two OpenRouter defaults are kept
+    only for compatibility with older requests that submitted ``openrouter``
+    as the provider-shaped value.
+    """
+    model = model_lookup.get(api_choice) or transcription_catalog_model.get_model_by_code(api_choice) or {}
+    provider = str(
+        model.get("provider_code")
+        or model.get("required_api_key")
+        or ("openrouter" if "/" in str(api_choice or "") else "")
+    ).strip().lower()
+    local_model_code = str(model.get("code") or "").strip()
+    if provider == "openrouter":
+        if api_choice == "openrouter":
+            model_name = resolve_openrouter_model(
+                api_choice,
+                submitted_model,
+                stored_openrouter_model,
+                role_openrouter_model,
+            )
+        else:
+            model_name = str(
+                model.get("model_slug")
+                or model.get("model_name")
+                or local_model_code
+                or api_choice
+            ).strip()
+        return provider, model_name or None
+    # The provider adapter and key store both need the provider-local identifier
+    # for every real model. The client applies any provider-specific API alias
+    # at its own boundary.
+    return provider, local_model_code or None
+
+
+def _build_model_lookup(models: list[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Index selectable rows by canonical key and unambiguous legacy code."""
+    lookup: Dict[str, Dict[str, Any]] = {}
+    by_code: Dict[str, list[Dict[str, Any]]] = {}
+    for model in models:
+        code = str(model.get('code') or '').strip()
+        model_key = str(model.get('model_key') or code).strip()
+        if not code or not model_key:
+            continue
+        lookup[model_key] = model
+        by_code.setdefault(code, []).append(model)
+    for code, rows in by_code.items():
+        if len(rows) == 1:
+            lookup[code] = rows[0]
+    return lookup
 
 
 def public_transcribe_rate_limit_key() -> str:
@@ -193,13 +252,24 @@ def transcribe_audio_public():
     except Exception as catalog_err:
         logging.error(f"{log_prefix} Failed to load transcription models from catalog: {catalog_err}", exc_info=True)
         catalog_models = []
-    model_lookup = {model['code']: model for model in catalog_models}
+    model_lookup = _build_model_lookup(catalog_models)
     active_model_codes = set(model_lookup.keys())
-    default_model_code = next((model['code'] for model in catalog_models if model.get('is_default')), None)
+    default_model_code = next(
+        (
+            str(model.get('model_key') or model.get('code') or '').strip()
+            for model in catalog_models
+            if model.get('is_default')
+        ),
+        None,
+    )
     if not default_model_code and catalog_models:
-        default_model_code = catalog_models[0]['code']
+        default_model_code = str(
+            catalog_models[0].get('model_key') or catalog_models[0].get('code') or ''
+        ).strip()
     if not default_model_code:
-        default_model_code = current_app.config.get('DEFAULT_TRANSCRIPTION_PROVIDER')
+        configured_default = current_app.config.get('DEFAULT_TRANSCRIPTION_PROVIDER')
+        configured_row = transcription_catalog_model.get_model_by_code(configured_default)
+        default_model_code = (configured_row or {}).get('model_key') or configured_default
 
     try:
         language_rows = transcription_catalog_model.get_active_languages()
@@ -234,23 +304,15 @@ def transcribe_audio_public():
 
     try:
         submitted_model = request.form.get("model_name") or request.form.get("openrouter_model")
-        provider_for_choice = _resolve_transcription_provider(api_choice)
-        normalized_submitted_model = str(submitted_model or "").strip() or None
-        if provider_for_choice == "openrouter":
-            api_model = resolve_openrouter_model(
-                api_choice,
-                submitted_model,
-                getattr(user, "default_openrouter_model", None),
-                getattr(getattr(user, "role", None), "default_openrouter_model", None),
-            )
-        elif provider_for_choice == "assemblyai":
-            api_model = normalized_submitted_model or (
-                "universal" if api_choice.casefold() == "assemblyai" else api_choice
-            )
-        else:
-            api_model = normalized_submitted_model
+        provider_code, api_model = _resolve_catalog_model_parameters(
+            api_choice,
+            model_lookup,
+            submitted_model,
+            getattr(user, "default_openrouter_model", None),
+            getattr(getattr(user, "role", None), "default_openrouter_model", None),
+        )
     except ValueError as model_err:
-        logging.warning(f"{log_prefix} Invalid OpenRouter model: {model_err}")
+        logging.warning(f"{log_prefix} Invalid transcription model: {model_err}")
         return jsonify({'error': str(model_err)}), 400
 
     permission_key = model_lookup.get(api_choice, {}).get('permission_key')
@@ -307,7 +369,8 @@ def transcribe_audio_public():
         return jsonify({'error': _('We could not save or process the uploaded file. Please try again.')}), 500
 
     try:
-        price = pricing_service.get_price(item_type='transcription', item_key=api_model or api_choice)
+        pricing_key = api_model if provider_code == "openrouter" else api_choice
+        price = pricing_service.get_price(item_type='transcription', item_key=pricing_key)
         cost_to_add = 0.0
         if price is not None:
             cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
@@ -439,13 +502,24 @@ def transcribe_audio():
     except Exception as catalog_err:
         logging.error(f"{log_prefix} Failed to load transcription models from catalog: {catalog_err}", exc_info=True)
         catalog_models = []
-    model_lookup = {model['code']: model for model in catalog_models}
+    model_lookup = _build_model_lookup(catalog_models)
     active_model_codes = set(model_lookup.keys())
-    default_model_code = next((model['code'] for model in catalog_models if model.get('is_default')), None)
+    default_model_code = next(
+        (
+            str(model.get('model_key') or model.get('code') or '').strip()
+            for model in catalog_models
+            if model.get('is_default')
+        ),
+        None,
+    )
     if not default_model_code and catalog_models:
-        default_model_code = catalog_models[0]['code']
+        default_model_code = str(
+            catalog_models[0].get('model_key') or catalog_models[0].get('code') or ''
+        ).strip()
     if not default_model_code:
-        default_model_code = current_app.config.get('DEFAULT_TRANSCRIPTION_PROVIDER')
+        configured_default = current_app.config.get('DEFAULT_TRANSCRIPTION_PROVIDER')
+        configured_row = transcription_catalog_model.get_model_by_code(configured_default)
+        default_model_code = (configured_row or {}).get('model_key') or configured_default
 
     try:
         language_rows = transcription_catalog_model.get_active_languages()
@@ -520,7 +594,7 @@ def transcribe_audio():
             logging.warning(f"{job_log_prefix} Received unsupported language '{language_code}'. Falling back to '{default_language_code}'.")
             language_code = default_language_code
 
-        api_choice = request.form.get('api_choice', default_model_code)
+        api_choice = str(request.form.get('api_choice') or default_model_code or '').strip()
         context_prompt = request.form.get('context_prompt', '')
         pending_workflow_prompt_text = request.form.get('pending_workflow_prompt_text')
         pending_workflow_prompt_title = request.form.get('pending_workflow_prompt_title')
@@ -532,17 +606,21 @@ def transcribe_audio():
                 parsed_pending_workflow_origin_id = int(pending_workflow_origin_prompt_id_str)
             except (ValueError, TypeError): # Added TypeError
                 logging.warning(f"{job_log_prefix} Invalid pending_workflow_origin_prompt_id received: '{pending_workflow_origin_prompt_id_str}'. Ignoring.")
+        provider_code = str(
+            (model_lookup.get(api_choice) or {}).get('provider_code')
+            or (model_lookup.get(api_choice) or {}).get('required_api_key')
+            or ''
+        ).strip().lower()
         diarization_flag_raw = request.form.get('speaker_diarization', '')
         speaker_diarization_enabled = str(diarization_flag_raw).strip().lower() in ('1', 'true', 'yes', 'on')
-        provider_for_choice = _resolve_transcription_provider(api_choice)
-        if provider_for_choice != 'assemblyai':
+        if provider_code != 'assemblyai':
             if speaker_diarization_enabled:
-                logging.info(f"{job_log_prefix} Speaker diarization requested but API '{api_choice}' does not support it. Ignoring flag.")
+                logging.info(f"{job_log_prefix} Speaker diarization requested but provider '{provider_code or api_choice}' does not support it. Ignoring flag.")
             speaker_diarization_enabled = False
         elif speaker_diarization_enabled and not check_permission(user, 'allow_speaker_diarization'):
             logging.warning(f"{job_log_prefix} User lacks permission to enable speaker diarization. Blocking request.")
             return jsonify({'error': _('You do not have permission to identify speakers for this model.')}), 403
-        
+
         logging.debug(f"{job_log_prefix} Params - API: {api_choice}, Lang: {language_code}, Context: {'Yes' if context_prompt else 'No'}, Pending WF Text: {'Set' if pending_workflow_prompt_text else 'Not Set'}, Pending WF Origin ID: {parsed_pending_workflow_origin_id}, Speaker Diarization: {speaker_diarization_enabled}")
 
 
@@ -551,22 +629,16 @@ def transcribe_audio():
             raise ValueError(f"Invalid transcription provider selected: {api_choice}")
 
         submitted_model = request.form.get("model_name") or request.form.get("openrouter_model")
-        normalized_submitted_model = str(submitted_model or "").strip() or None
-        if provider_for_choice == "openrouter":
-            api_model = resolve_openrouter_model(
-                api_choice,
-                submitted_model,
-                getattr(user, "default_openrouter_model", None),
-                getattr(getattr(user, "role", None), "default_openrouter_model", None),
-            )
-        elif provider_for_choice == "assemblyai":
-            api_model = normalized_submitted_model or (
-                "universal" if api_choice.casefold() == "assemblyai" else api_choice
-            )
-        else:
-            api_model = normalized_submitted_model
+        provider_code, api_model = _resolve_catalog_model_parameters(
+            api_choice,
+            model_lookup,
+            submitted_model,
+            getattr(user, "default_openrouter_model", None),
+            getattr(getattr(user, "role", None), "default_openrouter_model", None),
+        )
 
-        price = pricing_service.get_price(item_type='transcription', item_key=api_model or api_choice)
+        pricing_key = api_model if provider_code == "openrouter" else api_choice
+        price = pricing_service.get_price(item_type='transcription', item_key=pricing_key)
         cost_to_add = 0.0
         if price is not None:
             cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)

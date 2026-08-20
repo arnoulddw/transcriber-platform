@@ -241,9 +241,18 @@ def save_user_api_key(
 
         preference_field = None
         preference_kwargs = {}
+        preference_value = normalized_model_name
         if model_purpose == 'live' and normalized_model_name:
+            # Live defaults use the same qualified identity as the catalog;
+            # keep the provider-local model slug in the API-key row itself.
+            local_model = (
+                'universal'
+                if service == 'assemblyai' and normalized_model_name.casefold() == 'assemblyai'
+                else normalized_model_name
+            )
+            preference_value = f"{service}:{local_model}"
             preference_field = 'default_live_transcription_model'
-            preference_kwargs = {'default_live_transcription_model': normalized_model_name}
+            preference_kwargs = {'default_live_transcription_model': preference_value}
         elif service == 'openrouter' and normalized_model_name:
             if model_purpose == 'transcription':
                 preference_field = 'default_openrouter_model'
@@ -258,11 +267,14 @@ def save_user_api_key(
             )
             if not preference_updated:
                 refreshed_user = user_model.get_user_by_id(user_id)
-                if not refreshed_user or getattr(refreshed_user, preference_field, None) != normalized_model_name:
+                if (
+                    preference_field
+                    and (not refreshed_user or getattr(refreshed_user, preference_field, None) != preference_value)
+                ):
                     raise DatabaseUpdateError("Failed to persist the model preference.")
             logger.info(
                 "Saved model '%s' for service '%s' and purpose '%s'.",
-                normalized_model_name,
+                preference_value,
                 service,
                 model_purpose,
             )
@@ -1004,8 +1016,21 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     else:
         enable_auto_title = str(enable_auto_title_raw).lower() in ['true', 'on', '1', 'yes']
 
+    from app.models import transcription_catalog as transcription_catalog_model
     default_language = None if default_language == "" else default_language
-    default_model = None if default_model == "" else default_model
+    default_model = None if default_model == "" else str(default_model or '').strip() or None
+    selected_model = None
+    if default_model:
+        try:
+            selected_model = transcription_catalog_model.get_model_by_code(default_model)
+        except RuntimeError:
+            # Profile-service unit callers and a few legacy import paths can
+            # normalize a value before Flask has pushed an app context. Keep
+            # the submitted legacy/canonical value intact; the catalog lookup
+            # is retried in normal request contexts below only when needed.
+            logger.debug("Could not resolve transcription model outside an app context.", exc_info=True)
+        if selected_model:
+            default_model = selected_model.get('model_key') or default_model
     if isinstance(default_title_generation_model, str):
         default_title_generation_model = default_title_generation_model.strip() or None
     if isinstance(default_workflow_model, str):
@@ -1019,10 +1044,29 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
             for model in current_app.config.get('LIVE_TRANSCRIPTION_MODELS', [])
             if str(model).strip()
         }
-        if default_live_transcription_model and default_live_transcription_model not in allowed_live_models:
+        try:
+            for model in transcription_catalog_model.get_live_models():
+                for candidate in (model.get('model_key'), model.get('code')):
+                    candidate = str(candidate or '').strip()
+                    if candidate:
+                        allowed_live_models.add(candidate)
+        except RuntimeError:
+            logger.debug("Could not load catalog Live models while updating a profile.", exc_info=True)
+        _, local_live_model = transcription_catalog_model.split_model_reference(
+            default_live_transcription_model
+        )
+        if (
+            default_live_transcription_model
+            and default_live_transcription_model not in allowed_live_models
+            and local_live_model not in allowed_live_models
+        ):
             raise ProfileUpdateError("The selected Live transcription model is not available.")
     language = None if language == "" else language
-    if default_model == 'openrouter':
+    selected_provider = (selected_model or {}).get('provider_code')
+    if default_model and not selected_provider:
+        provider_hint, _ = transcription_catalog_model.split_model_reference(default_model)
+        selected_provider = provider_hint or ('openrouter' if '/' in default_model else None)
+    if selected_provider == 'openrouter':
         raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
         default_openrouter_model = normalize_openrouter_model(raw_openrouter_model) if raw_openrouter_model else None
     else:

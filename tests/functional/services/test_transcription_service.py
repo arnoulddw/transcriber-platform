@@ -36,7 +36,7 @@ def test_process_transcription_success(
     with app.app_context():
         user = get_user_by_username('testuser_permissions')
     job_id = str(uuid.uuid4())
-    api_choice = 'whisper'
+    api_choice = 'gpt-4o-transcribe'
     expected_text = "This is a test transcription."
     expected_lang = "en"
 
@@ -214,17 +214,14 @@ def test_process_transcription_with_speaker_diarization(
                 user_id=user.id,
                 temp_filename=mock_audio_file,
                 language_code='en',
-                api_choice='assemblyai',
+                api_choice='assemblyai:universal',
                 original_filename='test.mp3',
                 speaker_diarization_enabled=True
             )
 
             assert mock_client.transcribe.call_count == 1
             kwargs = mock_client.transcribe.call_args.kwargs
-            assert kwargs.get('extra_options') == {
-                'speaker_diarization_enabled': True,
-                'model': 'universal',
-            }
+            assert kwargs.get('extra_options') == {'speaker_diarization_enabled': True}
 
 
 def test_process_transcription_api_error(
@@ -237,7 +234,7 @@ def test_process_transcription_api_error(
     """
     user = get_user_by_username('testuser_permissions')
     job_id = str(uuid.uuid4())
-    api_choice = 'whisper'
+    api_choice = 'gpt-4o-transcribe'
     error_message = "The API is down."
 
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
@@ -277,7 +274,7 @@ def test_process_transcription_cancellation(
     """
     user = get_user_by_username('testuser_permissions')
     job_id = str(uuid.uuid4())
-    api_choice = 'whisper'
+    api_choice = 'gpt-4o-transcribe'
 
     with patch('app.services.transcription_service.get_transcription_client'), \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
@@ -343,7 +340,7 @@ def test_process_transcription_with_pending_workflow(
     """
     user = get_user_by_username('testuser_permissions')
     job_id = str(uuid.uuid4())
-    api_choice = 'whisper'
+    api_choice = 'gpt-4o-transcribe'
     pending_prompt = "Summarize this."
 
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \

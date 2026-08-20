@@ -326,11 +326,11 @@ def init_roles_table() -> None:
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 name VARCHAR(80) UNIQUE NOT NULL,
                 description TEXT,
-                default_transcription_model VARCHAR(100) DEFAULT NULL,
+                default_transcription_model VARCHAR(255) DEFAULT NULL,
                 default_title_generation_model VARCHAR(100) DEFAULT NULL,
                 default_workflow_model VARCHAR(100) DEFAULT NULL,
                 default_openrouter_model VARCHAR(120) DEFAULT NULL,
-                default_live_transcription_model VARCHAR(120) DEFAULT NULL,
+                default_live_transcription_model VARCHAR(255) DEFAULT NULL,
                 use_api_openai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_assemblyai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_openai_whisper BOOLEAN NOT NULL DEFAULT FALSE,
@@ -390,7 +390,14 @@ def init_roles_table() -> None:
                        "BOOLEAN NOT NULL DEFAULT FALSE", after="allow_auto_title_generation", log_prefix=log_prefix)
 
         _ensure_column(cursor, "roles", None, "default_transcription_model",
-                       "VARCHAR(100) DEFAULT NULL", after="description", log_prefix=log_prefix)
+                       "VARCHAR(255) DEFAULT NULL", after="description", log_prefix=log_prefix)
+        cursor.execute("SHOW COLUMNS FROM roles LIKE 'default_transcription_model'")
+        transcription_model_column = cursor.fetchone()
+        cursor.fetchall()
+        transcription_model_type = transcription_model_column.get('Type', '') if isinstance(transcription_model_column, dict) else (transcription_model_column[1] if transcription_model_column and len(transcription_model_column) > 1 else '')
+        if '255' not in str(transcription_model_type):
+            logging.info(f"{log_prefix} Widening 'default_transcription_model' for provider-qualified model keys.")
+            cursor.execute("ALTER TABLE roles MODIFY COLUMN default_transcription_model VARCHAR(255) DEFAULT NULL")
         _ensure_column(cursor, "roles", None, "default_title_generation_model",
                        "VARCHAR(100) DEFAULT NULL", after="default_transcription_model", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "default_workflow_model",
@@ -398,7 +405,14 @@ def init_roles_table() -> None:
         _ensure_column(cursor, "roles", None, "default_openrouter_model",
                        "VARCHAR(120) DEFAULT NULL", after="default_workflow_model", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "default_live_transcription_model",
-                       "VARCHAR(120) DEFAULT NULL", after="default_openrouter_model", log_prefix=log_prefix)
+                       "VARCHAR(255) DEFAULT NULL", after="default_openrouter_model", log_prefix=log_prefix)
+        cursor.execute("SHOW COLUMNS FROM roles LIKE 'default_live_transcription_model'")
+        live_model_column = cursor.fetchone()
+        cursor.fetchall()
+        live_model_type = live_model_column.get('Type', '') if isinstance(live_model_column, dict) else (live_model_column[1] if live_model_column and len(live_model_column) > 1 else '')
+        if '255' not in str(live_model_type):
+            logging.info(f"{log_prefix} Widening 'default_live_transcription_model' for provider-qualified model keys.")
+            cursor.execute("ALTER TABLE roles MODIFY COLUMN default_live_transcription_model VARCHAR(255) DEFAULT NULL")
 
         openai_permission_exists = _column_exists(cursor, "roles", "use_api_openai")
         _ensure_column(

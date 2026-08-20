@@ -35,26 +35,31 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
     WORD_BOOST_MAX_TERMS = 20
     WORD_BOOST_MAX_WORDS_PER_TERM = 4
 
-    # Resolves display names from the catalog (single source of truth).
+    # The catalog code is set to the selected AssemblyAI model. ``universal``
+    # is the compatibility default for older provider-wide callers.
     CATALOG_MODEL_CODE = "universal"
 
     def __init__(
         self,
         api_key: str,
         config: Dict[str, Any],
-        model_code: Optional[str] = None,
+        model_code: str = "universal",
     ) -> None:
         """Initializes the client and sets API-specific limits from config."""
-        self.model_code = str(model_code or self.CATALOG_MODEL_CODE).strip() or "universal"
-        if self.model_code.casefold() == "assemblyai":
-            self.model_code = "universal"
+        raw_model_code = str(model_code or "universal").strip() or "universal"
+        # Provider-shaped values were accepted by older requests. Keep them
+        # executable while the catalog exposes only the real model code.
+        self.model_code = "universal" if raw_model_code.casefold() == "assemblyai" else raw_model_code
         self.CATALOG_MODEL_CODE = self.model_code
         super().__init__(api_key, config)
         # Override max_concurrent_chunks for AssemblyAI as it handles this internally
         self.max_concurrent_chunks = 1
         self.logger.info("Max concurrent chunks set to 1 (handled by SDK).")
 
-        api_limits = self.config.get('API_LIMITS', {}).get('assemblyai', {})
+        api_limits = (
+            self.config.get('API_LIMITS', {}).get(self.model_code)
+            or self.config.get('API_LIMITS', {}).get('assemblyai', {})
+        )
         self.SPLIT_THRESHOLD_SECONDS = api_limits.get('duration_s')
         size_mb = api_limits.get('size_mb')
         if size_mb is not None:

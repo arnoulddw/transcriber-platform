@@ -5,10 +5,18 @@ from .openai_base import OpenAIBaseTranscriptionClient
 
 
 class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
-    # Resolves display names from the catalog (single source of truth).
+    # The catalog code is set to the selected vendor/model slug. The provider
+    # name remains only as the compatibility default for older callers.
     CATALOG_MODEL_CODE = "openrouter"
 
-    def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        config: Dict[str, Any],
+        model_code: str = "openrouter",
+    ) -> None:
+        self.model_code = str(model_code or "openrouter").strip() or "openrouter"
+        self.CATALOG_MODEL_CODE = self.model_code
         super().__init__(api_key, config)
         api_limits = self.config.get("API_LIMITS", {}).get("openrouter", {})
         self.SPLIT_THRESHOLD_SECONDS = api_limits.get("duration_s")

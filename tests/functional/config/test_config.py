@@ -64,10 +64,10 @@ class TestConfig:
     INIT_MARKER_FILE = os.path.join(RUNTIME_DIR, '.initialized')
     
     # Simplified provider/language config for tests
-    TRANSCRIPTION_PROVIDERS = ["assemblyai", "whisper", "gpt-4o-transcribe", "gpt-transcribe", "gpt-live-transcribe"]
+    TRANSCRIPTION_PROVIDERS = ["assemblyai", "openai", "openrouter"]
     LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
     OPENROUTER_MODELS = ['google/gemini-3.7-flash']
-    DEFAULT_TRANSCRIPTION_PROVIDER = 'whisper'
+    DEFAULT_TRANSCRIPTION_PROVIDER = 'openai'
     LLM_PROVIDER = 'GEMINI'
     SUPPORTED_LANGUAGES = ['en', 'es', 'fr', 'nl']
     SUPPORTED_LANGUAGE_NAMES = {

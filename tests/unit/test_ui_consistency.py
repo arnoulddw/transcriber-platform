@@ -105,19 +105,38 @@ def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monke
     with patch(
         "app.admin_panel.routes.transcription_catalog_model.get_active_models",
         return_value=[
-            {"code": "universal", "display_name": "AssemblyAI Universal"},
-            {"code": "openrouter", "display_name": "OpenRouter"},
+            {
+                "code": "gpt-4o-transcribe",
+                "display_name": "OpenAI GPT-4o Transcribe",
+                "provider_code": "openai",
+                "required_api_key": "openai",
+            },
+            {
+                "code": "universal",
+                "display_name": "AssemblyAI Universal",
+                "provider_code": "assemblyai",
+                "required_api_key": "assemblyai",
+            },
+            {
+                "code": "qwen/qwen3-asr-1.7b",
+                "display_name": "Qwen Qwen3 ASR 1.7B",
+                "provider_code": "openrouter",
+                "required_api_key": "openrouter",
+            },
         ],
     ), patch(
         "app.admin_panel.routes.user_service.get_aggregate_api_key_status",
         return_value={
             "openai": True,
             "provider_keys": {
+                "openai": [
+                    {"model_name": "OpenAI", "provider_wide": True, "model_purposes": ["transcription"]},
+                ],
                 "assemblyai": [
-                    {"model_name": "universal", "model_purposes": ["transcription"]},
+                    {"model_name": "AssemblyAI", "provider_wide": True, "model_purposes": ["transcription"]},
                 ],
                 "openrouter": [
-                    {"model_name": "openai/gpt-4o-transcribe", "model_purposes": ["transcription"]},
+                    {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
                 ],
             },
         },
@@ -135,21 +154,21 @@ def test_admin_pricing_options_keep_transcription_and_llm_records_separate(monke
     # Transcription section: transcription models only (normal + live + user slugs),
     # never LLM models and never a bare provider name.
     assert "gemini-3.0-flash" not in options["transcription"]
-    assert options["transcription"]["universal"] == "AssemblyAI Universal"
-    assert options["transcription"]["openai/gpt-4o-transcribe"] == "openai/gpt-4o-transcribe"
-    assert options["transcription"]["gpt-live-transcribe"] == "GPT Live Transcribe"
-    assert "OpenRouter" not in options["transcription"].values()
+    assert options["transcription"]["openai:gpt-4o-transcribe"] == "OpenAI GPT-4o Transcribe"
+    assert options["transcription"]["assemblyai:universal"] == "AssemblyAI Universal"
+    assert options["transcription"]["openrouter:qwen/qwen3-asr-1.7b"] == "Qwen Qwen3 ASR 1.7B"
+    assert "AssemblyAI" not in options["transcription"]
+    assert "OpenAI" not in options["transcription"]
+    assert "OpenRouter" not in options["transcription"]
     assert "openrouter" not in options["transcription"]
-    assert "whisper" not in options["transcription"]
     assert list(options["transcription"].values()) == sorted(
-        options["transcription"].values(),
-        key=str.casefold,
+        options["transcription"].values(), key=str.casefold
     )
     # LLM sections receive LLM models only.
     assert options["title_generation"]["gemini-3.0-flash"] == "Gemini 3.0 Flash"
     assert options["workflow"] == options["title_generation"]
     assert "whisper" not in options["title_generation"]
-    assert "openai/gpt-4o-transcribe" not in options["title_generation"]
+    assert "qwen/qwen3-asr-1.7b" not in options["title_generation"]
 
 
 def test_admin_cost_template_uses_the_same_model_option_shape_for_all_sections():
@@ -229,15 +248,6 @@ def test_admin_pricing_route_only_passes_the_canonical_options_context():
     assert "workflow_models=workflow_models" not in route_source
 
 
-def test_admin_models_route_reuses_the_canonical_transcription_expansion():
-    route_source = Path("app/admin_panel/routes.py").read_text(encoding="utf-8")
-
-    assert "transcription_catalog_model.build_model_options(" in route_source
-    assert "get_all_active_models('transcription')" not in route_source
-    assert "Dynamic slugs" in route_source
-    assert "renameable catalog row" in route_source
-
-
 def test_live_purpose_keeps_the_entered_model_name():
     script = Path("app/static/js/user_settings.js").read_text(encoding="utf-8")
 
@@ -283,10 +293,10 @@ def test_transcription_selectors_dedupe_catalog_codes():
     # Selectors dedupe by (code, openrouter slug) so every OpenRouter
     # transcription model renders as its own option instead of collapsing.
     assert "seen_transcription_models = namespace(keys=[])" in index_template
-    assert "option_key = (model.code ~ '|' ~ (model.model_name or ''))" in index_template
-    assert "const seenTranscriptionModels = new Set();" in profile_script
-    assert "openrouter:${model.model_name || model.model_slug || ''}" in profile_script
-    assert "seen_codes: set[str] = set()" in catalog
+    assert "option_key = model.model_key or model.code" in index_template
+    assert "const modelKey = model.model_key || model.code;" in profile_script
+    assert "openrouter:${model.model_name || model.model_slug || ''}" not in profile_script
+    assert "seen_keys: set[str] = set()" in catalog
     assert "def build_model_options(" in catalog
     assert "get_live_models" in catalog
 
@@ -324,12 +334,24 @@ def test_expand_models_skips_generic_openrouter_when_no_slug_is_known():
     assert all(model["code"] != "openrouter" for model in expanded)
 
 
-def test_provider_wide_key_does_not_unlock_other_provider_models():
+def test_provider_wide_key_unlocks_all_models_for_that_provider():
     from app.models import transcription_catalog
 
     models = [
-        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
-        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
+        {
+            "code": "gpt-4o-transcribe",
+            "display_name": "OpenAI GPT-4o Transcribe",
+            "provider_code": "openai",
+            "permission_key": None,
+            "required_api_key": "openai",
+        },
+        {
+            "code": "universal",
+            "display_name": "AssemblyAI Universal",
+            "provider_code": "assemblyai",
+            "permission_key": None,
+            "required_api_key": "assemblyai",
+        },
     ]
 
     expanded = transcription_catalog.expand_models_for_ui(
@@ -339,11 +361,46 @@ def test_provider_wide_key_does_not_unlock_other_provider_models():
                 "openai": [
                     {"model_name": "OpenAI", "provider_wide": True, "model_purposes": ["transcription"]},
                 ],
+                "assemblyai": [
+                    {"model_name": "AssemblyAI", "provider_wide": True, "model_purposes": ["transcription"]},
+                ],
             },
         },
     )
 
-    assert expanded == []
+    assert [model["code"] for model in expanded] == [
+        "gpt-4o-transcribe",
+        "universal",
+    ]
+
+
+def test_single_user_provider_boolean_unlocks_catalog_models():
+    from app.models import transcription_catalog
+
+    models = [
+        {
+            "code": "gpt-4o-transcribe",
+            "display_name": "OpenAI GPT-4o Transcribe",
+            "provider_code": "openai",
+            "required_api_key": "openai",
+        },
+        {
+            "code": "universal",
+            "display_name": "AssemblyAI Universal",
+            "provider_code": "assemblyai",
+            "required_api_key": "assemblyai",
+        },
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {"openai": True, "assemblyai": True},
+    )
+
+    assert [model["code"] for model in expanded] == [
+        "gpt-4o-transcribe",
+        "universal",
+    ]
 
 
 def test_expand_models_returns_empty_when_no_provider_key_exists():
@@ -373,7 +430,7 @@ def test_models_without_required_api_keys_remain_available():
     assert [model["code"] for model in expanded] == ["local-model"]
 
 
-def test_expand_models_uses_configured_slug_when_present():
+def test_expand_models_does_not_turn_provider_anchor_into_a_model():
     from app.models import transcription_catalog
 
     models = [
@@ -387,30 +444,83 @@ def test_expand_models_uses_configured_slug_when_present():
         ]}},
     )
 
-    assert [(model["code"], model.get("model_name")) for model in expanded] == [
-        ("openrouter", "x-ai/grok-stt-1.0"),
-    ]
+    assert expanded == []
 
 
-def test_build_model_options_keeps_each_openrouter_slug_separate(monkeypatch):
-    _set_minimal_app_environment(monkeypatch)
+def test_dynamic_openrouter_model_row_is_selectable_without_provider_anchor():
     from app.models import transcription_catalog
 
     models = [
-        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
-        {"code": "gpt-transcribe", "display_name": "OpenAI GPT Transcribe", "permission_key": None, "required_api_key": "openai"},
-        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+        {
+            "code": "x-ai/grok-stt-1.0",
+            "display_name": "xAI Grok STT 1.0",
+            "provider_code": "openrouter",
+            "permission_key": None,
+            "required_api_key": "openrouter",
+        },
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {"provider_keys": {"openrouter": [
+            {"model_name": "x-ai/grok-stt-1.0", "model_purposes": ["transcription"]},
+        ]}},
+    )
+
+    assert [(model["code"], model.get("model_name")) for model in expanded] == [
+        ("x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
+    ]
+
+
+def test_build_model_options_sorts_all_provider_models_by_display_name():
+    from app.models import transcription_catalog
+
+    models = [
+        {
+            "code": "gpt-4o-transcribe",
+            "display_name": "OpenAI GPT-4o Transcribe",
+            "provider_code": "openai",
+            "permission_key": None,
+            "required_api_key": "openai",
+        },
+        {
+            "code": "universal",
+            "display_name": "AssemblyAI Universal",
+            "provider_code": "assemblyai",
+            "permission_key": None,
+            "required_api_key": "assemblyai",
+        },
+        {
+            "code": "x-ai/grok-stt-1.0",
+            "display_name": "xAI Grok STT 1.0",
+            "provider_code": "openrouter",
+            "permission_key": None,
+            "required_api_key": "openrouter",
+        },
+        {
+            "code": "qwen/qwen3-asr-1.7b",
+            "display_name": "Qwen Qwen3 ASR 1.7B",
+            "provider_code": "openrouter",
+            "permission_key": None,
+            "required_api_key": "openrouter",
+        },
+        {
+            "code": "openrouter",
+            "display_name": "OpenRouter",
+            "provider_code": "openrouter",
+            "permission_key": None,
+            "required_api_key": "openrouter",
+        },
     ]
     status = {
-        "openai": True,
         "provider_keys": {
             "openai": [
-                {"model_name": "gpt-4o-transcribe", "model_purposes": ["transcription"]},
-                {"model_name": "gpt-transcribe", "model_purposes": ["transcription"]},
+                {"model_name": "OpenAI", "provider_wide": True, "model_purposes": ["transcription"]},
+            ],
+            "assemblyai": [
+                {"model_name": "AssemblyAI", "provider_wide": True, "model_purposes": ["transcription"]},
             ],
             "openrouter": [
-                # Listed in reverse alphabetical order on purpose: the final
-                # expanded options must sort all display names globally.
                 {"model_name": "x-ai/grok-stt-1.0", "model_purposes": ["transcription"]},
                 {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
             ],
@@ -420,71 +530,15 @@ def test_build_model_options_keeps_each_openrouter_slug_separate(monkeypatch):
     options = transcription_catalog.build_model_options(models, status)
 
     assert [(m["code"], m.get("model_name")) for m in options] == [
-        ("gpt-transcribe", "gpt-transcribe"),
+        ("universal", "universal"),
         ("gpt-4o-transcribe", "gpt-4o-transcribe"),
-        ("openrouter", "qwen/qwen3-asr-1.7b"),
-        ("openrouter", "x-ai/grok-stt-1.0"),
+        ("qwen/qwen3-asr-1.7b", "qwen/qwen3-asr-1.7b"),
+        ("x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
     ]
-    # Other catalog codes are still deduplicated to a single option.
-    assert len([m for m in options if m["code"] == "gpt-transcribe"]) == 1
-
-
-def test_build_model_options_sorts_final_model_options_globally_by_display_name(monkeypatch):
-    _set_minimal_app_environment(monkeypatch)
-    from app.models import transcription_catalog
-
-    models = [
-        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
-        {"code": "universal", "display_name": "AssemblyAI Universal", "permission_key": None, "required_api_key": "assemblyai"},
-        {"code": "gpt-transcribe", "display_name": "OpenAI GPT Transcribe", "permission_key": None, "required_api_key": "openai"},
-        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
-    ]
-    status = {
-        "provider_keys": {
-            "assemblyai": [
-                {"model_name": "universal", "model_purposes": ["transcription"]},
-            ],
-            "openai": [
-                {"model_name": "gpt-transcribe", "model_purposes": ["transcription"]},
-                {"model_name": "gpt-4o-transcribe", "model_purposes": ["transcription"]},
-            ],
-            "openrouter": [
-                {"model_name": "xai/grok-stt-1.0", "model_purposes": ["transcription"]},
-                {"model_name": "qwen/qwen3-asr-1.7b", "model_purposes": ["transcription"]},
-            ],
-        },
-    }
-
-    options = transcription_catalog.build_model_options(models, status)
-    display_names = [option["display_name"] for option in options]
-
-    assert display_names == sorted(display_names, key=str.casefold)
-    assert {"OpenAI", "AssemblyAI", "OpenRouter"}.isdisjoint(display_names)
-    assert "OpenRouter" not in display_names
-    assert [option.get("model_name") for option in options if option["code"] == "openrouter"] == [
-        "qwen/qwen3-asr-1.7b",
-        "xai/grok-stt-1.0",
-    ]
-
-
-def test_admin_model_rename_options_exclude_provider_rows_and_sort_by_display_name(monkeypatch):
-    _set_minimal_app_environment(monkeypatch)
-    from app.admin_panel.routes import _rename_options
-
-    rows = [
-        {"code": "openrouter", "display_name": "OpenRouter"},
-        {"code": "qwen/qwen3-asr-1.7b", "display_name": "qwen/qwen3-asr-1.7b"},
-        {"code": "universal", "display_name": "AssemblyAI Universal"},
-        {"code": "openai", "display_name": "OpenAI"},
-    ]
-
-    options = _rename_options(
-        rows,
-        excluded_codes={"openai", "assemblyai", "openrouter"},
+    assert all(
+        option["display_name"] not in {"OpenAI", "AssemblyAI", "OpenRouter"}
+        for option in options
     )
-
-    assert list(options) == ["universal", "qwen/qwen3-asr-1.7b"]
-    assert list(options.values()) == ["AssemblyAI Universal", "qwen/qwen3-asr-1.7b"]
 
 
 def test_llm_model_options_merge_user_added_llm_slugs(monkeypatch):
@@ -591,12 +645,11 @@ def test_providers_are_fixed_and_models_are_never_provider_labels(monkeypatch):
     # Providers are fixed and seeded; models are NOT (no whisper/gpt-4o codes).
     assert Config.TRANSCRIPTION_PROVIDERS == ["assemblyai", "openai", "openrouter"]
 
-    # Registration defaults the display name to the raw model name, and the
-    # provider metadata carries only permission/key wiring — no display
-    # labels that could leak in as a model name.
+    # Provider display names belong to provider metadata only. They are not
+    # emitted by the shared model-option builder as selectable model rows.
     from app.models import transcription_catalog
     assert set(transcription_catalog._PROVIDER_METADATA) == {"assemblyai", "openai", "openrouter"}
-    assert all(
-        "display_name" not in (meta or {})
+    assert {
+        meta["display_name"]
         for meta in transcription_catalog._PROVIDER_METADATA.values()
-    )
+    } == {"AssemblyAI", "OpenAI", "OpenRouter"}

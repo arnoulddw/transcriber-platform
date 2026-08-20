@@ -25,6 +25,21 @@ except ImportError:
     get_user_by_email = None
     get_role_by_name = None
 
+
+def _selected_transcription_provider(model_code):
+    """Resolve the provider for a selected model without guessing from labels."""
+    code = str(model_code or '').strip()
+    if not code:
+        return None
+    try:
+        model = transcription_catalog_model.get_model_by_code(code) or {}
+    except Exception:
+        model = {}
+    provider = model.get('provider_code') or model.get('required_api_key')
+    if provider:
+        return str(provider).strip().lower()
+    return 'openrouter' if '/' in code else None
+
 # --- RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm remain unchanged ---
 class RegistrationForm(FlaskForm):
     username = StringField(
@@ -326,8 +341,9 @@ class UserProfileForm(FlaskForm):
             permission_key = model.get('permission_key')
             if not permission_key or (current_user.is_authenticated and current_user.has_permission(permission_key)):
                 model_code = str(model.get('code') or '').strip()
-                if model_code:
-                    model_choices.append((model_code, model.get('display_name') or model_code))
+                model_key = str(model.get('model_key') or model_code).strip()
+                if model_key:
+                    model_choices.append((model_key, model.get('display_name') or model_code or model_key))
         # --- MODIFICATION END ---
         self.default_transcription_model.choices = model_choices
 
@@ -382,8 +398,9 @@ class UserProfileForm(FlaskForm):
             live_models = []
         for model in live_models:
             model_code = str(model.get('code') or '').strip()
-            if model_code:
-                live_choices.append((model_code, str(model.get('display_name') or model_code)))
+            model_key = str(model.get('model_key') or model_code).strip()
+            if model_key:
+                live_choices.append((model_key, str(model.get('display_name') or model_code or model_key)))
         self.default_live_transcription_model.choices = live_choices
         if self.default_live_transcription_model.data is None:
             self.default_live_transcription_model.data = ''
@@ -418,7 +435,7 @@ class UserProfileForm(FlaskForm):
                 logging.error("[FORMS] Cannot validate email uniqueness because get_user_by_email failed to import.")
 
     def validate_default_openrouter_model(self, field):
-        if self.default_transcription_model.data != 'openrouter':
+        if _selected_transcription_provider(self.default_transcription_model.data) != 'openrouter':
             field.data = None
             return
 
@@ -584,22 +601,22 @@ class AdminRoleForm(FlaskForm):
                 )
             )
 
-        # Each OpenRouter slug is a distinct option (rendered manually by the
-        # template), so the form carries the canonical per-slug list for the
-        # role editor while the dropdown value stays the plain model code.
+        # Each expanded model is a distinct option, including provider-local
+        # codes that happen to be identical across providers.
         self.transcription_model_options = list(expanded_models)
 
-        seen_transcription_codes = set()
+        seen_transcription_keys = set()
         for model in expanded_models:
             model_code = (model.get('code') or '').strip()
-            if not model_code or model_code in seen_transcription_codes:
+            model_key = (model.get('model_key') or model_code).strip()
+            if not model_key or model_key in seen_transcription_keys:
                 continue
-            display_name = model.get('display_name') or model_code
-            transcription_choices.append((model_code, display_name))
-            seen_transcription_codes.add(model_code)
+            display_name = model.get('display_name') or model_code or model_key
+            transcription_choices.append((model_key, display_name))
+            seen_transcription_keys.add(model_key)
 
-        # Catalog rows are individual selectable models. Keep model codes as
-        # values so role defaults remain stable when display names change.
+        # Catalog rows are individual selectable models. Persist the qualified
+        # key so display-name changes do not affect stored defaults.
         self._assign_choices(self.default_transcription_model, transcription_choices)
 
         # Populate LLM model choices (shared for title generation and workflows)
@@ -639,10 +656,11 @@ class AdminRoleForm(FlaskForm):
             live_models = []
         for model in live_models:
             model_code = str(model.get('code') or '').strip()
-            if model_code:
+            model_key = str(model.get('model_key') or model_code).strip()
+            if model_key:
                 live_choices.append((
-                    model_code,
-                    str(model.get('display_name') or model_code),
+                    model_key,
+                    str(model.get('display_name') or model_code or model_key),
                 ))
         self._assign_choices(self.default_live_transcription_model, live_choices)
 
@@ -666,7 +684,7 @@ class AdminRoleForm(FlaskForm):
             logging.error("[FORMS] Cannot validate role name uniqueness because get_role_by_name failed to import.")
 
     def validate_default_openrouter_model(self, field):
-        if self.default_transcription_model.data != 'openrouter':
+        if _selected_transcription_provider(self.default_transcription_model.data) != 'openrouter':
             field.data = None
             return
 

@@ -99,12 +99,14 @@ function updateProfileOpenrouterField() {
     const input = document.getElementById('profileDefaultOpenrouterModel');
     if (!modelSelect || !field || !input) return;
 
-    const enabled = modelSelect.value === 'openrouter';
+    const selectedOption = modelSelect.selectedOptions[0];
+    const enabled = selectedOption?.dataset.provider === 'openrouter';
     field.classList.toggle('hidden', !enabled);
     input.disabled = !enabled;
     if (enabled) {
-        const selectedModel = modelSelect.selectedOptions[0]?.dataset.modelName
-            || modelSelect.selectedOptions[0]?.dataset.openrouterModel;
+        const selectedModel = selectedOption?.dataset.modelName
+            || selectedOption?.dataset.openrouterModel
+            || selectedOption?.value;
         if (selectedModel) input.value = selectedModel;
     }
 }
@@ -126,13 +128,13 @@ function populateProfileLiveModelSelect(select) {
     if (!select) return;
     while (select.options.length > 0) select.remove(0);
     select.appendChild(new Option('-- Use System Default --', ''));
-    const seenCodes = new Set();
+    const seenModelKeys = new Set();
     (window.LIVE_TRANSCRIPTION_MODELS || []).forEach(model => {
-        const code = typeof model === 'string' ? model : model.code;
-        const label = typeof model === 'string' ? model : (model.display_name || model.code);
-        if (code && !seenCodes.has(code)) {
-            seenCodes.add(code);
-            select.appendChild(new Option(label, code));
+        const modelKey = typeof model === 'string' ? model : (model.model_key || model.code);
+        const label = typeof model === 'string' ? model : (model.display_name || model.code || modelKey);
+        if (modelKey && !seenModelKeys.has(modelKey)) {
+            seenModelKeys.add(modelKey);
+            select.appendChild(new Option(label, modelKey));
         }
     });
 }
@@ -282,14 +284,12 @@ async function loadProfileData() {
     const seenTranscriptionModels = new Set();
     catalogModels.forEach(model => {
         if (model.permission_key && !userPermissions[model.permission_key]) return;
-        // OpenRouter options are unique per slug, all other codes once.
-        const modelKey = model.code === 'openrouter'
-            ? `openrouter:${model.model_name || model.model_slug || ''}`
-            : model.code;
-        if (seenTranscriptionModels.has(modelKey)) return;
+        const modelKey = model.model_key || model.code;
+        if (!modelKey || seenTranscriptionModels.has(modelKey)) return;
         seenTranscriptionModels.add(modelKey);
 
-        const opt = new Option(model.display_name || model.code, model.code);
+        const opt = new Option(model.display_name || model.code, modelKey);
+        if (model.provider_code) opt.dataset.provider = model.provider_code;
         if (model.model_name) opt.dataset.modelName = model.model_name;
         if (model.model_slug) opt.dataset.openrouterModel = model.model_slug;
         const requiredKey = model.required_api_key;
@@ -331,15 +331,19 @@ async function loadProfileData() {
         firstNameInput.value = data.first_name || '';
         lastNameInput.value = data.last_name || '';
         langSelect.value = data.default_content_language || '';
+        const storedModel = data.default_transcription_model || '';
         const effectiveOpenrouterModel = data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL || '';
         const matchingOpenrouterOption = Array.from(modelSelect.options).find(
-            option => option.value === 'openrouter'
+            option => option.dataset.provider === 'openrouter'
                 && (option.dataset.modelName || option.dataset.openrouterModel) === effectiveOpenrouterModel
         );
+        const matchingStoredOption = Array.from(modelSelect.options).find(
+            option => option.value === storedModel
+                || (storedModel && option.value.split(':').slice(1).join(':') === storedModel)
+        );
         if (matchingOpenrouterOption) matchingOpenrouterOption.selected = true;
-        if (data.default_transcription_model !== 'openrouter') {
-            modelSelect.value = data.default_transcription_model || '';
-        }
+        else if (matchingStoredOption) matchingStoredOption.selected = true;
+        else modelSelect.value = '';
         workflowModelSelect.value = data.default_workflow_model || '';
         auxiliaryModelSelect.value = data.default_title_generation_model || '';
         liveModelSelect.value = data.default_live_transcription_model || '';

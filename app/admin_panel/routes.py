@@ -40,46 +40,32 @@ def _model_option_map(
     models: list,
     key_by_model_name: bool = False,
 ):
-    """Convert catalog/expanded model dicts into {code: display_name} maps.
+    """Convert model dicts into ``{stable_model_key: display_name}`` maps.
 
-    ``key_by_model_name`` keeps OpenRouter slugs as distinct pricing keys
-    (``model_name``/``model_slug``) instead of collapsing them under the
-    generic ``openrouter`` provider code.
+    ``key_by_model_name`` is retained for callers outside this branch, but
+    canonical catalog rows always carry ``model_key``. Falling back to the
+    provider-local name keeps older live/expanded rows readable during rollout.
     """
     result: Dict[str, str] = {}
     for model in models:
-        code = str(model.get('code') or '').strip()
-        if key_by_model_name:
-            code = str(
+        code = str(
+            model.get('model_key')
+            or (
                 model.get('model_name')
                 or model.get('model_slug')
                 or model.get('code')
-                or ''
-            ).strip()
+                if key_by_model_name
+                else model.get('code')
+            )
+            or ''
+        ).strip()
         if not code or code in result:
             continue
         result[code] = model.get('display_name') or code
-    return result
-
-
-def _rename_options(models: list, excluded_codes=None) -> Dict[str, str]:
-    """Return sorted catalog rename options, excluding internal/provider rows."""
-    excluded = {
-        str(code).strip().casefold()
-        for code in (excluded_codes or set())
-        if str(code).strip()
-    }
-    result: Dict[str, str] = {}
-    for model in models:
-        code = str(model.get('code') or '').strip()
-        display_name = str(model.get('display_name') or code).strip()
-        if not code or code.casefold() in excluded or code in result:
-            continue
-        result[code] = display_name or code
     return dict(
         sorted(
             result.items(),
-            key=lambda item: (item[1].casefold(), item[0].casefold()),
+            key=lambda item: (str(item[1]).casefold(), str(item[0]).casefold()),
         )
     )
 
@@ -109,16 +95,7 @@ def build_pricing_options():
         )
     except Exception as expand_err:
         logging.warning("[AdminPanel] Failed to expand transcription models for pricing: %s", expand_err, exc_info=True)
-        excluded_codes = (
-            transcription_catalog_model.PROVIDER_ONLY_MODEL_CODES
-            | transcription_catalog_model.DEPRECATED_MODEL_CODES
-        )
-        transcription_options = [
-            model for model in transcription_catalog
-            if str(model.get('code') or '').strip().casefold() not in {
-                str(code).casefold() for code in excluded_codes
-            }
-        ]
+        transcription_options = transcription_catalog
 
     transcription_map = _model_option_map(transcription_options, key_by_model_name=True)
 
@@ -140,15 +117,14 @@ def build_pricing_options():
     llm_map = _model_option_map(llm_models)
 
     def _sorted(mapping: Dict[str, str]) -> Dict[str, str]:
-        return dict(sorted(mapping.items(), key=lambda item: (item[1].casefold(), item[0].casefold())))
+        return dict(sorted(mapping.items(), key=lambda item: item[1].lower()))
 
-    # The transcription bucket inherits the canonical final expanded order
-    # from build_model_options, including any live-model additions, so it
-    # matches the other model dropdowns; LLM buckets keep their own sort.
+    # All final buckets are sorted by the displayed name. This remains true
+    # after the live models are merged into the transcription bucket.
     return {
         'transcription': _sorted(transcription_map),
-        'title_generation': _sorted(dict(llm_map)),
-        'workflow': _sorted(dict(llm_map)),
+        'title_generation': _sorted(llm_map),
+        'workflow': _sorted(llm_map),
     }
 
 # --- Dashboard Route ---
@@ -632,17 +608,22 @@ def models():
     log_prefix = f"[ROUTE:AdminPanel:Models:User:{current_user.id}]"
     logging.debug(f"{log_prefix} Accessing models page.")
 
+    def _rename_options(models: list) -> Dict[str, str]:
+        """Return stable model keys and authoritative display names."""
+        options = {
+            str(m.get('model_key') or m.get('code') or '').strip():
+            (m.get('display_name') or m.get('code') or '').strip()
+            for m in models
+            if (m.get('model_key') or m.get('code'))
+            and str(m.get('code')).strip().lower()
+            not in transcription_catalog_model.PROVIDER_ONLY_MODEL_CODES
+            and str(m.get('code')).strip().lower()
+            not in transcription_catalog_model.DEPRECATED_MODEL_CODES
+        }
+        return dict(sorted(options.items(), key=lambda item: (item[1].casefold(), item[0].casefold())))
+
     try:
-        transcription_catalog = transcription_catalog_model.get_active_models() or []
-        transcription_status = user_service.get_aggregate_api_key_status()
-        transcription = transcription_catalog_model.build_model_options(
-            transcription_catalog,
-            transcription_status,
-        )
-        # OpenRouter slugs are selectable through the shared builder, but the
-        # Models page persists renames against catalog rows. Dynamic slugs do
-        # not have a renameable catalog row, so keep them in the other
-        # selectable-model surfaces only.
+        transcription = transcription_catalog_model.get_all_active_models('transcription') or []
     except Exception as e:
         logging.warning(f"{log_prefix} Failed to load transcription models: {e}", exc_info=True)
         transcription = []
@@ -658,10 +639,7 @@ def models():
         llm = []
 
     model_options = {
-        'transcription': _rename_options(
-            transcription,
-            excluded_codes=transcription_catalog_model.PROVIDER_ONLY_MODEL_CODES,
-        ),
+        'transcription': _rename_options(transcription),
         'live': _rename_options(live),
         'llm': _rename_options(llm),
     }

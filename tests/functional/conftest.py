@@ -9,10 +9,9 @@ import json
 # registering the rows (register_model_from_provider is exactly what
 # save_user_api_key calls).
 TEST_CATALOG_MODELS = [
-    ("openai", "whisper", "whisper", "transcription"),
-    ("openai", "gpt-4o-transcribe", "gpt-4o-transcribe", "transcription"),
-    ("openai", "gpt-transcribe", "gpt-transcribe", "transcription"),
-    ("assemblyai", "assemblyai", "assemblyai", "transcription"),
+    ("openai", "gpt-4o-transcribe", "OpenAI GPT-4o Transcribe", "transcription"),
+    ("openai", "gpt-transcribe", "OpenAI GPT Transcribe", "transcription"),
+    ("assemblyai", "universal", "AssemblyAI Universal", "transcription"),
     # NOTE: no bare "openrouter" row — OpenRouter is a provider, not a model;
     # tests that need OpenRouter mock get_active_models with slug entries.
 ]

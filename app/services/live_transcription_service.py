@@ -89,7 +89,10 @@ def _resolve_live_model(user, requested: Optional[str] = None) -> str:
     configured = requested or getattr(user, "default_live_transcription_model", None)
     if not configured:
         configured = getattr(getattr(user, "role", None), "default_live_transcription_model", None)
-    model = str(configured or current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")).strip()
+    model_reference = str(
+        configured or current_app.config.get("LIVE_TRANSCRIPTION_MODEL", "gpt-live-transcribe")
+    ).strip()
+    provider_hint, model = transcription_catalog_model.split_model_reference(model_reference)
     provider_config = current_app.config.get("LIVE_TRANSCRIPTION_PROVIDERS", {}) or {}
     allowed_models = {
         str(value).strip()
@@ -100,11 +103,12 @@ def _resolve_live_model(user, requested: Optional[str] = None) -> str:
         try:
             key_status = user_service.get_effective_key_status(user)
             # Catalog-registered live models (normal + OpenRouter) are the
-            # canonical source; key purposes keep legacy OpenRouter slugs.
+            # canonical source; retain bare codes for older saved settings.
             for entry in transcription_catalog_model.get_live_models(key_status):
-                code = entry.get("code")
-                if code:
-                    allowed_models.add(code)
+                for candidate in (entry.get("model_key"), entry.get("code")):
+                    candidate = str(candidate or "").strip()
+                    if candidate:
+                        allowed_models.add(candidate)
             if current_app.config.get("DEPLOYMENT_MODE") == "multi":
                 for entry in (key_status.get("provider_keys", {}).get("openrouter", []) or []):
                     purposes = entry.get("model_purposes", []) or []
@@ -113,15 +117,21 @@ def _resolve_live_model(user, requested: Optional[str] = None) -> str:
                         allowed_models.add(model_name)
         except Exception:
             LOGGER.debug("Could not add user-configured Live models.", exc_info=True)
-    configured_provider = str(provider_config.get(model, "")).strip().lower()
-    is_openrouter_model = configured_provider == "openrouter" or "/" in model
+    configured_provider = str(
+        provider_config.get(model_reference) or provider_config.get(model) or ""
+    ).strip().lower()
+    is_openrouter_model = (
+        provider_hint == "openrouter"
+        or configured_provider == "openrouter"
+        or "/" in model
+    )
     if is_openrouter_model:
-        allowed_models.add(model)
+        allowed_models.update({model_reference, model})
     if not allowed_models:
-        allowed_models.add(model)
-    if allowed_models and model not in allowed_models:
+        allowed_models.update({model_reference, model})
+    if allowed_models and model_reference not in allowed_models and model not in allowed_models:
         raise LiveTranscriptionValidationError(_("The selected Live transcription model is not available."))
-    provider = _resolve_provider(user, model)
+    provider = provider_hint or _resolve_provider(user, model)
     if provider == "openrouter":
         if model not in _resolve_openrouter_stt_models():
             raise LiveTranscriptionValidationError(

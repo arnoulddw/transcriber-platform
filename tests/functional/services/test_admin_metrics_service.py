@@ -35,7 +35,7 @@ def mock_db_utils():
 
         mock_transcription_utils.count_jobs_in_range.return_value = 50
         mock_transcription_utils.sum_minutes_in_range.return_value = 120.5
-        mock_transcription_utils.get_api_distribution_in_range.return_value = {'whisper': 30, 'assemblyai': 20}
+        mock_transcription_utils.get_api_distribution_in_range.return_value = {'openai': 30, 'assemblyai': 20}
         mock_transcription_utils.get_language_distribution_in_range.return_value = {'en': 40, 'es': 10}
         mock_transcription_utils.count_successful_title_generations_in_range.return_value = 25
         mock_transcription_utils.get_workflow_model_distribution.return_value = {'gemini-3.0-flash': 15}
@@ -76,7 +76,7 @@ def test_get_usage_analytics_metrics_success(app, mock_db_utils):
         assert metrics is not None
         assert not metrics['error']
         assert metrics['jobs_submitted']['24h'] > 0
-        assert metrics['api_jobs_distribution']['7d']['whisper'] == 30
+        assert metrics['api_jobs_distribution']['7d']['openai'] == 30
         assert metrics['language_distribution']['all']['en'] == 40
         assert 'context_prompt_usage' in metrics
         assert 'download_usage' in metrics
@@ -103,11 +103,9 @@ def test_get_performance_error_metrics_success(app, mock_db_utils):
     mock_user_utils, mock_transcription_utils = mock_db_utils
     
     api_counts = {
-        'gpt-transcribe': (40, 4),
-        'gpt-4o-transcribe': (50, 2),
-        'whisper': (30, 3),
+        'openai': (50, 2),
         'assemblyai': (20, 5),
-        'gpt-live-transcribe': (10, 1),
+        'openrouter': (10, 1),
     }
 
     def count_jobs(_start, _end, **filters):
@@ -131,11 +129,8 @@ def test_get_performance_error_metrics_success(app, mock_db_utils):
         assert metrics is not None
         assert not metrics['error']
         assert metrics['overall_transcription_error_rate']['24h'] == 10.0
-        assert metrics['api_transcription_error_rates']['7d']['whisper'] == 10.0
-        assert (
-            metrics['api_transcription_error_rates']['7d']['gpt-live-transcribe']
-            == 10.0
-        )
+        assert metrics['api_transcription_error_rates']['7d']['openai'] == 4.0
+        assert metrics['api_transcription_error_rates']['7d']['openrouter'] == 10.0
         assert metrics['common_transcription_errors']['30d'][0][0] == 'Error A'
         assert metrics['overall_workflow_error_rate']['all'] == 20.0
 

@@ -48,8 +48,9 @@
                         <select name="{{ form.default_transcription_model.id }}" id="{{ form.default_transcription_model.id }}" class="input-select{{ ' border-red-500' if form.default_transcription_model.errors }}">
                             <option value="">-- Use System Default --</option>
                             {% for model in form.transcription_model_options %}
-                                {% set is_current = model.code == form.default_transcription_model.data and (model.code != 'openrouter' or (model.model_name or '') == (form.default_openrouter_model.data or '')) %}
-                                <option value="{{ model.code }}"{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if is_current %} selected{% endif %}>{{ model.display_name }}</option>
+                                {% set option_key = model.model_key or model.code %}
+                                {% set is_current = option_key == form.default_transcription_model.data or (model.code == form.default_transcription_model.data and ':' not in (form.default_transcription_model.data or '')) %}
+                                <option value="{{ option_key }}" data-provider="{{ model.provider_code or '' }}"{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if is_current %} selected{% endif %}>{{ model.display_name }}</option>
                             {% endfor %}
                         </select>
                         <input type="hidden" name="default_openrouter_model" id="roleDefaultOpenrouterModel" value="{{ form.default_openrouter_model.data or '' }}">
@@ -243,7 +244,9 @@
         if (!select || !slugInput) return;
         function syncOpenRouterSlug() {
             const option = select.selectedOptions && select.selectedOptions[0];
-            slugInput.value = option && option.value === 'openrouter' ? (option.dataset.modelName || '') : '';
+            slugInput.value = option && option.dataset.provider === 'openrouter'
+                ? (option.dataset.modelName || '')
+                : '';
         }
         select.addEventListener('change', syncOpenRouterSlug);
         syncOpenRouterSlug();

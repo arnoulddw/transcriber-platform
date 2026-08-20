@@ -29,7 +29,6 @@ from .exceptions import ApiClientError, TranscriptionApiError, LlmApiError, Tran
 # row's required_api_key — the single source of truth for dispatch.
 _LEGACY_PROVIDER_FALLBACK: Dict[str, str] = {
     "assemblyai": "assemblyai",
-    "universal": "assemblyai",
     "whisper": "openai",
     "gpt-4o-transcribe": "openai",
     "gpt-transcribe": "openai",
@@ -37,24 +36,58 @@ _LEGACY_PROVIDER_FALLBACK: Dict[str, str] = {
 }
 
 
-def _resolve_transcription_provider(model_code: str) -> str:
-    """Resolve the provider bucket for a transcription model code.
+def _resolve_transcription_model_reference(model_reference: str):
+    """Resolve a catalog reference to ``(provider, local_code, row)``.
 
-    Primary source: the catalog row's ``required_api_key`` (a fixed provider:
-    openai / assemblyai / openrouter). Falls back to a static map when no
-    catalog context exists (unit tests without a DB) or the row is missing.
+    New callers pass ``provider:model``. Bare model values remain supported for
+    old users, jobs, and tests; when the catalog is unavailable the small legacy
+    fallback below preserves the historical adapter behavior.
     """
-    code = str(model_code or "").strip()
+    reference = str(model_reference or "").strip()
+    row = None
+    provider_hint, reference_local_code = None, reference
     try:
         from app.models import transcription_catalog as catalog_model
-        row = catalog_model.get_model_by_code(code)
-        if row and row.get("required_api_key"):
-            return str(row["required_api_key"]).strip().lower()
+        provider_hint, reference_local_code = catalog_model.split_model_reference(reference)
+        row = catalog_model.get_model_by_code(reference)
+        if row:
+            provider = str(
+                row.get("provider_code")
+                or row.get("required_api_key")
+                or provider_hint
+                or _LEGACY_PROVIDER_FALLBACK.get(reference, "")
+            ).strip().lower()
+            local_code = str(row.get("code") or reference_local_code or reference).strip()
+            if not provider and "/" in reference:
+                provider = "openrouter"
+            if provider == "assemblyai" and local_code.casefold() == "assemblyai":
+                local_code = "universal"
+            if provider == "openrouter" and reference.casefold() == "openrouter":
+                local_code = ""
+            return provider, local_code, row
+        provider_hint, local_code = provider_hint, reference_local_code
     except Exception:
-        pass
-    if code.startswith("gpt-live-"):  # live models use the OpenAI realtime bucket
-        return "openai"
-    return _LEGACY_PROVIDER_FALLBACK.get(code, code)
+        provider_hint, local_code = None, reference
+
+    provider = str(provider_hint or "").strip().lower()
+    if not provider:
+        if reference.startswith("gpt-live-"):
+            provider = "openai"
+        else:
+            provider = _LEGACY_PROVIDER_FALLBACK.get(reference, "")
+            if not provider and "/" in reference:
+                provider = "openrouter"
+    if provider == "assemblyai" and local_code.casefold() == "assemblyai":
+        local_code = "universal"
+    if provider == "openrouter" and reference.casefold() == "openrouter":
+        local_code = ""
+    return provider, local_code, row
+
+
+def _resolve_transcription_provider(model_code: str) -> str:
+    """Resolve the provider bucket for a transcription model reference."""
+    provider, _local_code, _row = _resolve_transcription_model_reference(model_code)
+    return provider
 
 
 # --- Factory Methods ---
@@ -80,16 +113,16 @@ def get_transcription_client(provider_name: str, api_key: str, config: Dict[str,
     if not api_key:
         raise ValueError(f"API key is required to initialize the '{provider_name}' transcription client.")
 
-    provider = _resolve_transcription_provider(provider_name)
+    provider, local_model_code, _row = _resolve_transcription_model_reference(provider_name)
     try:
         if provider == "openai":
-            # One parameterized client for every OpenAI-model: the model name
-            # and response style come from API_LIMITS[model_code].
-            return OpenAIModelTranscriptionClient(provider_name, api_key, config)
+            # The adapter receives the provider-local model identifier, while
+            # the caller may have supplied the canonical provider:model key.
+            return OpenAIModelTranscriptionClient(local_model_code or provider_name, api_key, config)
         if provider == "assemblyai":
-            return AssemblyAITranscriptionAPI(api_key, config, model_code=provider_name)
+            return AssemblyAITranscriptionAPI(api_key, config, model_code=local_model_code or "universal")
         if provider == "openrouter":
-            return OpenRouterTranscriptionClient(api_key, config)
+            return OpenRouterTranscriptionClient(api_key, config, model_code=local_model_code or "")
         logging.error(f"[API Factory] Unsupported transcription provider requested: {provider_name}")
         raise ValueError(f"Unsupported transcription provider: {provider_name}")
     except ValueError as ve: # Catch API key missing error or unsupported provider

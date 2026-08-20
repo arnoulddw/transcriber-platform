@@ -32,7 +32,7 @@ def test_update_profile_success(logged_in_client_with_permissions):
         'first_name': 'Test',
         'last_name': 'UserUpdated',
         'default_content_language': 'es',
-        'default_transcription_model': 'whisper',
+        'default_transcription_model': 'gpt-4o-transcribe',
         'enable_auto_title_generation': True,
         'language': 'en'
     }
@@ -47,7 +47,7 @@ def test_update_profile_success(logged_in_client_with_permissions):
     assert user.first_name == 'Test'
     assert user.last_name == 'UserUpdated'
     assert user.default_content_language == 'es'
-    assert user.default_transcription_model == 'whisper'
+    assert user.default_transcription_model == 'openai:gpt-4o-transcribe'
     assert user.enable_auto_title_generation is True
 
 def test_update_profile_invalid_data(logged_in_client):

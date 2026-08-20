@@ -35,7 +35,16 @@ def index():
     # --- Determine Effective Defaults ---
     catalog_models = transcription_catalog_model.get_active_models()
     logging.debug(f"{log_prefix} Loaded {len(catalog_models)} active transcription models from catalog.")
-    active_model_codes = {model['code'] for model in catalog_models}
+    active_model_keys = {
+        str(model.get('model_key') or model.get('code') or '').strip()
+        for model in catalog_models
+        if model.get('code')
+    }
+    active_model_codes = {
+        str(model.get('code') or '').strip()
+        for model in catalog_models
+        if model.get('code')
+    }
 
     supported_languages = transcription_catalog_model.get_language_map()
     effective_default_language = (
@@ -63,9 +72,18 @@ def index():
             logging.debug(f"{log_prefix} User has no language preference, using system default: {effective_default_language}")
 
         if current_user.default_transcription_model:
-            if current_user.default_transcription_model in active_model_codes:
-                effective_default_api = current_user.default_transcription_model
+            stored_model = transcription_catalog_model.get_model_by_code(
+                current_user.default_transcription_model
+            )
+            stored_model_key = (stored_model or {}).get('model_key')
+            if stored_model_key in active_model_keys:
+                effective_default_api = stored_model_key
                 logging.debug(f"{log_prefix} Using user's default model: {effective_default_api}")
+            elif current_user.default_transcription_model in active_model_codes:
+                # Compatibility for a legacy bare value while the database is
+                # being migrated to provider-qualified defaults.
+                effective_default_api = current_user.default_transcription_model
+                logging.debug(f"{log_prefix} Using legacy user's default model: {effective_default_api}")
             else:
                 logging.warning(
                     f"{log_prefix} User's preferred model '{current_user.default_transcription_model}' "
