@@ -187,10 +187,6 @@ def get_usage_analytics_metrics() -> Dict[str, Any]:
         'error': None
     }
     time_periods = _get_time_periods()
-    supported_apis = list(dict.fromkeys(
-        list(current_app.config.get('TRANSCRIPTION_PROVIDERS', []) or [])
-        + list(current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []) or [])
-    ))
     supported_workflow_models, workflow_display_map = _get_supported_llm_models()
     # Define relevant statuses for volume/duration metrics
     relevant_statuses_for_volume = ('finished', 'cancelled')
@@ -345,10 +341,6 @@ def get_performance_error_metrics() -> Dict[str, Any]:
         'error': None
     }
     time_periods = _get_time_periods()
-    supported_apis = list(dict.fromkeys(
-        list(current_app.config.get('TRANSCRIPTION_PROVIDERS', []) or [])
-        + list(current_app.config.get('LIVE_TRANSCRIPTION_MODELS', []) or [])
-    ))
     supported_workflow_models, workflow_display_map = _get_supported_llm_models()
 
     try:
@@ -366,15 +358,7 @@ def get_performance_error_metrics() -> Dict[str, Any]:
                 overall_transcription_rate = _safe_division(total_transcription_errors, total_transcription_jobs_for_error_rate) * 100
                 metrics['overall_transcription_error_rate'][key] = round(overall_transcription_rate, 2)
 
-                api_transcription_rates = {}
-                for api in supported_apis:
-                    # Denominator for API-specific error rate: all jobs for that API (finished, cancelled, error)
-                    jobs_for_api = transcription_utils.count_jobs_in_range(
-                        start, end, api_used=api, status__in=['finished', 'cancelled', 'error']
-                    )
-                    errors_for_api = transcription_utils.count_jobs_in_range(start, end, status='error', api_used=api)
-                    api_rate = _safe_division(errors_for_api, jobs_for_api) * 100
-                    api_transcription_rates[api] = round(api_rate, 2)
+                api_transcription_rates = transcription_utils.get_api_error_rate_distribution_in_range(start, end)
                 metrics['api_transcription_error_rates'][key] = api_transcription_rates
 
                 common_transcription = transcription_utils.get_common_error_messages_in_range(start, end, limit=10)

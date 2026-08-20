@@ -36,6 +36,10 @@ def mock_db_utils():
         mock_transcription_utils.count_jobs_in_range.return_value = 50
         mock_transcription_utils.sum_minutes_in_range.return_value = 120.5
         mock_transcription_utils.get_api_distribution_in_range.return_value = {'openai': 30, 'assemblyai': 20}
+        mock_transcription_utils.get_api_error_rate_distribution_in_range.return_value = {
+            'openai': 4.0,
+            'openrouter': 10.0,
+        }
         mock_transcription_utils.get_language_distribution_in_range.return_value = {'en': 40, 'es': 10}
         mock_transcription_utils.count_successful_title_generations_in_range.return_value = 25
         mock_transcription_utils.get_workflow_model_distribution.return_value = {'gemini-3.0-flash': 15}
@@ -102,17 +106,7 @@ def test_get_performance_error_metrics_success(app, mock_db_utils):
     # Specific setup for this test
     mock_user_utils, mock_transcription_utils = mock_db_utils
     
-    api_counts = {
-        'openai': (50, 2),
-        'assemblyai': (20, 5),
-        'openrouter': (10, 1),
-    }
-
     def count_jobs(_start, _end, **filters):
-        api = filters.get('api_used')
-        if api:
-            jobs, errors = api_counts[api]
-            return errors if filters.get('status') == 'error' else jobs
         if filters.get('llm_operation_status__ne') == 'idle':
             return 20
         if filters.get('llm_operation_status') == 'error':
