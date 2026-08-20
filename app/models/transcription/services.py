@@ -188,7 +188,12 @@ def mark_active_jobs_interrupted(job_ids) -> int:
         raise
 
 
-def finalize_job_success(job_id: str, transcription_text: str, detected_language: str) -> None:
+def finalize_job_success(
+    job_id: str,
+    transcription_text: str,
+    detected_language: str,
+    has_transcription_warning: bool = False,
+) -> None:
     """
     Updates a job record upon successful completion. Sets status to 'finished',
     saves the transcription text and detected language, and clears any previous error message.
@@ -207,12 +212,21 @@ def finalize_job_success(job_id: str, transcription_text: str, detected_language
             completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
             transcription_text = %s,
             detected_language = %s,
+            has_transcription_warning = %s,
             error_message = NULL
         WHERE id = %s
         """
     cursor = get_cursor()
     try:
-        cursor.execute(sql, (transcription_text, detected_language, job_id))
+        cursor.execute(
+            sql,
+            (
+                transcription_text,
+                detected_language,
+                bool(has_transcription_warning),
+                job_id,
+            ),
+        )
         get_db().commit()
         if cursor.rowcount > 0:
             logger.info("Finalized job successfully in DB.")

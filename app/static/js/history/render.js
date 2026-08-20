@@ -63,6 +63,7 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
     listItem.dataset.fullText = initialTranscriptText;
     listItem.dataset.contentLoaded = hasFullTranscript ? 'true' : 'false';
     listItem.dataset.hasMore = transcription.transcription_has_more ? 'true' : 'false';
+    listItem.dataset.transcriptionWarning = transcription.has_transcription_warning === true ? 'true' : 'false';
     listItem.dataset.initialPollTitle = shouldPollTitle ? 'true' : 'false';
 
 
@@ -135,6 +136,8 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
                              ? transcription.generated_title
                              : (transcription.filename || 'Unknown Filename');
     const showInitialTitleIcon = transcription.generated_title && transcription.title_generation_status === 'success';
+    const hasTranscriptionWarning = transcription.has_transcription_warning === true;
+    const transcriptionWarningIconHtml = `<i class="material-icons tiny text-red-600 align-middle ml-1${hasTranscriptionWarning ? '' : ' hidden'}" id="title-warning-icon-${transcription.id}" title="Transcript may be incomplete" aria-label="Transcript may be incomplete">error_outline</i>`;
 
 
     listItem.innerHTML = `
@@ -144,7 +147,7 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
                     <div class="flex-grow min-w-0">
                         <div class="title-wrapper">
                             <b id="title-${transcription.id}" class="text-text-strong font-medium sm:truncate leading-tight">
-                                ${window.escapeHtml(initialTitleText)}<i class="material-icons tiny text-primary align-middle ml-1 ${showInitialTitleIcon ? '' : 'hidden'}" id="title-icon-${transcription.id}">auto_awesome</i>
+                                ${window.escapeHtml(initialTitleText)}<i class="material-icons tiny text-primary align-middle ml-1 ${showInitialTitleIcon ? '' : 'hidden'}" id="title-icon-${transcription.id}">auto_awesome</i>${transcriptionWarningIconHtml}
                             </b>
                         </div>
                         <p class="meta text-xs text-gray-500">

@@ -31,6 +31,8 @@
             const data = await response.json();
             const titleElement = document.getElementById(`title-${transcriptionId}`);
             const iconElement = document.getElementById(`title-icon-${transcriptionId}`);
+            const warningIconElement = document.getElementById(`title-warning-icon-${transcriptionId}`);
+            const warningIconHtml = warningIconElement ? warningIconElement.outerHTML : '';
 
             if (!titleElement || !iconElement) {
                 window.logger.warn(pollLogPrefix, `Title or icon element not found for ID. Removing from poll.`);
@@ -42,7 +44,7 @@
             switch (data.status) {
                 case 'generated':
                     window.logger.info(pollLogPrefix, `Title generated: '${data.title}'`);
-                    titleElement.innerHTML = `${window.escapeHtml(data.title)}<i class="material-icons tiny text-primary align-middle ml-1" id="title-icon-${transcriptionId}">auto_awesome</i>`;
+                    titleElement.innerHTML = `${window.escapeHtml(data.title)}<i class="material-icons tiny text-primary align-middle ml-1" id="title-icon-${transcriptionId}">auto_awesome</i>${warningIconHtml}`;
                     titleElement.classList.add('title-updated'); 
                     idsToPollForTitle.delete(transcriptionId);
                     delete titlePollAttempts[transcriptionId];
@@ -51,7 +53,7 @@
                 case 'unknown':
                 case 'disabled':
                     window.logger.warn(pollLogPrefix, `Title generation status is '${data.status}'. Using filename. Stopping poll.`);
-                    titleElement.innerHTML = `${window.escapeHtml(data.title)}<i class="material-icons tiny text-primary align-middle ml-1 hidden" id="title-icon-${transcriptionId}">auto_awesome</i>`;
+                    titleElement.innerHTML = `${window.escapeHtml(data.title)}<i class="material-icons tiny text-primary align-middle ml-1 hidden" id="title-icon-${transcriptionId}">auto_awesome</i>${warningIconHtml}`;
                     idsToPollForTitle.delete(transcriptionId);
                     delete titlePollAttempts[transcriptionId];
                     break;

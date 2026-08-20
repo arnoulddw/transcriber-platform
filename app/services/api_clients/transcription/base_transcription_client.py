@@ -70,6 +70,7 @@ class BaseTranscriptionClient(ABC):
 
         self.progress_callback: ProgressCallback = None # Store callback per transcribe call
         self.cancel_event: Optional[threading.Event] = None # Store cancel event per transcribe call
+        self.has_transcription_warning: bool = False
         # Get MAX_CONCURRENT_CHUNKS from app config
         self.max_concurrent_chunks = self.config.get('TRANSCRIPTION_WORKERS', 4)
 
@@ -319,6 +320,7 @@ class BaseTranscriptionClient(ABC):
         # Store callback and cancel event for use by helper methods
         self.progress_callback = progress_callback
         self.cancel_event = cancel_event or threading.Event() # Use provided or create new
+        self.has_transcription_warning = False
 
         api_name = self._get_api_name()
         requested_language = language_code
@@ -595,22 +597,70 @@ class BaseTranscriptionClient(ABC):
                 else:
                     raise TranscriptionProcessingError("One or more chunks failed transcription.", provider=api_name)
 
+            missing_chunks = [
+                chunk_num
+                for chunk_num in range(1, total_chunks + 1)
+                if results.get(chunk_num) is None
+            ]
+            successful_chunks = total_chunks - len(missing_chunks)
+            if successful_chunks != total_chunks:
+                overall_success = False
+                missing_chunks_text = ", ".join(str(chunk_num) for chunk_num in missing_chunks)
+                mismatch_message = (
+                    f"ERROR: Expected transcription results for {total_chunks} chunks, "
+                    f"but received {successful_chunks}. Missing chunk(s): {missing_chunks_text}."
+                )
+                self._report_progress(mismatch_message, True)
+                raise TranscriptionProcessingError(
+                    "One or more chunks did not return a transcription result.",
+                    provider=api_name,
+                )
+
             transcription_texts = []
             detected_languages = []
             first_successful_lang = None
-            successful_chunks = 0
             for i in range(total_chunks):
                 chunk_num = i + 1
-                result_tuple = results.get(chunk_num)
-                if result_tuple:
-                    text, lang = result_tuple
-                    transcription_texts.append(text)
-                    successful_chunks += 1
-                    if lang:
-                        detected_languages.append(lang)
-                        if first_successful_lang is None: first_successful_lang = lang
+                result_tuple = results[chunk_num]
+                if result_tuple is None:
+                    raise TranscriptionProcessingError(
+                        "One or more chunks did not return a transcription result.",
+                        provider=api_name,
+                    )
+                text, lang = result_tuple
+                normalized_text = text.strip() if isinstance(text, str) else str(text or "").strip()
+                if not normalized_text:
+                    chunk_path = chunk_files[i]
+                    source_is_non_trivial = False
+                    try:
+                        source_is_non_trivial = (
+                            os.path.isfile(chunk_path) and os.path.getsize(chunk_path) > 0
+                        )
+                    except OSError as exc:
+                        self.logger.warning(
+                            "%s Could not inspect source chunk %s for empty-result warning: %s",
+                            log_prefix,
+                            chunk_num,
+                            exc,
+                        )
 
-            full_transcription = " ".join(filter(None, transcription_texts))
+                    if source_is_non_trivial:
+                        self.has_transcription_warning = True
+                        warning_message = (
+                            f"WARNING: Chunk {chunk_num}/{total_chunks} returned no transcription text; "
+                            "the transcript may be incomplete."
+                        )
+                        self.logger.warning("%s %s", log_prefix, warning_message)
+                        self._report_progress(warning_message, False)
+                    continue
+
+                transcription_texts.append(normalized_text)
+                if lang:
+                    detected_languages.append(lang)
+                    if first_successful_lang is None:
+                        first_successful_lang = lang
+
+            full_transcription = " ".join(transcription_texts)
             self.logger.debug(f"{log_prefix} Successfully aggregated transcriptions from {successful_chunks} completed chunks.")
 
             if requested_language == 'auto':

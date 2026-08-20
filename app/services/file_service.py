@@ -303,6 +303,14 @@ def split_audio_file(file_path: str, temp_dir: str,
         chunk_files = sorted(glob.glob(os.path.join(temp_dir, f"{base_name_no_ext}_chunk_*.mp3")))
         if not chunk_files:
             raise RuntimeError("FFmpeg completed without creating audio chunks.")
+        if len(chunk_files) != num_chunks:
+            mismatch_message = (
+                f"ERROR: Expected {num_chunks} audio chunks but FFmpeg created "
+                f"{len(chunk_files)}."
+            )
+            report_progress(mismatch_message, True)
+            remove_files(chunk_files)
+            return []
 
         for chunk_index, chunk_filename_full in enumerate(chunk_files, start=1):
             actual_size = os.path.getsize(chunk_filename_full)
