@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 
 from flask import current_app
@@ -42,41 +42,51 @@ def _get_default_transcription_model_for_new_user(role: Role) -> Optional[str]:
         logger.warning(f"[DB:User] No active transcription models available while creating user with role '{role.name}'.")
         return current_app.config.get('DEFAULT_TRANSCRIPTION_PROVIDER')
 
-    permitted_model_codes: List[str] = []
-    default_model_code: Optional[str] = None
+    permitted_model_keys: List[str] = []
+    default_model_key: Optional[str] = None
     role_preferred_model = (getattr(role, 'default_transcription_model', None) or '').strip()
+    models_by_code: Dict[str, List[str]] = {}
 
     for model in catalog_models:
         permission_key = model.get('permission_key')
+        model_code = str(model.get('code') or '').strip()
+        model_key = str(model.get('model_key') or model_code).strip()
+        if not model_code or not model_key:
+            continue
+        models_by_code.setdefault(model_code, []).append(model_key)
         if not permission_key or role.has_permission(permission_key):
-            permitted_model_codes.append(model['code'])
+            permitted_model_keys.append(model_key)
             if model.get('is_default'):
-                default_model_code = model['code']
+                default_model_key = model_key
 
-    if not permitted_model_codes:
-        logger.warning(f"[DB:User] New user with role '{role.name}' has no transcription providers permitted.")
+    if not permitted_model_keys:
+        logger.warning(f"[DB:User] New user with role '{role.name}' has no transcription models permitted.")
         return None
 
+    preferred_key = role_preferred_model
+    if preferred_key not in permitted_model_keys:
+        legacy_matches = models_by_code.get(role_preferred_model, [])
+        if len(legacy_matches) == 1:
+            preferred_key = legacy_matches[0]
+    if preferred_key in permitted_model_keys:
+        logger.debug(
+            f"[DB:User] Using role-level default transcription model '{preferred_key}' for new user with role '{role.name}'."
+        )
+        return preferred_key
     if role_preferred_model:
-        if role_preferred_model in permitted_model_codes:
-            logger.debug(
-                f"[DB:User] Using role-level default transcription model '{role_preferred_model}' for new user with role '{role.name}'."
-            )
-            return role_preferred_model
-        else:
-            logger.warning(
-                f"[DB:User] Role '{role.name}' default transcription model '{role_preferred_model}' is not permitted. Falling back to catalog defaults."
-            )
+        logger.warning(
+            f"[DB:User] Role '{role.name}' default transcription model '{role_preferred_model}' is not permitted. Falling back to catalog defaults."
+        )
 
-    if default_model_code and default_model_code in permitted_model_codes:
-        logger.debug(f"[DB:User] Setting default model for new user to catalog default: '{default_model_code}'")
-        return default_model_code
+    if default_model_key and default_model_key in permitted_model_keys:
+        logger.debug(f"[DB:User] Setting default model for new user to catalog default: '{default_model_key}'")
+        return default_model_key
 
-    fallback_provider = permitted_model_codes[0]
+    fallback_model_key = permitted_model_keys[0]
     logger.debug(
-        f"[DB:User] Catalog default not permitted for role '{role.name}'. Falling back to first available: '{fallback_provider}'"
+        f"[DB:User] Catalog default not permitted for role '{role.name}'. Falling back to first available: '{fallback_model_key}'"
     )
-    return fallback_provider
+    return fallback_model_key
 
 
 def _get_default_openrouter_model_for_new_user(role: Role) -> Optional[str]:

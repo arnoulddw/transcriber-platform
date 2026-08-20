@@ -66,7 +66,12 @@
                 <span>{{ _('Model') }}</span>
                 <select id="liveModel" class="live-select">
                     {% for model in live_transcription_models|default([]) %}
-                    <option value="{{ model.code if model is mapping else model }}"{% if model is mapping and model.provider %} data-provider="{{ model.provider }}"{% endif %}>{{ model.display_name if model is mapping else model }}</option>
+                    {% if model is mapping %}
+                    {% set option_key = model.model_key or model.code %}
+                    <option value="{{ option_key }}"{% if model.provider_code or model.provider %} data-provider="{{ model.provider_code or model.provider }}"{% endif %}>{{ model.display_name or model.code }}</option>
+                    {% else %}
+                    <option value="{{ model }}">{{ model }}</option>
+                    {% endif %}
                     {% endfor %}
                 </select>
             </label>

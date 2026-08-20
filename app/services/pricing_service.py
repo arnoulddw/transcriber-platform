@@ -88,8 +88,29 @@ def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]
             return None
         item_key_to_use = str(key_to_use).strip()
         type_to_use = item_type.lower()
+        lookup_keys = [item_key_to_use]
 
-        price = pricing_model.get_price(item_key=item_key_to_use, item_type=type_to_use)
+        # Canonical catalog keys are provider-qualified. Try that identity first,
+        # then the old bare code so existing prices remain usable during rollout.
+        if type_to_use == 'transcription':
+            try:
+                from app.models import transcription_catalog as catalog_model
+                model = catalog_model.get_model_by_code(item_key_to_use)
+                if model:
+                    canonical_key = str(model.get('model_key') or '').strip()
+                    local_code = str(model.get('code') or '').strip()
+                    lookup_keys = [
+                        value for value in (canonical_key, item_key_to_use, local_code)
+                        if value and value not in lookup_keys
+                    ] + [item_key_to_use]
+            except Exception as catalog_err:
+                logging.debug("%s Could not resolve catalog key; using legacy price key: %s", log_prefix, catalog_err)
+
+        price = None
+        for lookup_key in dict.fromkeys(lookup_keys):
+            price = pricing_model.get_price(item_key=lookup_key, item_type=type_to_use)
+            if price is not None:
+                break
 
         # --- BACKWARD COMPATIBILITY ---
         # If no price is found for the specific model, try falling back to the generic key.

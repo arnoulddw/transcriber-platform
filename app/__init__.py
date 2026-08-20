@@ -433,13 +433,32 @@ def create_app(config_class=Config) -> Flask:
 
         supported_ui_languages = app.config.get('SUPPORTED_LANGUAGES', [])
 
-        api_name_map_for_frontend_subset = {
-            model['code']: model['display_name'] for model in catalog_models
-        }
+        api_name_map_for_frontend_subset = {}
+        for model in catalog_models:
+            code = str(model.get('code') or '').strip()
+            model_key = str(model.get('model_key') or code).strip()
+            display_name = model.get('display_name')
+            if model_key:
+                api_name_map_for_frontend_subset[model_key] = display_name
+            if code:
+                # Keep the bare alias for historical transcript metadata and
+                # older browser state while new selectors use model_key.
+                api_name_map_for_frontend_subset.setdefault(code, display_name)
+
+        def _update_live_model_context(entries):
+            for live_entry in entries:
+                code = str(live_entry.get('code') or '').strip()
+                model_key = str(live_entry.get('model_key') or code).strip()
+                display_name = live_entry.get('display_name')
+                if model_key:
+                    api_name_map_for_frontend_subset[model_key] = display_name
+                if code:
+                    # Keep the bare alias for historical transcript metadata
+                    # and older browser state.
+                    api_name_map_for_frontend_subset.setdefault(code, display_name)
+
         live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
-        live_model_codes = [model['code'] for model in live_transcription_models]
-        for live_entry in live_transcription_models:
-            api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
+        _update_live_model_context(live_transcription_models)
 
         color_name_map = {
             "#ffffff": "Default", "#ffd1dc": "Pink", "#aec6cf": "Blue Grey",
@@ -475,9 +494,7 @@ def create_app(config_class=Config) -> Flask:
                 }
 
             live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
-            live_model_codes = [model['code'] for model in live_transcription_models]
-            for live_entry in live_transcription_models:
-                api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
+            _update_live_model_context(live_transcription_models)
         elif not is_multi:
              initial_key_status = {
                  'openai': bool(app.config.get('OPENAI_API_KEY')),
@@ -501,9 +518,7 @@ def create_app(config_class=Config) -> Flask:
 
         if not is_multi:
             live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
-            live_model_codes = [model['code'] for model in live_transcription_models]
-            for live_entry in live_transcription_models:
-                api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
+            _update_live_model_context(live_transcription_models)
 
         if user or not is_multi:
             # ``initial_key_status`` already contains the admin-configured
@@ -576,7 +591,7 @@ def create_app(config_class=Config) -> Flask:
             API_NAME_MAP_FRONTEND=api_name_map_for_frontend_subset,
             TRANSCRIPTION_MODEL_CATALOG=available_transcription_models,
             live_transcription_models=live_transcription_models,
-            LIVE_TRANSCRIPTION_MODELS=live_model_codes,
+            LIVE_TRANSCRIPTION_MODELS=live_transcription_models,
             LLM_MODEL_CATALOG=llm_model_catalog,
             COLOR_NAME_MAP=color_name_map,
             app_debug=app.debug,

@@ -127,6 +127,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
     with app.app_context():
         api_display_name = _get_api_display_name(api_choice)
+        provider_code = _resolve_transcription_provider(api_choice)
         last_error_message_from_callback = "Transcription failed via API client."
 
         try:
@@ -174,6 +175,11 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 model_metadata = transcription_catalog_model.get_model_by_code(api_choice)
                 if model_metadata:
                     api_permission = model_metadata.get('permission_key')
+                    provider_code = str(
+                        model_metadata.get('provider_code')
+                        or model_metadata.get('required_api_key')
+                        or provider_code
+                    ).strip().lower()
             except Exception as catalog_err:
                 logger.error(f"Failed to resolve catalog metadata for model '{api_choice}': {catalog_err}", exc_info=True)
 
@@ -254,7 +260,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 was_cancelled = True; cancel_event.set(); raise InterruptedError("Job cancelled by user before API call.")
 
             extra_transcription_options = None
-            if api_choice == 'assemblyai' and speaker_diarization_enabled:
+            if provider_code == 'assemblyai' and speaker_diarization_enabled:
                 if user and check_permission(user, 'allow_speaker_diarization'):
                     extra_transcription_options = {'speaker_diarization_enabled': True}
                     logger.info("Speaker diarization enabled for AssemblyAI job.")
@@ -264,14 +270,14 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             if api_model:
                 extra_transcription_options = extra_transcription_options or {}
                 extra_transcription_options["model"] = api_model
-            elif api_choice == 'openrouter':
+            elif provider_code == 'openrouter':
                 raise ValueError("OpenRouter model is required.")
 
             api_key: Optional[str] = None
             mode = current_app.config['DEPLOYMENT_MODE']
             try:
                 if mode == 'multi':
-                    key_service_name = _resolve_transcription_provider(api_choice)
+                    key_service_name = provider_code
                     api_key = get_decrypted_api_key(
                         user_id,
                         key_service_name,
@@ -304,7 +310,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             # No admin model key: fall back to global config.
                             logger.debug(f"User key not found and role does not allow key management. Falling back to global API key for '{api_display_name}'.")
                             key_env_var = None
-                            provider_for_key = _resolve_transcription_provider(api_choice)
+                            provider_for_key = provider_code
                             if provider_for_key == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                             elif provider_for_key == 'openai': key_env_var = 'OPENAI_API_KEY'
                             elif provider_for_key == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'
@@ -317,7 +323,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             logger.debug(f"Using global API key for '{api_display_name}' (user key management disabled).")
                 elif mode == 'single':
                     key_env_var = None
-                    provider_for_key = _resolve_transcription_provider(api_choice)
+                    provider_for_key = provider_code
                     if provider_for_key == 'assemblyai': key_env_var = 'ASSEMBLYAI_API_KEY'
                     elif provider_for_key == 'openai': key_env_var = 'OPENAI_API_KEY'
                     elif provider_for_key == 'openrouter': key_env_var = 'OPENROUTER_API_KEY'

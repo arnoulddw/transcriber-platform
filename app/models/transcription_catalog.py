@@ -14,26 +14,100 @@ logger = logging.getLogger(__name__)
 
 # Table names kept in constants to avoid typos.
 MODELS_TABLE = "transcription_models_catalog"
+PROVIDERS_TABLE = "transcription_providers_catalog"
 LANGUAGES_TABLE = "transcription_languages_catalog"
 
-# Provider-level metadata for the fixed transcription pipeline providers.
-# Models are NOT pre-seeded: rows are registered at runtime when an admin/user
-# saves an API key with a model name. The provider list itself comes from
-# config (TRANSCRIPTION_PROVIDERS) and is fixed — the admin cannot add providers.
+# Provider metadata is deliberately separate from selectable model rows. The
+# supported provider adapters remain fixed in application code, while model
+# identifiers/display names can be registered as data at runtime.
 _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
     "assemblyai": {
+        "display_name": "AssemblyAI",
         "permission_key": "use_api_assemblyai",
         "required_api_key": "assemblyai",
+        "client_kind": "assemblyai",
     },
     "openai": {
+        "display_name": "OpenAI",
         "permission_key": "use_api_openai",
         "required_api_key": "openai",
+        "client_kind": "openai",
     },
     "openrouter": {
+        "display_name": "OpenRouter",
         "permission_key": "use_api_openrouter",
         "required_api_key": "openrouter",
+        "client_kind": "openrouter",
     },
 }
+
+# Provider labels and retired identifiers are never selectable models. The
+# provider table remains the source of provider metadata; these sets are only
+# defensive compatibility filters for databases being migrated.
+PROVIDER_ONLY_MODEL_CODES = frozenset({"openai", "assemblyai", "openrouter"})
+DEPRECATED_MODEL_CODES = frozenset({"whisper", "gpt-4o-transcribe-diarize"})
+MODEL_KEY_SEPARATOR = ":"
+
+
+def make_model_key(provider_code: Optional[str], model_code: Optional[str]) -> str:
+    """Build the stable identity used outside the catalog table.
+
+    ``code`` remains provider-local so a provider can introduce a model with
+    the same identifier as another provider. Callers that persist or submit a
+    selectable model use ``provider:model`` instead.
+    """
+    provider = str(provider_code or "").strip().lower()
+    code = str(model_code or "").strip()
+    if provider and code:
+        return f"{provider}{MODEL_KEY_SEPARATOR}{code}"
+    return code
+
+
+def split_model_reference(
+    reference: Optional[str],
+    provider_code: Optional[str] = None,
+) -> Tuple[Optional[str], str]:
+    """Return ``(provider, provider_local_code)`` for old or new references.
+
+    Existing database values may still contain a bare model code. A qualified
+    value is recognized only when its prefix is a known transcription provider,
+    so provider-local names that happen to contain a colon remain untouched.
+    """
+    value = str(reference or "").strip()
+    provider_hint = str(provider_code or "").strip().lower() or None
+    if not value:
+        return provider_hint, ""
+    if MODEL_KEY_SEPARATOR in value:
+        prefix, local_code = value.split(MODEL_KEY_SEPARATOR, 1)
+        prefix = prefix.strip().lower()
+        if prefix in _PROVIDER_METADATA and local_code.strip():
+            return prefix, local_code.strip()
+    return provider_hint, value
+
+
+def _row_provider(row: Dict[str, Any]) -> str:
+    return str(
+        row.get("provider_code")
+        or row.get("required_api_key")
+        or ""
+    ).strip().lower()
+
+
+def _row_to_model(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a joined catalog row into the shared model representation."""
+    code = str(row.get("code") or "").strip()
+    provider = _row_provider(row)
+    return {
+        "code": code,
+        "model_key": make_model_key(provider, code),
+        "display_name": row.get("display_name"),
+        "provider_code": provider or None,
+        "permission_key": row.get("permission_key"),
+        "required_api_key": row.get("required_api_key"),
+        "is_default": bool(row.get("is_default", False)),
+        "is_active": bool(row.get("is_active", True)),
+        "model_purpose": str(row.get("model_purpose") or "transcription").strip().lower(),
+    }
 
 
 def init_db_command() -> None:
@@ -46,6 +120,7 @@ def init_db_command() -> None:
     logger.info(f"{log_prefix} Ensuring transcription catalog tables exist.")
 
     try:
+        _ensure_providers_table(cursor)
         _ensure_models_table(cursor)
         _ensure_languages_table(cursor)
         get_db().commit()
@@ -54,8 +129,12 @@ def init_db_command() -> None:
         logger.error(f"{log_prefix} Failed to initialize catalog tables: {err}", exc_info=True)
         raise
 
-    # Seed defaults after the tables are in place.
+    # Seed provider metadata, then normalize legacy model rows and restore
+    # dynamic model rows from saved credentials before seeding languages.
     try:
+        _seed_providers_from_config()
+        _normalize_legacy_model_rows()
+        _sync_models_from_saved_keys()
         seed_from_config()
     except Exception as seed_err:
         logger.error(f"{log_prefix} Failed to seed catalog tables: {seed_err}", exc_info=True)
@@ -74,7 +153,7 @@ def seed_from_config() -> None:
     _seed_languages_from_config()
 
 
-def get_active_models() -> List[Dict[str, Optional[str]]]:
+def get_active_models() -> List[Dict[str, Any]]:
     """
     Returns active normal transcription models sorted by configured order.
 
@@ -87,40 +166,39 @@ def get_active_models() -> List[Dict[str, Optional[str]]]:
 
     cursor = get_cursor()
     sql = f"""
-        SELECT code, display_name, permission_key, required_api_key, is_default, model_purpose
-        FROM {MODELS_TABLE}
-        WHERE is_active = TRUE
-        ORDER BY sort_order ASC, display_name ASC
+        SELECT
+            m.code,
+            m.display_name,
+            COALESCE(NULLIF(m.provider_code, ''), p.provider_code, m.required_api_key) AS provider_code,
+            COALESCE(p.permission_key, m.permission_key) AS permission_key,
+            COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
+            m.is_default,
+            m.model_purpose
+        FROM {MODELS_TABLE} AS m
+        LEFT JOIN {PROVIDERS_TABLE} AS p
+            ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
+        WHERE m.is_active = TRUE
+          AND m.model_purpose = 'transcription'
+          AND LOWER(m.code) NOT IN ('openai', 'assemblyai', 'openrouter', 'whisper', 'gpt-4o-transcribe-diarize')
+        ORDER BY m.sort_order ASC, m.display_name ASC
     """
     cursor.execute(sql)
     rows = cursor.fetchall() or []
-    models: List[Dict[str, Optional[str]]] = []
-    seen_codes: set[str] = set()
+    models: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
     for row in rows:
-        code = row["code"]
-        if not code or code in seen_codes:
+        model = _row_to_model(row)
+        model_key = model["model_key"]
+        if not model["code"] or model_key in seen_keys:
             continue
-        seen_codes.add(code)
-        display_name = row["display_name"]
-        purpose = str(row.get("model_purpose") or "transcription").strip().lower()
-        if purpose != "transcription":
-            continue
-        models.append(
-            {
-                "code": code,
-                "display_name": display_name,
-                "permission_key": row.get("permission_key"),
-                "required_api_key": row.get("required_api_key"),
-                "is_default": bool(row.get("is_default", False)),
-                "model_purpose": purpose,
-            }
-        )
+        seen_keys.add(model_key)
+        models.append(model)
     return models
 
 
 def get_all_active_models(
     model_purpose: Optional[str] = None,
-) -> List[Dict[str, Optional[str]]]:
+) -> List[Dict[str, Any]]:
     """Return active catalog rows, optionally filtered by ``model_purpose``.
 
     Unlike ``get_active_models`` (used for the normal transcription dropdown),
@@ -132,9 +210,19 @@ def get_all_active_models(
 
     cursor = get_cursor()
     sql = f"""
-        SELECT code, display_name, permission_key, required_api_key, is_default, model_purpose
-        FROM {MODELS_TABLE}
-        WHERE is_active = TRUE
+        SELECT
+            m.code,
+            m.display_name,
+            COALESCE(NULLIF(m.provider_code, ''), p.provider_code, m.required_api_key) AS provider_code,
+            COALESCE(p.permission_key, m.permission_key) AS permission_key,
+            COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
+            m.is_default,
+            m.model_purpose
+        FROM {MODELS_TABLE} AS m
+        LEFT JOIN {PROVIDERS_TABLE} AS p
+            ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
+        WHERE m.is_active = TRUE
+          AND LOWER(m.code) NOT IN ('openai', 'assemblyai', 'openrouter', 'whisper', 'gpt-4o-transcribe-diarize')
     """
     params: List[str] = []
     purpose = str(model_purpose or "").strip().lower()
@@ -144,60 +232,67 @@ def get_all_active_models(
     sql += " ORDER BY sort_order ASC, display_name ASC"
     cursor.execute(sql, tuple(params))
     rows = cursor.fetchall() or []
-    models: List[Dict[str, Optional[str]]] = []
-    seen: set[str] = set()
+    models: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
     for row in rows:
-        code = str(row.get("code") or "").strip()
-        if not code or code in seen:
+        model = _row_to_model(row)
+        model_key = model["model_key"]
+        if not model["code"] or model_key in seen_keys:
             continue
-        seen.add(code)
-        models.append({
-            "code": code,
-            "display_name": row.get("display_name"),
-            "permission_key": row.get("permission_key"),
-            "required_api_key": row.get("required_api_key"),
-            "is_default": bool(row.get("is_default", False)),
-            "model_purpose": str(row.get("model_purpose") or 'transcription').strip().lower(),
-        })
+        seen_keys.add(model_key)
+        models.append(model)
     return models
 
 
-def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[str, Optional[str]]]:
-    """Return the de-duplicated live transcription model catalog for UI consumers.
-
-    Live models are registered at runtime like normal transcription models
-    (``model_purpose='live'`` rows created from saved keys), so nothing is
-    pre-loaded from config. Each live row's catalog ``display_name`` is used.
-    """
-    live_models: List[Dict[str, Optional[str]]] = []
-    seen_codes: set[str] = set()
+def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Return the de-duplicated live transcription model catalog for UI consumers."""
+    live_models: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
 
     def append_model(code: str, display_name: Optional[str] = None, provider: Optional[str] = None) -> None:
         normalized_code = str(code or "").strip()
-        if not normalized_code or normalized_code in seen_codes:
+        provider_code = str(provider or ("openrouter" if "/" in normalized_code else "openai")).strip().lower()
+        if (
+            not normalized_code
+            or normalized_code.casefold() in PROVIDER_ONLY_MODEL_CODES
+            or normalized_code.casefold() in DEPRECATED_MODEL_CODES
+        ):
             return
-        seen_codes.add(normalized_code)
+        model_key = make_model_key(provider_code, normalized_code)
+        if model_key in seen_keys:
+            return
+        seen_keys.add(model_key)
         live_models.append({
             "code": normalized_code,
+            "model_key": model_key,
             "display_name": display_name or normalized_code,
-            "provider": provider or ("openrouter" if "/" in normalized_code else "openai"),
+            "provider": provider_code,
+            "provider_code": provider_code,
+            "required_api_key": provider_code,
         })
 
     try:
         cursor = get_cursor()
         cursor.execute(
             f"""
-            SELECT code, display_name, required_api_key
-            FROM {MODELS_TABLE}
-            WHERE is_active = TRUE AND model_purpose = 'live'
-            ORDER BY sort_order ASC, display_name ASC
+            SELECT
+                m.code,
+                m.display_name,
+                COALESCE(NULLIF(m.provider_code, ''), p.provider_code, m.required_api_key) AS provider_code,
+                COALESCE(p.required_api_key, m.required_api_key) AS required_api_key
+            FROM {MODELS_TABLE} AS m
+            LEFT JOIN {PROVIDERS_TABLE} AS p
+                ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
+            WHERE m.is_active = TRUE
+              AND m.model_purpose = 'live'
+            ORDER BY m.sort_order ASC, m.display_name ASC
             """
         )
         for row in cursor.fetchall() or []:
             append_model(
                 row["code"],
                 row["display_name"],
-                row.get("required_api_key"),
+                row.get("provider_code") or row.get("required_api_key"),
             )
     except MySQLError as err:
         logger.warning("[Catalog] Failed to load live models from catalog: %s", err, exc_info=True)
@@ -248,11 +343,7 @@ def _candidate_key_names(provider: str, required_key: str) -> List[str]:
     The names are used to find explicit model rows. Provider booleans and
     provider-wide rows are intentionally not sufficient to unlock a model.
     """
-    names = [required_key, provider]
-    if provider in {"whisper", "gpt-transcribe", "gpt-4o-transcribe"}:
-        names.append("openai")
-    if provider == "openrouter":
-        names.append("openrouter")
+    names = [provider, required_key]
     return [name for name in names if name]
 
 
@@ -261,7 +352,7 @@ def _key_entries_for_model(
     status: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
     """Collect key metadata for a catalog model without duplicating aliases."""
-    provider = str(model.get("code") or "").strip().lower()
+    provider = _model_provider(model)
     required_key = str(model.get("required_api_key") or "").strip().lower()
     provider_keys = status.get("provider_keys") or {}
     candidate_names = _candidate_key_names(provider, required_key)
@@ -287,7 +378,24 @@ def _key_entries_for_model(
                 continue
             seen.add(identity)
             entries.append(entry)
+
+    # Single-user deployments expose provider availability as a boolean because
+    # the key comes from the environment rather than user_api_keys. Treat that
+    # boolean as a provider-wide credential, but only when no structured
+    # provider-key map exists; structured multi-user entries must still honour
+    # their purpose scope and exact model names.
+    if not entries and "provider_keys" not in status and status.get(provider):
+        entries.append({
+            "model_name": provider,
+            "provider_wide": True,
+            "model_purposes": ["transcription"],
+        })
     return entries
+
+
+def _model_provider(model: Dict[str, Optional[str]]) -> str:
+    """Return the explicit provider for a catalog model."""
+    return str(model.get("provider_code") or model.get("required_api_key") or "").strip().lower()
 
 
 def expand_models_for_ui(
@@ -316,66 +424,49 @@ def expand_models_for_ui(
 
     def append_once(entry: Dict[str, Optional[str]]) -> None:
         code = str(entry.get("code") or "").strip()
-        model_name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
-        identity = (code, model_name if code == "openrouter" else "")
+        provider = _model_provider(entry)
+        model_key = str(entry.get("model_key") or make_model_key(provider, code)).strip()
+        identity = (model_key, str(entry.get("model_name") or "").strip())
         if code and identity not in seen_entries:
+            entry["model_key"] = model_key
             seen_entries.add(identity)
             expanded.append(entry)
 
     for model in models:
-        provider = str(model.get("code") or "").strip().lower()
+        catalog_code = str(model.get("code") or "").strip()
+        if not catalog_code:
+            continue
+        if catalog_code.casefold() in PROVIDER_ONLY_MODEL_CODES or catalog_code.casefold() in DEPRECATED_MODEL_CODES:
+            continue
+        provider = _model_provider(model)
         entries = [
             entry
             for entry in _key_entries_for_model(model, status)
             if _is_transcription_key(entry)
         ]
 
-        if provider == "openrouter":
-            names: List[str] = []
-            for entry in entries:
-                if entry.get("provider_wide"):
-                    continue
-                name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
-                if name and name not in names:
-                    names.append(name)
-            if not names:
-                # No specific OpenRouter model is known. The provider name is
-                # not a selectable model, so no option is emitted here.
-                continue
-            for name in names:
-                append_once({
-                    **model,
-                    "model_name": name,
-                    "model_slug": name,
-                    "display_name": name,
-                })
-            continue
-
-        catalog_code = str(model.get("code") or "").strip()
-        required_key = str(model.get("required_api_key") or "").strip().lower()
+        required_key = str(model.get("required_api_key") or provider).strip().lower()
         if not required_key:
-            # Models that do not declare a required provider key are available
-            # without any saved credential.
+            # Models without a provider credential remain available.
             append_once(dict(model))
             continue
         matching_entry = next(
             (
                 entry
                 for entry in entries
-                if not entry.get("provider_wide")
-                and str(entry.get("model_name") or entry.get("model_slug") or "").strip() == catalog_code
+                if entry.get("provider_wide")
+                or str(entry.get("model_name") or entry.get("model_slug") or "").strip() == catalog_code
             ),
             None,
         )
         if matching_entry:
             append_once({
                 **model,
+                "provider_code": provider,
                 "model_name": catalog_code,
-                "model_slug": None,
+                "model_slug": catalog_code if provider == "openrouter" else None,
                 "display_name": model.get("display_name") or catalog_code,
             })
-        # A provider-wide key or another model's key does not unlock this
-        # catalog row. The admin must save an explicit key for this model.
 
     return expanded
 
@@ -387,72 +478,98 @@ def build_model_options(
 ) -> List[Dict[str, Optional[str]]]:
     """Return the canonical de-duplicated transcription model option list.
 
-    Every catalog code appears at most once, except OpenRouter entries which
-    stay **per slug** so each configured transcription model remains
-    selectable. All dropdown consumers (home page, user settings modal, admin
-    role form, costs page) must source their options from here so the lists
-    cannot drift apart.
+    Every provider-local model identity appears at most once. OpenRouter entries
+    stay per slug so each configured transcription model remains selectable.
+    All dropdown consumers (home page, user settings modal, admin role form,
+    costs page) must source their options from here so the lists cannot drift
+    apart.
     """
     expanded = expand_models_for_ui(catalog_models, key_status, fallback_openrouter_model)
 
-    # Canonical ordering: every catalog code keeps its catalog order; the
-    # OpenRouter slugs (already one option per slug) are sorted alphabetically
-    # inside the openrouter group so all four dropdowns render identically.
-    or_entries = sorted(
-        (e for e in expanded if e.get("code") == "openrouter"),
-        key=lambda e: str(e.get("model_name") or "").lower(),
-    )
-    others = [e for e in expanded if e.get("code") != "openrouter"]
-    first_or = next(
-        (i for i, e in enumerate(expanded) if e.get("code") == "openrouter"),
-        len(others),
-    )
-
+    # Sort only after provider expansion and deduplication. The display name is
+    # the user-visible contract; catalog sort_order must not override A–Z.
     options: List[Dict[str, Optional[str]]] = []
-    seen: set[tuple[str, str]] = set()
-    for entry in others[:first_or] + or_entries + others[first_or:]:
-        code = str(entry.get("code") or "").strip()
-        identity = (code, entry.get("model_name") or "") if code == "openrouter" else (code, "")
-        if identity in seen:
+    seen: set[str] = set()
+    for entry in expanded:
+        model_key = str(
+            entry.get("model_key")
+            or make_model_key(_model_provider(entry), entry.get("code"))
+        ).strip()
+        if not model_key or model_key in seen:
             continue
-        seen.add(identity)
+        seen.add(model_key)
+        entry["model_key"] = model_key
         options.append(entry)
-    return options
+    return sorted(
+        options,
+        key=lambda entry: (
+            str(entry.get("display_name") or entry.get("code") or "").casefold(),
+            str(entry.get("code") or "").casefold(),
+            _model_provider(entry),
+        ),
+    )
 
 
-def get_model_by_code(code: str) -> Optional[Dict[str, Optional[str]]]:
-    if not code:
+def get_model_by_code(
+    code: str,
+    provider_code: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Resolve a canonical ``provider:model`` or a legacy bare model code.
+
+    Bare values remain readable for old users, roles, jobs, and API clients.
+    New callers should persist the returned ``model_key`` so two providers can
+    safely expose the same provider-local model code.
+    """
+    raw_reference = str(code or "").strip()
+    if not raw_reference:
         return None
+    provider, local_code = split_model_reference(raw_reference, provider_code)
+    if not local_code:
+        return None
+
     cursor = get_cursor()
     sql = f"""
-        SELECT code, display_name, permission_key, required_api_key, is_default, is_active
-        FROM {MODELS_TABLE}
-        WHERE code = %s
-        LIMIT 1
+        SELECT
+            m.code,
+            m.display_name,
+            COALESCE(NULLIF(m.provider_code, ''), p.provider_code, m.required_api_key) AS provider_code,
+            COALESCE(p.permission_key, m.permission_key) AS permission_key,
+            COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
+            m.is_default,
+            m.is_active,
+            m.model_purpose
+        FROM {MODELS_TABLE} AS m
+        LEFT JOIN {PROVIDERS_TABLE} AS p
+            ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
+        WHERE m.code = %s
     """
-    cursor.execute(sql, (code,))
-    row = cursor.fetchone()
-    if not row:
+    params: List[str] = [local_code]
+    if provider:
+        sql += " AND COALESCE(NULLIF(m.provider_code, ''), p.provider_code, m.required_api_key) = %s"
+        params.append(provider)
+    sql += " ORDER BY m.is_active DESC, m.is_default DESC, m.id ASC LIMIT 2"
+    cursor.execute(sql, tuple(params))
+    rows = cursor.fetchall() or []
+    if not rows:
         return None
-    display_name = row["display_name"]
-    return {
-        "code": row["code"],
-        "display_name": display_name,
-        "permission_key": row.get("permission_key"),
-        "required_api_key": row.get("required_api_key"),
-        "is_default": bool(row.get("is_default", False)),
-        "is_active": bool(row.get("is_active", False)),
-    }
+    if not provider and len(rows) > 1:
+        logger.warning(
+            "[Catalog] Bare model reference '%s' matched multiple providers; "
+            "use the canonical provider:model key.",
+            raw_reference,
+        )
+        return None
+    return _row_to_model(rows[0])
 
 
 def get_default_model_code() -> Optional[str]:
     models = get_active_models()
     for model in models:
         if model.get("is_default"):
-            return model["code"]
+            return model.get("model_key") or model["code"]
     # Fallback to the first active model if no explicit default is set.
     if models:
-        return models[0]["code"]
+        return models[0].get("model_key") or models[0]["code"]
     return None
 
 
@@ -500,12 +617,349 @@ def get_default_language_code() -> Optional[str]:
 
 # ----- Internal Helpers -----
 
+def _ensure_providers_table(cursor) -> None:
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {PROVIDERS_TABLE} (
+            provider_code VARCHAR(80) PRIMARY KEY,
+            display_name VARCHAR(120) NOT NULL,
+            required_api_key VARCHAR(80) NOT NULL,
+            permission_key VARCHAR(120) DEFAULT NULL,
+            client_kind VARCHAR(80) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """
+    )
+
+
+def _seed_providers_from_config() -> None:
+    """Upsert the fixed provider adapters without creating model rows."""
+    configured = current_app.config.get("TRANSCRIPTION_PROVIDERS") or _PROVIDER_METADATA.keys()
+    provider_codes = {
+        str(provider).strip().lower()
+        for provider in configured
+        if str(provider).strip().lower() in _PROVIDER_METADATA
+    }
+    provider_codes.update(_PROVIDER_METADATA.keys())
+
+    cursor = get_cursor()
+    for provider_code in sorted(provider_codes):
+        metadata = _PROVIDER_METADATA[provider_code]
+        cursor.execute(
+            f"""
+            INSERT INTO {PROVIDERS_TABLE} (
+                provider_code, display_name, required_api_key, permission_key,
+                client_kind, is_active
+            ) VALUES (%s, %s, %s, %s, %s, TRUE)
+            ON DUPLICATE KEY UPDATE
+                display_name = VALUES(display_name),
+                required_api_key = VALUES(required_api_key),
+                permission_key = VALUES(permission_key),
+                client_kind = VALUES(client_kind),
+                is_active = TRUE
+            """,
+            (
+                provider_code,
+                metadata["display_name"],
+                metadata["required_api_key"],
+                metadata["permission_key"],
+                metadata["client_kind"],
+            ),
+        )
+    get_db().commit()
+
+
+def _normalize_legacy_model_rows() -> None:
+    """Backfill provider links and retire provider-shaped catalog rows.
+
+    This is deliberately idempotent and keeps old rows for historical joins;
+    it only changes whether a row is an active selectable model. The legacy
+    AssemblyAI row is converted to the real ``universal`` model when needed.
+    """
+    cursor = get_cursor()
+
+    # Older rows stored the provider only in required_api_key. Slash-containing
+    # model identifiers are the legacy OpenRouter convention.
+    cursor.execute(
+        f"""
+        UPDATE {MODELS_TABLE}
+        SET provider_code = LOWER(required_api_key)
+        WHERE (provider_code IS NULL OR TRIM(provider_code) = '')
+          AND LOWER(COALESCE(required_api_key, '')) IN ('openai', 'assemblyai', 'openrouter')
+        """
+    )
+    cursor.execute(
+        f"""
+        UPDATE {MODELS_TABLE}
+        SET provider_code = 'openrouter'
+        WHERE (provider_code IS NULL OR TRIM(provider_code) = '')
+          AND code LIKE '%/%'
+        """
+    )
+    cursor.execute(
+        f"""
+        UPDATE {MODELS_TABLE} AS m
+        INNER JOIN {PROVIDERS_TABLE} AS p
+            ON p.provider_code = m.provider_code
+        SET m.permission_key = COALESCE(m.permission_key, p.permission_key),
+            m.required_api_key = COALESCE(m.required_api_key, p.required_api_key)
+        WHERE m.provider_code IN ('openai', 'assemblyai', 'openrouter')
+        """
+    )
+
+    # ``assemblyai`` used to be a provider-shaped model row. Preserve a real
+    # Universal model row for existing installations and keep the old row only
+    # as inactive history.
+    cursor.execute(
+        f"""
+        UPDATE {MODELS_TABLE}
+        SET provider_code = 'assemblyai',
+            permission_key = 'use_api_assemblyai',
+            required_api_key = 'assemblyai',
+            display_name = CASE
+                WHEN LOWER(TRIM(display_name)) IN ('assemblyai', 'universal')
+                THEN 'AssemblyAI Universal'
+                ELSE display_name
+            END
+        WHERE LOWER(code) = 'universal'
+          AND (provider_code IS NULL OR TRIM(provider_code) = ''
+               OR LOWER(COALESCE(required_api_key, '')) = 'assemblyai')
+        """
+    )
+    cursor.execute(
+        f"""
+        INSERT INTO {MODELS_TABLE} (
+            code, provider_code, display_name, permission_key, required_api_key,
+            sort_order, is_active, is_default, model_purpose
+        )
+        SELECT 'universal', 'assemblyai', 'AssemblyAI Universal',
+               'use_api_assemblyai', 'assemblyai', 0, TRUE, FALSE, 'transcription'
+        FROM DUAL
+        WHERE EXISTS (
+            SELECT 1 FROM {MODELS_TABLE}
+            WHERE LOWER(code) = 'assemblyai'
+        )
+          AND NOT EXISTS (
+            SELECT 1 FROM {MODELS_TABLE}
+            WHERE LOWER(code) = 'universal'
+          )
+        """
+    )
+    cursor.execute(
+        f"""
+        UPDATE {MODELS_TABLE}
+        SET is_active = FALSE
+        WHERE LOWER(code) IN (
+            'openai', 'assemblyai', 'openrouter', 'whisper',
+            'gpt-4o-transcribe-diarize'
+        )
+        """
+    )
+
+    _normalize_persisted_model_references(cursor)
+    _ensure_model_identity_index(cursor)
+    get_db().commit()
+
+
+def _ensure_model_identity_index(cursor) -> None:
+    """Replace the legacy global code uniqueness with provider-local identity."""
+    cursor.execute(f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'code'")
+    code_column = cursor.fetchone()
+    code_type = ""
+    if isinstance(code_column, dict):
+        code_type = str(code_column.get("Type") or "")
+    elif isinstance(code_column, (tuple, list)) and len(code_column) > 1:
+        code_type = str(code_column[1])
+    if "255" not in code_type:
+        cursor.execute(
+            f"ALTER TABLE {MODELS_TABLE} MODIFY COLUMN code VARCHAR(255) NOT NULL"
+        )
+
+    cursor.execute(f"SHOW INDEX FROM {MODELS_TABLE}")
+    index_rows = cursor.fetchall() or []
+    index_columns: Dict[str, List[str]] = {}
+    unique_indexes: set[str] = set()
+    for row in index_rows:
+        if isinstance(row, dict):
+            name = str(row.get("Key_name") or "")
+            column = str(row.get("Column_name") or "")
+            non_unique = row.get("Non_unique")
+        else:
+            name = str(row[2]) if len(row) > 2 else ""
+            column = str(row[4]) if len(row) > 4 else ""
+            non_unique = row[1] if len(row) > 1 else 1
+        if not name:
+            continue
+        index_columns.setdefault(name, []).append(column)
+        if not bool(non_unique):
+            unique_indexes.add(name)
+
+    for name, columns in index_columns.items():
+        if name != "PRIMARY" and name in unique_indexes and columns == ["code"]:
+            safe_name = "".join(char for char in name if char.isalnum() or char in "_$")
+            if safe_name:
+                cursor.execute(f"ALTER TABLE {MODELS_TABLE} DROP INDEX `{safe_name}`")
+
+    cursor.execute(
+        f"SHOW INDEX FROM {MODELS_TABLE} WHERE Key_name = 'uq_transcription_provider_model'"
+    )
+    if cursor.fetchone() is None:
+        cursor.execute(
+            f"ALTER TABLE {MODELS_TABLE} ADD UNIQUE INDEX uq_transcription_provider_model (provider_code, code)"
+        )
+
+
+def _normalize_persisted_model_references(cursor) -> None:
+    """Repair current defaults without rewriting historical transcription jobs."""
+    for table_name in ("users", "roles"):
+        try:
+            cursor.execute(
+                f"""
+                UPDATE {table_name}
+                SET default_transcription_model = 'assemblyai:universal'
+                WHERE LOWER(COALESCE(default_transcription_model, '')) IN ('assemblyai', 'universal')
+                """
+            )
+            cursor.execute(
+                f"""
+                UPDATE {table_name}
+                SET default_transcription_model = CASE
+                    WHEN LOWER(default_openrouter_model) LIKE 'openrouter:%'
+                    THEN default_openrouter_model
+                    ELSE CONCAT('openrouter:', default_openrouter_model)
+                END
+                WHERE LOWER(COALESCE(default_transcription_model, '')) = 'openrouter'
+                  AND NULLIF(TRIM(COALESCE(default_openrouter_model, '')), '') IS NOT NULL
+                """
+            )
+            cursor.execute(
+                f"""
+                UPDATE {table_name} AS target
+                INNER JOIN {MODELS_TABLE} AS model
+                    ON model.code = target.default_transcription_model
+                   AND model.is_active = TRUE
+                SET target.default_transcription_model = CONCAT(model.provider_code, ':', model.code)
+                WHERE target.default_transcription_model NOT LIKE '%:%'
+                  AND model.provider_code IS NOT NULL
+                  AND (
+                      SELECT COUNT(*) FROM {MODELS_TABLE} AS candidate
+                      WHERE candidate.code = target.default_transcription_model
+                        AND candidate.is_active = TRUE
+                  ) = 1
+                """
+            )
+            cursor.execute(
+                f"""
+                UPDATE {table_name}
+                SET default_transcription_model = NULL
+                WHERE LOWER(COALESCE(default_transcription_model, '')) IN (
+                    'openrouter', 'whisper', 'gpt-4o-transcribe-diarize'
+                )
+                """
+            )
+            cursor.execute(
+                f"""
+                UPDATE {table_name}
+                SET default_live_transcription_model = 'assemblyai:universal'
+                WHERE LOWER(COALESCE(default_live_transcription_model, '')) IN ('assemblyai', 'universal')
+                """
+            )
+            cursor.execute(
+                f"""
+                UPDATE {table_name} AS target
+                INNER JOIN {MODELS_TABLE} AS model
+                    ON model.code = target.default_live_transcription_model
+                   AND model.is_active = TRUE
+                   AND model.model_purpose = 'live'
+                SET target.default_live_transcription_model = CONCAT(model.provider_code, ':', model.code)
+                WHERE target.default_live_transcription_model NOT LIKE '%:%'
+                  AND model.provider_code IS NOT NULL
+                  AND (
+                      SELECT COUNT(*) FROM {MODELS_TABLE} AS candidate
+                      WHERE candidate.code = target.default_live_transcription_model
+                        AND candidate.is_active = TRUE
+                        AND candidate.model_purpose = 'live'
+                  ) = 1
+                """
+            )
+        except MySQLError as err:
+            if getattr(err, "errno", None) == 1146:
+                continue
+            raise
+
+    # Preserve a legacy AssemblyAI price by copying it to the canonical model
+    # key only when the new key does not already have an explicit price.
+    try:
+        cursor.execute(
+            """
+            INSERT IGNORE INTO pricing (catalog_code, price, item_type)
+            SELECT 'assemblyai:universal', price, item_type
+            FROM pricing
+            WHERE catalog_code IN ('assemblyai', 'universal')
+              AND item_type = 'transcription'
+            """
+        )
+    except MySQLError as err:
+        if getattr(err, "errno", None) != 1146:
+            raise
+
+
+def _sync_models_from_saved_keys() -> None:
+    """Restore dynamic model rows that predate the normalized catalog.
+
+    The key table already stores the provider and provider-local model slug, so
+    this covers previously saved OpenAI, AssemblyAI, and OpenRouter models
+    without requiring a hard-coded model list.
+    """
+    cursor = get_cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT provider_code, TRIM(model_slug) AS model_slug, model_purposes
+            FROM user_api_keys
+            WHERE model_slug IS NOT NULL AND TRIM(model_slug) <> ''
+            """
+        )
+        rows = cursor.fetchall() or []
+    except MySQLError as err:
+        if getattr(err, "errno", None) == 1146:
+            logger.info("[Catalog] user_api_keys is not available yet; skipping model backfill.")
+            return
+        raise
+
+    for row in rows:
+        provider = str(row.get("provider_code") or "").strip().lower()
+        model_slug = str(row.get("model_slug") or "").strip()
+        if provider not in _PROVIDER_METADATA or not model_slug:
+            continue
+        raw_purposes = str(row.get("model_purposes") or "transcription").split(",")
+        purposes = {purpose.strip().lower() for purpose in raw_purposes}
+        if not purposes:
+            purposes = {"transcription"}
+        if "transcription" in purposes:
+            register_model_from_provider(
+                provider=provider,
+                code=model_slug,
+                display_name=model_slug,
+                model_purpose="transcription",
+            )
+        if "live" in purposes:
+            register_model_from_provider(
+                provider=provider,
+                code=model_slug,
+                display_name=model_slug,
+                model_purpose="live",
+            )
+
+
 def _ensure_models_table(cursor) -> None:
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {MODELS_TABLE} (
             id INT PRIMARY KEY AUTO_INCREMENT,
-            code VARCHAR(80) NOT NULL UNIQUE,
+            code VARCHAR(255) NOT NULL,
+            provider_code VARCHAR(80) DEFAULT NULL,
             display_name VARCHAR(120) NOT NULL,
             permission_key VARCHAR(120) DEFAULT NULL,
             required_api_key VARCHAR(80) DEFAULT NULL,
@@ -513,10 +967,26 @@ def _ensure_models_table(cursor) -> None:
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
             model_purpose VARCHAR(20) NOT NULL DEFAULT 'transcription',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_transcription_provider_model (provider_code, code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """
     )
+
+    cursor.execute(f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'provider_code'")
+    if cursor.fetchone() is None:
+        logger.info("[DB:Catalog] Adding 'provider_code' column to '%s'.", MODELS_TABLE)
+        cursor.execute(
+            f"ALTER TABLE {MODELS_TABLE} ADD COLUMN provider_code VARCHAR(80) DEFAULT NULL AFTER code"
+        )
+
+    cursor.execute(
+        f"SHOW INDEX FROM {MODELS_TABLE} WHERE Key_name = 'idx_transcription_models_provider'"
+    )
+    if cursor.fetchone() is None:
+        cursor.execute(
+            f"ALTER TABLE {MODELS_TABLE} ADD INDEX idx_transcription_models_provider (provider_code)"
+        )
 
     # Migration-safe: add model_purpose to existing tables created before the
     # column existed (models are now key-registered with a transcription/live flag).
@@ -552,21 +1022,30 @@ def register_model_from_provider(
     display_name: Optional[str] = None,
     model_purpose: str = 'transcription',
 ) -> None:
-    """Register or refresh a transcription model row from a saved provider key.
+    """Register one real provider-local model in the shared catalog.
 
-    Called when an API key is saved/updated: the model becomes selectable the
-    moment its key exists (merged with the admin-added model metadata). The
-    row's ``display_name`` defaults to the raw model name and is not
-    overwritten on subsequent saves, so admin renames on the Models page stick.
+    Provider metadata is stored in ``transcription_providers_catalog``; this
+    function only creates a model row. Saving an API key is one way to invoke
+    it, and future admin/configuration/discovery flows can use the same path.
     """
     provider = str(provider or "").strip().lower()
     if provider not in _PROVIDER_METADATA:
         logger.warning("[Catalog] Ignoring model registration for unknown provider '%s'.", provider)
         return
+
     code = str(code or "").strip()
+    if provider == "assemblyai" and code.casefold() == "assemblyai":
+        # Legacy provider-wide AssemblyAI rows represented Universal.
+        code = "universal"
+        if not display_name or str(display_name).strip().casefold() in {"assemblyai", "universal"}:
+            display_name = "AssemblyAI Universal"
     if not code:
         logger.warning("[Catalog] Ignoring model registration with empty code (provider '%s').", provider)
         return
+    if code.casefold() in PROVIDER_ONLY_MODEL_CODES or code.casefold() in DEPRECATED_MODEL_CODES:
+        logger.warning("[Catalog] Ignoring provider/retired model code '%s'.", code)
+        return
+
     purpose = str(model_purpose or 'transcription').strip().lower()
     if purpose not in {'transcription', 'live'}:
         logger.warning("[Catalog] Ignoring model registration with invalid purpose '%s'.", model_purpose)
@@ -577,10 +1056,11 @@ def register_model_from_provider(
     cursor.execute(
         f"""
         INSERT INTO {MODELS_TABLE} (
-            code, display_name, permission_key, required_api_key, sort_order,
-            is_active, is_default, model_purpose
-        ) VALUES (%s, %s, %s, %s, 0, 1, 0, %s)
+            code, provider_code, display_name, permission_key, required_api_key,
+            sort_order, is_active, is_default, model_purpose
+        ) VALUES (%s, %s, %s, %s, %s, 0, 1, 0, %s)
         ON DUPLICATE KEY UPDATE
+            provider_code = VALUES(provider_code),
             permission_key = VALUES(permission_key),
             required_api_key = VALUES(required_api_key),
             is_active = 1,
@@ -588,6 +1068,7 @@ def register_model_from_provider(
         """,
         (
             code,
+            provider,
             _coerce_string(display_name) or code,
             metadata.get("permission_key"),
             metadata.get("required_api_key"),
@@ -595,26 +1076,42 @@ def register_model_from_provider(
         ),
     )
     get_db().commit()
-    logger.info("[Catalog] Registered transcription model '%s' (provider '%s', purpose '%s').", code, provider, purpose)
+    logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purpose)
 
 
 def rename_model(code: str, display_name: str) -> bool:
-    """Rename the display name of a catalog model (Models admin page).
-
-    The catalog ``display_name`` is authoritative everywhere in the app (home,
-    user settings, role form, costs), so a rename immediately propagates.
-    """
-    code = str(code or "").strip()
+    """Rename one provider-local catalog model by canonical or legacy key."""
+    reference = str(code or "").strip()
     cleaned = _coerce_string(display_name)
-    if not code or not cleaned:
+    if not reference or not cleaned:
         return False
+
+    model = get_model_by_code(reference)
+    if not model:
+        return False
+    provider = str(model.get("provider_code") or "").strip().lower()
+    local_code = str(model.get("code") or "").strip()
+    if not local_code:
+        return False
+
     cursor = get_cursor()
-    cursor.execute(
-        f"UPDATE {MODELS_TABLE} SET display_name = %s WHERE code = %s",
-        (cleaned, code),
-    )
+    if provider:
+        cursor.execute(
+            f"""
+            UPDATE {MODELS_TABLE}
+            SET display_name = %s
+            WHERE code = %s
+              AND COALESCE(NULLIF(provider_code, ''), required_api_key) = %s
+            """,
+            (cleaned, local_code, provider),
+        )
+    else:
+        cursor.execute(
+            f"UPDATE {MODELS_TABLE} SET display_name = %s WHERE code = %s",
+            (cleaned, local_code),
+        )
     get_db().commit()
-    return True
+    return cursor.rowcount > 0
 
 
 def _seed_languages_from_config() -> None:
@@ -660,7 +1157,7 @@ def _seed_languages_from_config() -> None:
         _set_default_language(default_code)
 
 
-_ALLOWED_CATALOG_TABLES = {MODELS_TABLE, LANGUAGES_TABLE}
+_ALLOWED_CATALOG_TABLES = {MODELS_TABLE, PROVIDERS_TABLE, LANGUAGES_TABLE}
 
 def _table_has_rows(table_name: str) -> bool:
     if table_name not in _ALLOWED_CATALOG_TABLES:

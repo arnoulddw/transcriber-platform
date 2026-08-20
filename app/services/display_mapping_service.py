@@ -21,12 +21,12 @@ def _normalize_codes(codes: List[str]) -> List[str]:
 
 
 def get_transcription_display_map() -> Dict[str, str]:
+    """Return display names for selectable transcription model identities.
+
+    Provider metadata is not a model option. Include the qualified identity and
+    a bare-code alias so historical analytics can still be labelled while new
+    UI selections use the canonical model key.
     """
-    Returns an ordered mapping of transcription provider codes to display names.
-    Pulls from the transcription catalog (display_name is authoritative).
-    """
-    provider_codes = list(current_app.config.get("TRANSCRIPTION_PROVIDERS", []) or [])
-    provider_codes.extend(current_app.config.get("LIVE_TRANSCRIPTION_MODELS", []) or [])
     try:
         catalog_models = transcription_catalog_model.get_active_models()
     except Exception as catalog_err:
@@ -37,23 +37,27 @@ def get_transcription_display_map() -> Dict[str, str]:
         )
         catalog_models = []
 
-    catalog_display_map = {
-        (model.get("code") or "").strip(): model.get("display_name")
-        for model in catalog_models
-        if model.get("code")
-    }
-
-    normalized_codes = _normalize_codes(provider_codes)
-    if not normalized_codes:
-        normalized_codes = [code for code in catalog_display_map.keys() if code]
+    try:
+        catalog_models = list(catalog_models) + transcription_catalog_model.get_live_models()
+    except Exception as live_err:
+        logging.debug("[DisplayMap] Live model catalog unavailable: %s", live_err, exc_info=True)
 
     transcription_models: Dict[str, str] = {}
-    for code in normalized_codes:
-        transcription_models[code] = (
-            catalog_display_map.get(code)
-            or code
+    for model in catalog_models:
+        code = str(model.get("code") or "").strip()
+        model_key = str(model.get("model_key") or code).strip()
+        display_name = model.get("display_name") or code or model_key
+        if model_key:
+            transcription_models[model_key] = display_name
+        if code:
+            transcription_models.setdefault(code, display_name)
+
+    return dict(
+        sorted(
+            transcription_models.items(),
+            key=lambda item: (str(item[1]).casefold(), str(item[0]).casefold()),
         )
-    return transcription_models
+    )
 
 
 def get_workflow_model_display_map() -> Dict[str, str]:

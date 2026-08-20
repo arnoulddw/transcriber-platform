@@ -40,26 +40,34 @@ def _model_option_map(
     models: list,
     key_by_model_name: bool = False,
 ):
-    """Convert catalog/expanded model dicts into {code: display_name} maps.
+    """Convert model dicts into ``{stable_model_key: display_name}`` maps.
 
-    ``key_by_model_name`` keeps OpenRouter slugs as distinct pricing keys
-    (``model_name``/``model_slug``) instead of collapsing them under the
-    generic ``openrouter`` provider code.
+    ``key_by_model_name`` is retained for callers outside this branch, but
+    canonical catalog rows always carry ``model_key``. Falling back to the
+    provider-local name keeps older live/expanded rows readable during rollout.
     """
     result: Dict[str, str] = {}
     for model in models:
-        code = str(model.get('code') or '').strip()
-        if key_by_model_name:
-            code = str(
+        code = str(
+            model.get('model_key')
+            or (
                 model.get('model_name')
                 or model.get('model_slug')
                 or model.get('code')
-                or ''
-            ).strip()
+                if key_by_model_name
+                else model.get('code')
+            )
+            or ''
+        ).strip()
         if not code or code in result:
             continue
         result[code] = model.get('display_name') or code
-    return result
+    return dict(
+        sorted(
+            result.items(),
+            key=lambda item: (str(item[1]).casefold(), str(item[0]).casefold()),
+        )
+    )
 
 
 def build_pricing_options():
@@ -111,13 +119,12 @@ def build_pricing_options():
     def _sorted(mapping: Dict[str, str]) -> Dict[str, str]:
         return dict(sorted(mapping.items(), key=lambda item: item[1].lower()))
 
-    # The transcription bucket inherits the canonical catalog ordering from
-    # build_model_options (catalog order, OpenRouter slugs alphabetical) so it
-    # matches the other model dropdowns; LLM buckets keep their own sort.
+    # All final buckets are sorted by the displayed name. This remains true
+    # after the live models are merged into the transcription bucket.
     return {
-        'transcription': dict(transcription_map),
-        'title_generation': _sorted(dict(llm_map)),
-        'workflow': _sorted(dict(llm_map)),
+        'transcription': _sorted(transcription_map),
+        'title_generation': _sorted(llm_map),
+        'workflow': _sorted(llm_map),
     }
 
 # --- Dashboard Route ---
@@ -602,8 +609,18 @@ def models():
     logging.debug(f"{log_prefix} Accessing models page.")
 
     def _rename_options(models: list) -> Dict[str, str]:
-        """{code: display_name} for catalog rows (display_name authoritative)."""
-        return {str(m.get('code') or '').strip(): (m.get('display_name') or m.get('code') or '').strip() for m in models if m.get('code')}
+        """Return stable model keys and authoritative display names."""
+        options = {
+            str(m.get('model_key') or m.get('code') or '').strip():
+            (m.get('display_name') or m.get('code') or '').strip()
+            for m in models
+            if (m.get('model_key') or m.get('code'))
+            and str(m.get('code')).strip().lower()
+            not in transcription_catalog_model.PROVIDER_ONLY_MODEL_CODES
+            and str(m.get('code')).strip().lower()
+            not in transcription_catalog_model.DEPRECATED_MODEL_CODES
+        }
+        return dict(sorted(options.items(), key=lambda item: (item[1].casefold(), item[0].casefold())))
 
     try:
         transcription = transcription_catalog_model.get_all_active_models('transcription') or []

@@ -15,14 +15,43 @@ from app.services import user_service
 
 
 TRANSCRIPTION_MODELS = [
-    {"code": "whisper", "display_name": "Whisper", "permission_key": None},
-    {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None},
+    {
+        "code": "gpt-4o-transcribe",
+        "display_name": "OpenAI GPT-4o Transcribe",
+        "permission_key": None,
+        "provider_code": "openai",
+        "required_api_key": "openai",
+    },
+    {
+        "code": "openai/gpt-transcribe",
+        "display_name": "openai/gpt-transcribe",
+        "permission_key": None,
+        "provider_code": "openrouter",
+        "required_api_key": "openrouter",
+    },
+    {
+        "code": "qwen/qwen3-asr-1.7b",
+        "display_name": "qwen/qwen3-asr-1.7b",
+        "permission_key": None,
+        "provider_code": "openrouter",
+        "required_api_key": "openrouter",
+    },
+    {
+        "code": "x-ai/grok-stt-1.0",
+        "display_name": "x-ai/grok-stt-1.0",
+        "permission_key": None,
+        "provider_code": "openrouter",
+        "required_api_key": "openrouter",
+    },
 ]
 
 # Key status used by the profile/role form fixtures: one OpenRouter
 # transcription slug so the openrouter option resolves to a real model.
 OPENROUTER_KEY_STATUS = {
     "provider_keys": {
+        "openai": [
+            {"model_name": "gpt-4o-transcribe", "model_purposes": ["transcription"]},
+        ],
         "openrouter": [
             {"model_name": "openai/gpt-transcribe", "model_purposes": ["transcription"]},
         ],
@@ -86,7 +115,7 @@ def form_context():
             yield
 
 
-def _form_data(form_type, transcription_model="openrouter", slug=" openai/gpt-transcribe "):
+def _form_data(form_type, transcription_model="openai/gpt-transcribe", slug=" openai/gpt-transcribe "):
     data = {
         "name": "test-role",
         "description": "A test role",
@@ -123,7 +152,7 @@ def test_forms_reject_invalid_openrouter_slug(form_context, form_type):
 
 @pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
 def test_forms_clear_slug_when_default_model_is_not_openrouter(form_context, form_type):
-    form = form_type(data=_form_data(form_type, transcription_model="whisper"))
+    form = form_type(data=_form_data(form_type, transcription_model="gpt-4o-transcribe"))
 
     assert form.validate() is True
     assert form.default_openrouter_model.data is None
@@ -367,8 +396,20 @@ def test_live_openrouter_configuration_is_documented_and_detected():
 
 def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
     models = [
-        {"code": "whisper", "display_name": "Whisper", "permission_key": None, "required_api_key": "openai"},
-        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+        {
+            "code": "x-ai/grok-stt-1.0",
+            "display_name": "x-ai/grok-stt-1.0",
+            "permission_key": None,
+            "provider_code": "openrouter",
+            "required_api_key": "openrouter",
+        },
+        {
+            "code": "openai/gpt-transcribe",
+            "display_name": "openai/gpt-transcribe",
+            "permission_key": None,
+            "provider_code": "openrouter",
+            "required_api_key": "openrouter",
+        },
     ]
 
     expanded = transcription_catalog.expand_models_for_ui(
@@ -383,8 +424,8 @@ def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
     )
 
     assert [(model["code"], model["display_name"], model.get("model_slug")) for model in expanded] == [
-        ("openrouter", "x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
-        ("openrouter", "openai/gpt-transcribe", "openai/gpt-transcribe"),
+        ("x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
+        ("openai/gpt-transcribe", "openai/gpt-transcribe", "openai/gpt-transcribe"),
     ]
 
 
@@ -415,7 +456,13 @@ def test_scoped_transcription_key_only_expands_the_matching_catalog_model():
 
 def test_transcription_model_expansion_deduplicates_saved_model_names():
     models = [
-        {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
+        {
+            "code": "openai/gpt-transcribe",
+            "display_name": "openai/gpt-transcribe",
+            "permission_key": None,
+            "provider_code": "openrouter",
+            "required_api_key": "openrouter",
+        },
     ]
 
     expanded = transcription_catalog.expand_models_for_ui(
@@ -431,7 +478,7 @@ def test_transcription_model_expansion_deduplicates_saved_model_names():
     )
 
     assert [(model["code"], model.get("model_slug")) for model in expanded] == [
-        ("openrouter", "openai/gpt-transcribe"),
+        ("openai/gpt-transcribe", "openai/gpt-transcribe"),
     ]
 
 
@@ -545,7 +592,7 @@ def test_service_normalizes_and_passes_openrouter_default():
         first_name=None,
         last_name=None,
         default_content_language="auto",
-        default_transcription_model="openrouter",
+        default_transcription_model="openai/gpt-transcribe",
         default_openrouter_model="old/model",
         enable_auto_title_generation=False,
         language="en",
@@ -563,7 +610,7 @@ def test_service_normalizes_and_passes_openrouter_default():
                 "first_name": None,
                 "last_name": None,
                 "default_content_language": "auto",
-                "default_transcription_model": "openrouter",
+                "default_transcription_model": "openai/gpt-transcribe",
                 "default_openrouter_model": " openai/gpt-transcribe ",
                 "enable_auto_title_generation": False,
                 "language": "en",
@@ -571,7 +618,7 @@ def test_service_normalizes_and_passes_openrouter_default():
         )
 
     update_preferences.assert_called_once_with(
-        7, "auto", "openrouter", False, "en", "openai/gpt-transcribe"
+        7, "auto", "openai/gpt-transcribe", False, "en", "openai/gpt-transcribe"
     )
 
 
@@ -582,7 +629,7 @@ def test_service_clears_stale_openrouter_default_for_non_openrouter_model():
         first_name=None,
         last_name=None,
         default_content_language="auto",
-        default_transcription_model="whisper",
+        default_transcription_model="gpt-4o-transcribe",
         default_openrouter_model="old/model",
         enable_auto_title_generation=False,
         language="en",
@@ -600,14 +647,14 @@ def test_service_clears_stale_openrouter_default_for_non_openrouter_model():
                 "first_name": None,
                 "last_name": None,
                 "default_content_language": "auto",
-                "default_transcription_model": "whisper",
+                "default_transcription_model": "gpt-4o-transcribe",
                 "default_openrouter_model": "stale/model",
                 "enable_auto_title_generation": False,
                 "language": "en",
             },
         )
 
-    update_preferences.assert_called_once_with(7, "auto", "whisper", False, "en", None)
+    update_preferences.assert_called_once_with(7, "auto", "gpt-4o-transcribe", False, "en", None)
 
 
 def test_service_passes_new_llm_model_preferences():
@@ -617,7 +664,7 @@ def test_service_passes_new_llm_model_preferences():
         first_name=None,
         last_name=None,
         default_content_language="auto",
-        default_transcription_model="whisper",
+        default_transcription_model="gpt-4o-transcribe",
         default_title_generation_model=None,
         default_workflow_model=None,
         default_openrouter_model=None,
@@ -637,7 +684,7 @@ def test_service_passes_new_llm_model_preferences():
                 "first_name": None,
                 "last_name": None,
                 "default_content_language": "auto",
-                "default_transcription_model": "whisper",
+                "default_transcription_model": "gpt-4o-transcribe",
                 "default_title_generation_model": " gemma-4-26b-a4b-it ",
                 "default_workflow_model": " google/gemini-3.7-flash ",
                 "default_openrouter_model": None,
@@ -649,7 +696,7 @@ def test_service_passes_new_llm_model_preferences():
     update_preferences.assert_called_once_with(
         7,
         "auto",
-        "whisper",
+        "gpt-4o-transcribe",
         False,
         "en",
         None,
@@ -678,21 +725,23 @@ def test_admin_role_form_exposes_each_openrouter_slug_as_option(form_context):
     ):
         form = AdminRoleForm()
 
-    or_options = [m for m in form.transcription_model_options if m.get("code") == "openrouter"]
-    assert [m.get("model_name") for m in or_options] == ["qwen/qwen3-asr-1.7b", "x-ai/grok-stt-1.0"]
+    or_options = [
+        m for m in form.transcription_model_options
+        if m.get("provider_code") == "openrouter"
+    ]
+    assert [m.get("code") for m in or_options] == ["qwen/qwen3-asr-1.7b", "x-ai/grok-stt-1.0"]
     assert [m.get("display_name") for m in or_options] == ["qwen/qwen3-asr-1.7b", "x-ai/grok-stt-1.0"]
 
-    # The WTForms choices keep the plain model code as the option value so
-    # validation and persistence keep working; the per-slug options are
-    # exposed separately for the template.
+    # WTForms choices use the qualified model identity so two providers can
+    # safely expose the same provider-local code.
     values = [c[0] for c in form.default_transcription_model.choices or []]
-    assert "openrouter" in values
+    assert values == ["", "openrouter:qwen/qwen3-asr-1.7b", "openrouter:x-ai/grok-stt-1.0"]
 
-    # A submitted slug (any of the options) validates against the choices.
+    # A submitted qualified key (any of the options) validates against the choices.
     submit = AdminRoleForm(
         data={
             "name": "test-role",
-            "default_transcription_model": "openrouter",
+            "default_transcription_model": "openrouter:qwen/qwen3-asr-1.7b",
             "default_openrouter_model": "x-ai/grok-stt-1.0",
         }
     )
