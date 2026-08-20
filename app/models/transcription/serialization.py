@@ -30,6 +30,7 @@ def _map_row_to_transcription_dict(row: Dict[str, Any]) -> Optional[Dict[str, An
 
     # Ensure boolean fields are bool
     row['context_prompt_used'] = bool(row.get('context_prompt_used', False))
+    row['has_transcription_warning'] = bool(row.get('has_transcription_warning', False))
     row['downloaded'] = bool(row.get('downloaded', False))
     row['is_hidden_from_user'] = bool(row.get('is_hidden_from_user', False))
     row['is_pinned'] = bool(row.get('is_pinned', False))

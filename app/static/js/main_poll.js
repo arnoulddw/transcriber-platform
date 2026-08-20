@@ -416,6 +416,8 @@ function pollProgress(jobId, initialJobData = null) {
 
             const transcriptionStatus = jobData.status;
             const progressLog = jobData.progress || [];
+            const hasTranscriptionWarning = jobData.has_transcription_warning === true
+                || progressLog.some((message) => String(message || '').trim().toUpperCase().startsWith('WARNING:'));
             const now = Date.now();
             const elapsedTimeTotal = (now - jobStartTime) / 1000;
             const isTerminalStatus = ['finished', 'error', 'cancelled', 'interrupted'].includes(transcriptionStatus);
@@ -519,6 +521,18 @@ function pollProgress(jobId, initialJobData = null) {
                 activityIcon = actionableError.icon; activityMessage = actionableError.message; activityColor = actionableError.iconColorClass;
             } else if (currentPhase === 'cancelled') {
                 activityIcon = 'cancel'; activityMessage = 'Transcription cancelled by user.'; activityColor = 'text-orange-500';
+            }
+
+            if (
+                hasTranscriptionWarning
+                && !isCancellationPending
+                && !['error', 'cancelled', 'interrupted'].includes(transcriptionStatus)
+            ) {
+                activityIcon = 'error_outline';
+                activityMessage = transcriptionStatus === 'finished'
+                    ? 'Transcription completed with warnings. The transcript may be incomplete.'
+                    : 'Warning: The transcript may be incomplete.';
+                activityColor = 'text-red-600';
             }
             updateProgressActivity(activityIcon, activityMessage, activityColor);
 

@@ -6,7 +6,12 @@ from app.models import transcription_utils
 from app.models.user import get_user_by_username
 
 
-def _create_transcription(app, user_id, status="finished"):
+def _create_transcription(
+    app,
+    user_id,
+    status="finished",
+    has_transcription_warning=False,
+):
     job_id = str(uuid.uuid4())
     with app.app_context():
         transcription_model.create_transcription_job(
@@ -20,7 +25,10 @@ def _create_transcription(app, user_id, status="finished"):
         )
         if status == "finished":
             transcription_model.finalize_job_success(
-                job_id, "Transcript text", "en"
+                job_id,
+                "Transcript text",
+                "en",
+                has_transcription_warning=has_transcription_warning,
             )
         else:
             transcription_model.update_job_status(job_id, status)
@@ -53,9 +61,31 @@ def test_get_progress_finished_job(app, logged_in_client_with_permissions):
     assert payload["finished"] is True
     assert payload["should_poll_title"] is True
     assert payload["result"]["status"] == "finished"
+    assert payload["has_transcription_warning"] is False
+    assert payload["result"]["has_transcription_warning"] is False
     assert payload["created_at"] is not None
     assert isinstance(payload["created_at"], str)
     assert payload["created_at"].endswith("Z")
+
+
+def test_get_progress_finished_job_with_transcription_warning(
+    app, logged_in_client_with_permissions
+):
+    with app.app_context():
+        user = get_user_by_username("testuser_permissions")
+    assert user is not None
+    job_id = _create_transcription(
+        app,
+        user.id,
+        has_transcription_warning=True,
+    )
+
+    response = logged_in_client_with_permissions.get(f"/api/progress/{job_id}")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["has_transcription_warning"] is True
+    assert payload["result"]["has_transcription_warning"] is True
 
 
 def test_get_progress_processing_job(app, logged_in_client_with_permissions):
@@ -394,7 +424,7 @@ def test_history_body_search_uses_fulltext_and_returns_preview(app, logged_in_cl
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
         assert user is not None
-        matching_id = _create_transcription(app, user.id)
+        matching_id = _create_transcription(app, user.id, has_transcription_warning=True)
         other_id = _create_transcription(app, user.id)
         cursor = transcription_model.get_cursor()
         cursor.execute(
@@ -415,5 +445,6 @@ def test_history_body_search_uses_fulltext_and_returns_preview(app, logged_in_cl
         )
 
     assert [item["id"] for item in results] == [matching_id]
+    assert results[0]["has_transcription_warning"] is True
     assert results[0]["transcription_preview"].startswith("A quasarvelocity")
     assert "transcription_text" not in results[0]

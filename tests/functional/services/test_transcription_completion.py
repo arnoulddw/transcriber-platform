@@ -93,6 +93,33 @@ def test_completed_at_is_set_for_successful_transcription(
     assert isinstance(job["completed_at"], datetime)
 
 
+def test_transcription_warning_flag_is_persisted(
+    app, logged_in_client_with_permissions
+):
+    user = _get_test_user()
+
+    with app.app_context():
+        cursor = transcription_model.get_cursor()
+        cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'has_transcription_warning'")
+        if cursor.fetchone():
+            cursor.execute("ALTER TABLE transcriptions DROP COLUMN has_transcription_warning")
+            transcription_model.get_db().commit()
+        transcription_model.init_db_command()
+
+    job_id = _create_job(app, user.id)
+    assert _get_job(app, job_id, user.id)["has_transcription_warning"] is False
+
+    with app.app_context():
+        transcription_model.finalize_job_success(
+            job_id,
+            "Transcript text",
+            "en",
+            has_transcription_warning=True,
+        )
+
+    assert _get_job(app, job_id, user.id)["has_transcription_warning"] is True
+
+
 def test_completed_at_is_set_for_error(
     app, logged_in_client_with_permissions
 ):

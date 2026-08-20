@@ -341,7 +341,17 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             final_language = detected_language or language_code or 'unknown'
             logger.info(f"Transcription successful. Final language: {final_language}.")
 
-            transcription_model.finalize_job_success(job_id, transcription_text, final_language)
+            has_transcription_warning = getattr(api_client, "has_transcription_warning", False) is True
+            if has_transcription_warning:
+                logger.warning("Transcription completed with chunk warnings; saving warning state.")
+                transcription_model.finalize_job_success(
+                    job_id,
+                    transcription_text,
+                    final_language,
+                    has_transcription_warning=True,
+                )
+            else:
+                transcription_model.finalize_job_success(job_id, transcription_text, final_language)
             job_finalized_successfully = True
             logger.debug("Job finalized successfully in database.")
 

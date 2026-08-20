@@ -47,6 +47,28 @@ def test_role_label_translations_match_the_updated_source_strings():
         assert 'msgid "Default Workflow Model"' not in source
 
 
+def test_history_renders_chunk_warning_after_title_icons():
+    index_template = Path("app/templates/index.html").read_text(encoding="utf-8")
+    history_render = Path("app/static/js/history/render.js").read_text(encoding="utf-8")
+    history_polling = Path("app/static/js/history/polling.js").read_text(encoding="utf-8")
+    main_poll = Path("app/static/js/main_poll.js").read_text(encoding="utf-8")
+    progress_api = Path("app/api/transcriptions.py").read_text(encoding="utf-8")
+
+    assert "has_transcription_warning" in index_template
+    assert "title-warning-icon-{{ transcription.id }}" in index_template
+    assert "text-red-600" in index_template
+    assert ">error_outline</i>" in index_template
+    assert "title=\"{{ _('Transcript may be incomplete') }}\"" in index_template
+    assert "aria-label=\"{{ _('Transcript may be incomplete') }}\"" in index_template
+    assert "transcriptionWarningIconHtml" in history_render
+    assert "title=\"Transcript may be incomplete\"" in history_render
+    assert "aria-label=\"Transcript may be incomplete\"" in history_render
+    assert "title-warning-icon-${transcription.id}" in history_render
+    assert "warningIconHtml" in history_polling
+    assert "has_transcription_warning" in progress_api
+    assert "hasTranscriptionWarning" in main_poll
+
+
 def test_index_template_has_first_run_empty_state_warning_with_manage_api_keys_link():
     index_template = Path("app/templates/index.html").read_text(encoding="utf-8")
 

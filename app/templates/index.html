@@ -208,6 +208,7 @@
                             {% set has_meaningful_error = transcription.llm_operation_error and transcription.llm_operation_error | lower not in ['n/a', 'null', 'undefined', '[empty result]', 'none', '-'] %}
                             {% set should_display_workflow_panel = (llm_status == 'finished' and has_meaningful_result) or (llm_status == 'error' and has_meaningful_error) or (llm_status in ['pending', 'processing']) %}
                             {% set show_generated_title_icon = transcription.title_generation_status == 'success' and transcription.generated_title %}
+                            {% set show_transcription_warning_icon = transcription.has_transcription_warning %}
 
                             <div class="history-item-content flex flex-col"> {# Removed lg:flex-row and lg:gap-5 #}
                                 <div class="transcript-panel w-full relative p-4">
@@ -215,7 +216,7 @@
                                         <div class="flex-grow min-w-0">
                                             <div class="title-wrapper">
                                                 <b id="title-{{ transcription.id }}" class="text-text-strong font-medium sm:truncate leading-tight">
-                                                    {{ transcription.generated_title if show_generated_title_icon else transcription.filename | e }}<i class="material-icons tiny text-primary align-middle ml-1 {{ 'hidden' if not show_generated_title_icon }}" id="title-icon-{{ transcription.id }}">auto_awesome</i>
+                                                    {{ transcription.generated_title if show_generated_title_icon else transcription.filename | e }}<i class="material-icons tiny text-primary align-middle ml-1 {{ 'hidden' if not show_generated_title_icon }}" id="title-icon-{{ transcription.id }}">auto_awesome</i><i class="material-icons tiny text-red-600 align-middle ml-1 {{ 'hidden' if not show_transcription_warning_icon }}" id="title-warning-icon-{{ transcription.id }}" title="{{ _('Transcript may be incomplete') }}" aria-label="{{ _('Transcript may be incomplete') }}">error_outline</i>
                                                 </b>
                                             </div>
                                             <p class="meta text-xs text-text-muted">

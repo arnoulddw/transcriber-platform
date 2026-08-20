@@ -44,6 +44,7 @@ def init_db_command() -> None:
                 status VARCHAR(20) DEFAULT 'pending',
                 progress_log JSON,
                 error_message TEXT,
+                has_transcription_warning BOOLEAN NOT NULL DEFAULT FALSE,
                 context_prompt_used BOOLEAN DEFAULT FALSE,
                 downloaded BOOLEAN DEFAULT FALSE,
                 is_hidden_from_user BOOLEAN NOT NULL DEFAULT FALSE,
@@ -100,6 +101,18 @@ def init_db_command() -> None:
         if not context_col_exists:
             logger.info("Adding 'context_prompt_used' column (BOOLEAN).")
             cursor.execute("ALTER TABLE transcriptions ADD COLUMN context_prompt_used BOOLEAN DEFAULT FALSE AFTER error_message")
+
+        # Check and add transcription warning flag
+        cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'has_transcription_warning'")
+        transcription_warning_col_exists = cursor.fetchone()
+        cursor.fetchall()
+        if not transcription_warning_col_exists:
+            logger.info("Adding 'has_transcription_warning' column (BOOLEAN).")
+            cursor.execute(
+                "ALTER TABLE transcriptions "
+                "ADD COLUMN has_transcription_warning BOOLEAN NOT NULL DEFAULT FALSE "
+                "AFTER error_message"
+            )
 
         # Check and add downloaded column
         cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'downloaded'")
