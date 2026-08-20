@@ -39,7 +39,7 @@ def test_generate_llm_text_success(logged_in_client_with_permissions, mock_llm_d
     THEN it should return a 200 OK with the mocked LLM response.
     """
     with app.app_context():
-        # The API route checks config directly, so we must set it
+        # The route delegates key selection to the central LLM service.
         app.config['OPENAI_API_KEY'] = 'test_key'
 
     response = logged_in_client_with_permissions.post('/api/llm/generate', json={'prompt': 'Hello, world!', 'provider': 'openai'})
@@ -49,6 +49,27 @@ def test_generate_llm_text_success(logged_in_client_with_permissions, mock_llm_d
     assert json_data['result'] == "Mocked LLM response"
     # The API route calls the service, so this mock should be called
     mock_llm_dependencies['llm_service'].generate_text_via_llm.assert_called_once()
+    call_kwargs = mock_llm_dependencies['llm_service'].generate_text_via_llm.call_args.kwargs
+    assert call_kwargs['user_id'] == 1
+    assert 'api_key' not in call_kwargs
+
+
+def test_generate_llm_text_does_not_require_a_global_key_in_the_route(
+    logged_in_client_with_permissions, mock_llm_dependencies, app
+):
+    """Key selection belongs to the LLM service, not this HTTP route."""
+    with app.app_context():
+        app.config['OPENAI_API_KEY'] = None
+
+    response = logged_in_client_with_permissions.post(
+        '/api/llm/generate',
+        json={'prompt': 'Hello, world!', 'provider': 'openai'},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()['result'] == "Mocked LLM response"
+    call_kwargs = mock_llm_dependencies['llm_service'].generate_text_via_llm.call_args.kwargs
+    assert 'api_key' not in call_kwargs
 
 def test_generate_llm_text_no_prompt(logged_in_client_with_permissions):
     """
@@ -78,12 +99,15 @@ def test_generate_llm_text_requires_workflow_permission(logged_in_client):
 
 def test_generate_llm_text_configuration_error(logged_in_client_with_permissions, mock_llm_dependencies, app):
     """
-    GIVEN the required API key is not in the config
+    GIVEN the central LLM service reports that no API key is configured
     WHEN the /api/llm/generate endpoint is called
     THEN it should return a 400 Bad Request.
     """
     from app.services.api_clients.exceptions import LlmConfigurationError
-    # Ensure the key is missing from the config
+    # The central service now owns key resolution and reports missing keys.
+    mock_llm_dependencies['llm_service'].generate_text_via_llm.side_effect = LlmConfigurationError(
+        "API key for LLM provider 'openai' is not configured"
+    )
     with app.app_context():
         app.config['OPENAI_API_KEY'] = None
 
@@ -101,7 +125,7 @@ def test_generate_llm_text_api_error(logged_in_client_with_permissions, mock_llm
     THEN it should return a 500 Internal Server Error.
     """
     from app.services.api_clients.exceptions import LlmApiError
-    # The key must be present for the route to proceed to call the service
+    # The route should pass service errors through unchanged.
     with app.app_context():
         app.config['OPENAI_API_KEY'] = 'a-valid-key'
         

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from flask import Flask
+import pytest
 
 from app.forms import ApiKeyForm
 from app.models import user_api_key
@@ -75,6 +76,95 @@ def test_save_masked_openrouter_key_reuses_saved_key_for_new_slug():
         "x-ai/grok-stt-1.0",
         model_purpose="transcription",
     )
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "existing_key"),
+    [
+        ("openai", "gpt-transcribe", "sk-openai-XYZ"),
+        ("assemblyai", "universal", "assemblyai-XYZ"),
+        ("gemini", "gemini-3.0-flash", "AIzaSy123XYZ"),
+        ("openrouter", "x-ai/grok-stt-1.0", "sk-or-v1-XYZ"),
+    ],
+)
+def test_save_masked_key_reuses_existing_provider_key_for_every_provider(
+    provider, model, existing_key
+):
+    app = _app()
+    user = SimpleNamespace(id=7)
+    security_service = Mock()
+    security_service.encrypt_data.return_value = "encrypted"
+
+    with app.app_context(), patch.object(
+        user_service.user_model, "get_user_by_id", return_value=user
+    ), patch.object(
+        user_service, "get_decrypted_api_key", return_value=existing_key
+    ) as get_key, patch.object(
+        user_service, "get_security_service", return_value=security_service
+    ), patch.object(
+        user_service.user_api_key_model, "upsert_api_key", return_value=True
+    ) as upsert, patch.object(
+        user_service.user_model, "update_user_preferences", return_value=True
+    ), patch(
+        "app.models.transcription_catalog.register_model_from_provider"
+    ):
+        assert user_service.save_user_api_key(
+            7,
+            provider,
+            "***XYZ",
+            model_name=model,
+        ) is True
+
+    get_key.assert_called_once_with(
+        7,
+        provider,
+        model,
+        allow_model_fallback=True,
+    )
+    security_service.encrypt_data.assert_called_once_with(existing_key)
+    upsert.assert_called_once_with(
+        7,
+        provider,
+        "encrypted",
+        model,
+        model_purpose="transcription",
+    )
+
+
+@pytest.mark.parametrize(
+    ("provider", "existing_model", "requested_model"),
+    [
+        ("openai", "gpt-4o-transcribe", "gpt-transcribe"),
+        ("assemblyai", "universal", "future-assembly-model"),
+        ("gemini", "gemini-2.5-flash", "gemini-3.0-flash"),
+        ("openrouter", "openai/gpt-transcribe", "x-ai/grok-stt-1.0"),
+    ],
+)
+def test_masked_save_lookup_can_reuse_any_existing_model_key_for_provider(
+    provider, existing_model, requested_model
+):
+    cursor = Mock()
+    expected_record = {
+        "id": 7,
+        "provider_code": provider,
+        "model_slug": existing_model,
+        "encrypted_key": "encrypted",
+    }
+    cursor.fetchone.return_value = expected_record
+
+    with patch.object(user_api_key, "get_cursor", return_value=cursor):
+        record = user_api_key.get_api_key_record(
+            7,
+            provider,
+            requested_model,
+            allow_model_fallback=True,
+        )
+
+    assert record == expected_record
+    sql, params = cursor.execute.call_args.args
+    assert params == (7, provider, requested_model)
+    assert "ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END" in sql
+    assert "model_slug = %s OR model_slug = ''" not in sql
 
 
 def test_save_full_model_key_overrides_preloaded_provider_key():
@@ -265,6 +355,30 @@ def test_model_upsert_scopes_openrouter_key_by_model_slug():
     sql, params = cursor.execute.call_args.args
     assert "model_slug" in sql
     assert params == (7, "openrouter", "x-ai/grok-stt-1.0", "encrypted")
+
+
+@pytest.mark.parametrize(
+    ("provider", "model"),
+    [
+        ("openai", "gpt-transcribe"),
+        ("assemblyai", "universal"),
+        ("gemini", "gemini-3.0-flash"),
+        ("openrouter", "x-ai/grok-stt-1.0"),
+    ],
+)
+def test_model_upsert_scopes_each_provider_key_by_model_slug(provider, model):
+    cursor = Mock()
+    connection = Mock()
+    cursor.rowcount = 1
+
+    with patch.object(user_api_key, "get_cursor", return_value=cursor), patch.object(
+        user_api_key, "get_db", return_value=connection
+    ):
+        assert user_api_key.upsert_api_key(7, provider, "encrypted", model) is True
+
+    sql, params = cursor.execute.call_args.args
+    assert "model_slug" in sql
+    assert params == (7, provider, model, "encrypted")
 
 
 def test_llm_service_passes_requested_openrouter_model_to_key_lookup():

@@ -71,35 +71,18 @@ def generate_llm_text():
         role = current_user.role
         if role is None:
             return jsonify({'error': _('You do not have permission to run workflows.')}), 403
-        # --- Get API Key ---
-        # This logic depends on whether LLM keys are global or user-specific
-        # Assuming global for now, adjust if user-specific keys are implemented for LLMs
-        api_key: Optional[str] = None
-        if provider.startswith("gemini"):
-            api_key = current_app.config.get('GEMINI_API_KEY')
-        elif provider.startswith("openai") or provider.startswith("gpt"):
-            api_key = current_app.config.get('OPENAI_API_KEY')
-        # Add other providers...
-
-        if not api_key:
-             # Check if user has the key if multi-user and user-specific keys are implemented
-             # if current_app.config['DEPLOYMENT_MODE'] == 'multi':
-             #     key_service_name = ... # Determine key name based on provider
-             #     api_key = user_service.get_decrypted_api_key(user_id, key_service_name)
-             # if not api_key:
-             raise LlmConfigurationError(f"API key for LLM provider '{provider}' is not configured.")
-
         allowed, reason = role_model.reserve_usage_if_allowed(
             user_id, role, workflows_to_add=1
         )
         if not allowed:
             return jsonify({'error': reason}), 429
 
-        # --- Call LLM Service ---
+        # Keep API-key selection in the central LLM service so this endpoint
+        # follows the same user, admin, and environment fallback rules.
         result_text = llm_service.generate_text_via_llm(
             provider_name=provider,
-            api_key=api_key,
             prompt=prompt,
+            user_id=user_id,
             **kwargs
         )
 
