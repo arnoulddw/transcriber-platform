@@ -35,6 +35,12 @@ _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
     },
 }
 
+# These codes are provider labels or historical model codes, not selectable
+# transcription models. ``openrouter`` remains an internal expansion anchor so
+# saved vendor/model slugs can still be surfaced by ``build_model_options``.
+PROVIDER_ONLY_MODEL_CODES = frozenset({"openai", "assemblyai", "openrouter"})
+DEPRECATED_MODEL_CODES = frozenset({"whisper", "gpt-4o-transcribe-diarize"})
+
 
 def init_db_command() -> None:
     """
@@ -324,6 +330,8 @@ def expand_models_for_ui(
 
     for model in models:
         provider = str(model.get("code") or "").strip().lower()
+        if provider in (PROVIDER_ONLY_MODEL_CODES - {"openrouter"}) or provider in DEPRECATED_MODEL_CODES:
+            continue
         entries = [
             entry
             for entry in _key_entries_for_model(model, status)
@@ -395,29 +403,31 @@ def build_model_options(
     """
     expanded = expand_models_for_ui(catalog_models, key_status, fallback_openrouter_model)
 
-    # Canonical ordering: every catalog code keeps its catalog order; the
-    # OpenRouter slugs (already one option per slug) are sorted alphabetically
-    # inside the openrouter group so all four dropdowns render identically.
-    or_entries = sorted(
-        (e for e in expanded if e.get("code") == "openrouter"),
-        key=lambda e: str(e.get("model_name") or "").lower(),
-    )
-    others = [e for e in expanded if e.get("code") != "openrouter"]
-    first_or = next(
-        (i for i, e in enumerate(expanded) if e.get("code") == "openrouter"),
-        len(others),
-    )
-
     options: List[Dict[str, Optional[str]]] = []
     seen: set[tuple[str, str]] = set()
-    for entry in others[:first_or] + or_entries + others[first_or:]:
+    for entry in expanded:
         code = str(entry.get("code") or "").strip()
         identity = (code, entry.get("model_name") or "") if code == "openrouter" else (code, "")
         if identity in seen:
             continue
         seen.add(identity)
         options.append(entry)
-    return options
+
+    def _display_name_sort_key(entry: Dict[str, Optional[str]]) -> tuple[str, str, str]:
+        display_name = str(
+            entry.get("display_name")
+            or entry.get("model_name")
+            or entry.get("model_slug")
+            or entry.get("code")
+            or ""
+        ).strip()
+        code = str(entry.get("code") or "").strip()
+        model_name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+        return display_name.casefold(), code.casefold(), model_name.casefold()
+
+    # The order of the final expanded options is the contract shared by every
+    # dropdown consumer. Sort after OpenRouter expansion, not before it.
+    return sorted(options, key=_display_name_sort_key)
 
 
 def get_model_by_code(code: str) -> Optional[Dict[str, Optional[str]]]:
@@ -567,6 +577,19 @@ def register_model_from_provider(
     if not code:
         logger.warning("[Catalog] Ignoring model registration with empty code (provider '%s').", provider)
         return
+    code_lower = code.lower()
+    if code_lower == "assemblyai":
+        code = "universal"
+        code_lower = code
+        if not display_name or str(display_name).strip().casefold() in {"assemblyai", "universal"}:
+            display_name = "AssemblyAI Universal"
+    if code_lower in (PROVIDER_ONLY_MODEL_CODES - {"assemblyai"}) or code_lower in DEPRECATED_MODEL_CODES:
+        logger.warning("[Catalog] Ignoring provider/retired model code '%s'.", code)
+        return
+    if provider == "assemblyai" and code_lower == "universal" and (
+        not display_name or str(display_name).strip().casefold() in {"assemblyai", "universal"}
+    ):
+        display_name = "AssemblyAI Universal"
     purpose = str(model_purpose or 'transcription').strip().lower()
     if purpose not in {'transcription', 'live'}:
         logger.warning("[Catalog] Ignoring model registration with invalid purpose '%s'.", model_purpose)

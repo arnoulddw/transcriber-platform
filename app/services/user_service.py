@@ -133,9 +133,9 @@ def save_user_api_key(
     """Encrypt and save a provider/model-scoped API key.
 
     A blank model name is accepted only for legacy provider-wide API clients;
-    the Manage API Keys UI always supplies one. OpenRouter retains its
-    vendor/model validation rules, while other providers use a provider-local
-    model name such as ``universal-3-5-pro``.
+    AssemblyAI's legacy blank transcription key is normalized to its
+    provider-local ``universal`` model. OpenRouter retains its vendor/model
+    validation rules, while other providers use a provider-local model name.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     if model_name is None:
@@ -164,6 +164,12 @@ def save_user_api_key(
         model_name,
         required=service == 'openrouter',
     )
+    if service == 'assemblyai' and model_purpose == 'transcription':
+        # Older deployments stored AssemblyAI as a provider-wide key. The
+        # client code's underlying default is the Universal model, so keep the
+        # saved key aligned with the selectable catalog model.
+        if not normalized_model_name or normalized_model_name.casefold() == 'assemblyai':
+            normalized_model_name = 'universal'
 
     if service == 'gemini' and not _validate_gemini_api_key_format(api_key):
         logger.warning("Invalid Google Gemini API key format provided.")

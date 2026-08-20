@@ -306,7 +306,22 @@ class UserProfileForm(FlaskForm):
             )
         except Exception as expand_err:
             logging.warning(f"[FORMS] Failed to expand transcription models for profile form: {expand_err}", exc_info=True)
-            available_models = catalog_models
+            excluded_codes = (
+                transcription_catalog_model.PROVIDER_ONLY_MODEL_CODES
+                | transcription_catalog_model.DEPRECATED_MODEL_CODES
+            )
+            available_models = [
+                model for model in catalog_models
+                if str(model.get('code') or '').strip().casefold() not in {
+                    str(code).casefold() for code in excluded_codes
+                }
+            ]
+            available_models.sort(
+                key=lambda model: (
+                    str(model.get('display_name') or model.get('code') or '').casefold(),
+                    str(model.get('code') or '').casefold(),
+                )
+            )
         for model in available_models:
             permission_key = model.get('permission_key')
             if not permission_key or (current_user.is_authenticated and current_user.has_permission(permission_key)):
@@ -552,7 +567,22 @@ class AdminRoleForm(FlaskForm):
             )
         except Exception as expand_err:
             logging.warning(f"[FORMS] Failed to expand transcription models for admin role form: {expand_err}", exc_info=True)
-            expanded_models = list(catalog_models)
+            excluded_codes = (
+                transcription_catalog_model.PROVIDER_ONLY_MODEL_CODES
+                | transcription_catalog_model.DEPRECATED_MODEL_CODES
+            )
+            expanded_models = [
+                model for model in catalog_models
+                if str(model.get('code') or '').strip().casefold() not in {
+                    str(code).casefold() for code in excluded_codes
+                }
+            ]
+            expanded_models.sort(
+                key=lambda model: (
+                    str(model.get('display_name') or model.get('code') or '').casefold(),
+                    str(model.get('code') or '').casefold(),
+                )
+            )
 
         # Each OpenRouter slug is a distinct option (rendered manually by the
         # template), so the form carries the canonical per-slug list for the

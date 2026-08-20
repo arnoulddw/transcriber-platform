@@ -40,8 +40,7 @@
                             class="input-select">
                         {% set model_descriptions = {
                             'gpt-4o-transcribe': _('Best accuracy for clear speech and a good default for most recordings.'),
-                            'whisper': _('Best for long recordings and broad language support.'),
-                            'assemblyai': _('Supports speaker identification and works well for meetings and interviews.'),
+                            'universal': _('Supports speaker identification and works well for meetings and interviews.'),
                             'openrouter': _('Routes the job through the selected OpenRouter transcription model.'),
                         } %}
                         {% set seen_transcription_models = namespace(keys=[]) %}
@@ -49,7 +48,7 @@
                             {% set required_perm = model.permission_key %}
                             {% set option_key = (model.code ~ '|' ~ (model.model_name or '')) if model.code == 'openrouter' else (model.code ~ '|') %}
                             {% if option_key not in seen_transcription_models.keys and (not required_perm or user_permissions.get(required_perm)) %}
-                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if model.code == effective_default_api and (not model.model_name or model.model_name == effective_openrouter_model) %}selected{% endif %}{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                <option value="{{ model.code }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" data-context-prompt-supported="{{ 'true' if model.code in ['gpt-transcribe', 'gpt-4o-transcribe'] or model.required_api_key == 'assemblyai' else 'false' }}" data-speaker-diarization-supported="{{ 'true' if model.required_api_key == 'assemblyai' else 'false' }}" {% if model.code == effective_default_api and (not model.model_name or model.model_name == effective_openrouter_model) %}selected{% endif %}{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
                                 {% set seen_transcription_models.keys = seen_transcription_models.keys + [option_key] %}
                             {% endif %}
                         {% endfor %}

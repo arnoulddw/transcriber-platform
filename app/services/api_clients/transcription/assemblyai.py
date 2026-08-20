@@ -36,10 +36,19 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
     WORD_BOOST_MAX_WORDS_PER_TERM = 4
 
     # Resolves display names from the catalog (single source of truth).
-    CATALOG_MODEL_CODE = "assemblyai"
+    CATALOG_MODEL_CODE = "universal"
 
-    def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        config: Dict[str, Any],
+        model_code: Optional[str] = None,
+    ) -> None:
         """Initializes the client and sets API-specific limits from config."""
+        self.model_code = str(model_code or self.CATALOG_MODEL_CODE).strip() or "universal"
+        if self.model_code.casefold() == "assemblyai":
+            self.model_code = "universal"
+        self.CATALOG_MODEL_CODE = self.model_code
         super().__init__(api_key, config)
         # Override max_concurrent_chunks for AssemblyAI as it handles this internally
         self.max_concurrent_chunks = 1
@@ -76,7 +85,7 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
         """Prepare the TranscriptionConfig parameters for AssemblyAI."""
         # Use the configured provider-local model when supplied; preserve the
         # historical Universal fallback for legacy provider-wide keys.
-        model_name = (extra_options or {}).get('model') or 'universal'
+        model_name = (extra_options or {}).get('model') or self.model_code
         config_params: Dict[str, Any] = {
             'speech_models': [model_name],
         }
