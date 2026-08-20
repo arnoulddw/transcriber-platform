@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from mysql.connector import Error as MySQLError
 
 from app.database import get_cursor
+from app.services import display_mapping_service
 from .filtering import _build_filter_sql_and_params
 
 
@@ -135,32 +136,42 @@ def get_api_distribution_in_range(
     aggregate_minutes: bool = False,
     **filters: Any,
 ) -> Dict[str, float]:
-    """
-    Gets job counts or summed minutes per API used within a date range (includes hidden).
-    Supports additional filters.
+    """Get usage grouped by canonical transcription model identity.
+
+    Historical rows may store a bare model code or a provider-level identifier,
+    while newer rows use ``provider:model``. Resolve those aliases before
+    aggregating so one model produces one analytics row.
     """
     aggregate_column = "SUM(audio_length_minutes)" if aggregate_minutes else "COUNT(*)"
     result_column_name = "total_value"
 
-    base_sql = f"SELECT api_used, {aggregate_column} as {result_column_name} FROM transcriptions WHERE 1=1"
+    base_sql = (
+        f"SELECT api_used, api_model, {aggregate_column} as {result_column_name} "
+        "FROM transcriptions WHERE 1=1"
+    )
     if aggregate_minutes:
         base_sql += " AND audio_length_minutes IS NOT NULL"
 
     sql, params = _build_filter_sql_and_params(base_sql, start_dt, end_dt, **filters)
-    sql += " GROUP BY api_used"
+    sql += " GROUP BY api_used, api_model"
 
     cursor = get_cursor()
     distribution: Dict[str, float] = {}
+    aliases = display_mapping_service.get_transcription_model_aliases()
     try:
         cursor.execute(sql, tuple(params))
         rows = cursor.fetchall()
         for row in rows:
-            api = row['api_used'] or 'Unknown'
+            api = display_mapping_service.resolve_transcription_model_key(
+                row.get("api_used"),
+                row.get("api_model"),
+                aliases,
+            )
             value = row[result_column_name]
             if aggregate_minutes:
-                distribution[api] = float(value) if value is not None else 0.0
+                distribution[api] = distribution.get(api, 0.0) + (float(value) if value is not None else 0.0)
             else:
-                distribution[api] = int(value) if value is not None else 0
+                distribution[api] = distribution.get(api, 0) + (int(value) if value is not None else 0)
     except MySQLError as err:
         logging.error(
             "[DB:AdminUtils] Error getting API %s distribution with filters %s: %s",
@@ -170,6 +181,52 @@ def get_api_distribution_in_range(
             exc_info=True,
         )
     return distribution
+
+
+def get_api_error_rate_distribution_in_range(
+    start_dt: Optional[datetime] = None,
+    end_dt: Optional[datetime] = None,
+) -> Dict[str, float]:
+    """Get API error rates grouped by canonical transcription model identity."""
+    base_sql = """
+        SELECT
+            api_used,
+            api_model,
+            COUNT(*) AS total_count,
+            SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
+        FROM transcriptions
+        WHERE status IN ('finished', 'cancelled', 'error')
+    """
+    sql, params = _build_filter_sql_and_params(base_sql, start_dt, end_dt)
+    sql += " GROUP BY api_used, api_model"
+
+    cursor = get_cursor()
+    totals: Dict[str, int] = {}
+    errors: Dict[str, int] = {}
+    aliases = display_mapping_service.get_transcription_model_aliases()
+    try:
+        cursor.execute(sql, tuple(params))
+        rows = cursor.fetchall()
+        for row in rows:
+            api = display_mapping_service.resolve_transcription_model_key(
+                row.get("api_used"),
+                row.get("api_model"),
+                aliases,
+            )
+            totals[api] = totals.get(api, 0) + int(row.get("total_count") or 0)
+            errors[api] = errors.get(api, 0) + int(row.get("error_count") or 0)
+    except MySQLError as err:
+        logging.error(
+            "[DB:AdminUtils] Error getting API error-rate distribution: %s",
+            err,
+            exc_info=True,
+        )
+        return {}
+
+    return {
+        api: round((errors.get(api, 0) * 100) / total, 2) if total else 0.0
+        for api, total in totals.items()
+    }
 
 
 def get_language_distribution_in_range(
@@ -579,6 +636,7 @@ __all__ = [
     "count_jobs_in_range",
     "sum_minutes_in_range",
     "get_api_distribution_in_range",
+    "get_api_error_rate_distribution_in_range",
     "get_language_distribution_in_range",
     "get_common_error_messages_in_range",
     "get_workflow_model_distribution",
