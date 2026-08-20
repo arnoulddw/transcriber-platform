@@ -21,7 +21,11 @@ from app.models import transcription_catalog as transcription_catalog_model
 
 # Import other services
 from app.services import file_service, workflow_service # Added workflow_service
-from app.services.user_service import get_decrypted_api_key, MissingApiKeyError
+from app.services.user_service import (
+    get_admin_decrypted_api_key,
+    get_decrypted_api_key,
+    MissingApiKeyError,
+)
 from app.services.pricing_service import get_price as get_pricing_service_price, PricingServiceError
 from app.services.api_clients import get_transcription_client, _resolve_transcription_provider
 from app.services.api_clients.transcription.base_transcription_client import BaseTranscriptionClient
@@ -282,7 +286,22 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                             # User is allowed to set a key, but hasn't. This is an error.
                             raise MissingApiKeyError(f"ERROR: {api_display_name} API key not configured by user.")
                         else:
-                            # User is not allowed to set a key, so fall back to global config.
+                            # User is not allowed to set a key, so use the exact
+                            # model key configured by an admin before trying the
+                            # legacy global environment key.
+                            api_key = get_admin_decrypted_api_key(
+                                key_service_name,
+                                model_slug=api_model,
+                            )
+                            if api_key:
+                                logger.debug(
+                                    "Using admin-configured API key for '%s' and model '%s'.",
+                                    api_display_name,
+                                    api_model,
+                                )
+
+                        if not api_key:
+                            # No admin model key: fall back to global config.
                             logger.debug(f"User key not found and role does not allow key management. Falling back to global API key for '{api_display_name}'.")
                             key_env_var = None
                             provider_for_key = _resolve_transcription_provider(api_choice)

@@ -124,14 +124,47 @@ def get_active_models() -> List[Dict[str, Optional[str]]]:
 
 def filter_models_by_api_key_status(
     models: List[Dict[str, Optional[str]]],
-    api_key_status: Dict[str, bool],
+    api_key_status: Dict[str, Any],
+    *,
+    allow_provider_wide: bool = False,
 ) -> List[Dict[str, Optional[str]]]:
-    """Return only models whose required provider key is available."""
+    """Return only models whose exact required model key is available.
+
+    ``allow_provider_wide`` is reserved for single-user deployments, where an
+    environment-level provider key is the only key source. In multi-user mode,
+    a provider-wide database key is not enough to expose every catalog model.
+    """
+
+    def has_exact_model_key(model: Dict[str, Optional[str]]) -> bool:
+        required_key = str(model.get("required_api_key") or "").strip().lower()
+        model_code = str(model.get("code") or "").strip()
+        if not required_key or not model_code:
+            return False
+        if allow_provider_wide and bool(api_key_status.get(required_key)):
+            return True
+
+        provider_keys = api_key_status.get("provider_keys") or {}
+        entries = list(provider_keys.get(required_key) or [])
+        if required_key == "openrouter":
+            entries.extend(api_key_status.get("openrouter_keys") or [])
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("provider_wide"):
+                continue
+            purposes = entry.get("model_purposes") or []
+            if isinstance(purposes, str):
+                purposes = purposes.split(",")
+            if "llm" not in {str(purpose).strip().lower() for purpose in purposes}:
+                continue
+            entry_model = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
+            if entry_model == model_code:
+                return True
+        return False
+
     return [
         model
         for model in models
         if not model.get("required_api_key")
-        or bool(api_key_status.get(str(model["required_api_key"]).lower()))
+        or has_exact_model_key(model)
     ]
 
 

@@ -245,9 +245,8 @@ def _is_transcription_key(entry: Dict[str, Any]) -> bool:
 def _candidate_key_names(provider: str, required_key: str) -> List[str]:
     """Return the key-status names that can serve a catalog model.
 
-    Mirrors the provider API-key layout: a model is unlocked by its explicit
-    ``required_api_key``, by its provider code, and by the shared aliases
-    (OpenAI transcription codes resolve to the ``openai`` key bucket).
+    The names are used to find explicit model rows. Provider booleans and
+    provider-wide rows are intentionally not sufficient to unlock a model.
     """
     names = [required_key, provider]
     if provider in {"whisper", "gpt-transcribe", "gpt-4o-transcribe"}:
@@ -339,8 +338,6 @@ def expand_models_for_ui(
                 name = str(entry.get("model_name") or entry.get("model_slug") or "").strip()
                 if name and name not in names:
                     names.append(name)
-            if fallback_openrouter_model and fallback_openrouter_model.strip() not in names:
-                names.append(fallback_openrouter_model.strip())
             if not names:
                 # No specific OpenRouter model is known. The provider name is
                 # not a selectable model, so no option is emitted here.
@@ -356,6 +353,11 @@ def expand_models_for_ui(
 
         catalog_code = str(model.get("code") or "").strip()
         required_key = str(model.get("required_api_key") or "").strip().lower()
+        if not required_key:
+            # Models that do not declare a required provider key are available
+            # without any saved credential.
+            append_once(dict(model))
+            continue
         matching_entry = next(
             (
                 entry
@@ -372,14 +374,8 @@ def expand_models_for_ui(
                 "model_slug": None,
                 "display_name": model.get("display_name") or catalog_code,
             })
-        elif entries or any(status.get(name) for name in _candidate_key_names(provider, required_key)):
-            # No per-model key entry, but a key exists that can serve this
-            # model (another model of the same provider, a provider-wide key,
-            # a single-user env key, or an LLM/legacy entry). Keep the option.
-            append_once(dict(model))
-        # else: no key at all for this model's provider. The option is omitted
-        # so a fresh install renders an empty dropdown (first-run state that
-        # steers admins to Manage API Keys) instead of non-functional entries.
+        # A provider-wide key or another model's key does not unlock this
+        # catalog row. The admin must save an explicit key for this model.
 
     return expanded
 

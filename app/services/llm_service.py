@@ -177,8 +177,37 @@ def generate_text_via_llm(
                     effective_api_key = None # Ensure fallback if error occurs
         # --- MODIFICATION: Added else for when user cannot manage keys in multi-mode ---
         elif current_app.config['DEPLOYMENT_MODE'] == 'multi' and user_id is not None and not user_can_manage_keys:
-            logger.debug("User key management disabled for role. Will attempt to use global API key.")
-            effective_api_key = None # Ensure fallback to global key
+            logger.debug("User key management disabled for role. Will attempt to use an admin-configured model key.")
+            key_service_name = None
+            if provider_name.upper().startswith("OPENROUTER"):
+                key_service_name = "openrouter"
+            elif provider_name.upper().startswith("GEMINI"):
+                key_service_name = "gemini"
+            elif provider_name.upper().startswith("OPENAI") or provider_name.upper().startswith("GPT"):
+                key_service_name = "openai"
+            if key_service_name:
+                try:
+                    effective_api_key = user_service.get_admin_decrypted_api_key(
+                        key_service_name,
+                        kwargs.get('model'),
+                    )
+                    if effective_api_key:
+                        logger.debug(
+                            "Using admin-configured API key for '%s'.",
+                            key_service_name,
+                        )
+                    else:
+                        logger.debug(
+                            "Admin-configured API key for '%s' not found.",
+                            key_service_name,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Error fetching admin-configured API key for '%s': %s. Will try global key.",
+                        key_service_name,
+                        e,
+                    )
+                    effective_api_key = None
         # --- END MODIFICATION ---
 
 

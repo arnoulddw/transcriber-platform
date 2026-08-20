@@ -61,13 +61,51 @@ def test_save_masked_openrouter_key_reuses_saved_key_for_new_slug():
             openrouter_model="x-ai/grok-stt-1.0",
         ) is True
 
-    get_key.assert_called_once_with(7, "openrouter", "x-ai/grok-stt-1.0")
+    get_key.assert_called_once_with(
+        7,
+        "openrouter",
+        "x-ai/grok-stt-1.0",
+        allow_model_fallback=True,
+    )
     security_service.encrypt_data.assert_called_once_with(OPENROUTER_KEY)
     upsert.assert_called_once_with(
         7,
         "openrouter",
         "encrypted",
         "x-ai/grok-stt-1.0",
+        model_purpose="transcription",
+    )
+
+
+def test_save_full_model_key_overrides_preloaded_provider_key():
+    app = _app()
+    user = SimpleNamespace(id=7)
+    security_service = Mock()
+    security_service.encrypt_data.return_value = "encrypted-specific"
+
+    with app.app_context(), patch.object(
+        user_service.user_model, "get_user_by_id", return_value=user
+    ), patch.object(
+        user_service, "get_decrypted_api_key", return_value="provider-key"
+    ) as get_key, patch.object(
+        user_service, "get_security_service", return_value=security_service
+    ), patch.object(
+        user_service.user_api_key_model, "upsert_api_key", return_value=True
+    ) as upsert:
+        assert user_service.save_user_api_key(
+            7,
+            "openai",
+            "model-specific-key",
+            model_name="whisper",
+        ) is True
+
+    get_key.assert_not_called()
+    security_service.encrypt_data.assert_called_once_with("model-specific-key")
+    upsert.assert_called_once_with(
+        7,
+        "openai",
+        "encrypted-specific",
+        "whisper",
         model_purpose="transcription",
     )
 
@@ -121,6 +159,61 @@ def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
     ]
 
 
+def test_admin_model_key_lookup_requires_an_exact_model_row():
+    app = _app()
+    security_service = Mock()
+    security_service.decrypt_data.side_effect = {
+        "encrypted-specific": "admin-specific-key",
+        "encrypted-wide": "admin-provider-key",
+    }.get
+    records = [
+        {
+            "id": 11,
+            "user_id": 3,
+            "model_slug": "whisper",
+            "encrypted_key": "encrypted-specific",
+        },
+        {
+            "id": 12,
+            "user_id": 3,
+            "model_slug": "",
+            "encrypted_key": "encrypted-wide",
+        },
+    ]
+
+    with app.app_context(), patch.object(
+        user_service.user_api_key_model,
+        "get_admin_api_key_records",
+        return_value=records,
+    ) as get_records, patch.object(
+        user_service, "get_security_service", return_value=security_service
+    ), patch.object(user_service.user_api_key_model, "mark_api_key_used") as mark_used:
+        assert user_service.get_admin_decrypted_api_key("openai", "whisper") == "admin-specific-key"
+        assert user_service.get_admin_decrypted_api_key("openai", "gpt-4o-transcribe") is None
+
+    assert get_records.call_args_list == [
+        call("openai", model_slug="whisper"),
+        call("openai", model_slug="gpt-4o-transcribe"),
+    ]
+    mark_used.assert_called_once_with(3, 11)
+
+
+def test_admin_named_model_query_excludes_provider_wide_rows():
+    cursor = Mock()
+    cursor.fetchall.return_value = []
+
+    with patch.object(user_api_key, "get_cursor", return_value=cursor):
+        assert user_api_key.get_admin_api_key_records(
+            "openai",
+            model_slug="whisper",
+        ) == []
+
+    sql, params = cursor.execute.call_args.args
+    assert params == ("openai", "whisper")
+    assert "AND k.model_slug = %s" in sql
+    assert "OR k.model_slug = ''" not in sql
+
+
 def test_model_upsert_scopes_openrouter_key_by_model_slug():
     cursor = Mock()
     connection = Mock()
@@ -167,7 +260,7 @@ def test_llm_service_passes_requested_openrouter_model_to_key_lookup():
     get_key.assert_called_once_with(7, "openrouter", "x-ai/grok-stt-1.0")
 
 
-def test_openrouter_key_lookup_falls_back_to_key_saved_for_another_model():
+def test_openrouter_key_lookup_does_not_fall_back_to_another_model():
     cursor = Mock()
     expected_record = {
         "id": 7,
@@ -185,8 +278,21 @@ def test_openrouter_key_lookup_falls_back_to_key_saved_for_another_model():
     sql, params = cursor.execute.call_args.args
     assert record == expected_record
     assert params == (7, "openrouter", "google/gemini-3.7-flash")
-    assert "ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END" in sql
+    assert "AND model_slug = %s" in sql
+    assert "ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END" not in sql
     assert "model_slug = %s OR model_slug = ''" not in sql
+
+
+def test_unscoped_openrouter_key_lookup_requires_a_provider_wide_row():
+    cursor = Mock()
+    cursor.fetchone.return_value = None
+
+    with patch.object(user_api_key, "get_cursor", return_value=cursor):
+        assert user_api_key.get_api_key_record(7, "openrouter") is None
+
+    sql, params = cursor.execute.call_args.args
+    assert params == (7, "openrouter", "")
+    assert "AND model_slug = %s" in sql
 
 
 def test_api_key_modal_contract_contains_requested_copy_and_selected_state():
