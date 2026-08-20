@@ -167,10 +167,12 @@ def get_api_key_record(
     user_id: int,
     provider_code: str,
     model_slug: Optional[str] = None,
+    *,
+    allow_model_fallback: bool = False,
 ) -> Optional[Dict[str, Any]]:
     provider = provider_code.lower()
     stored_model_slug = _stored_model_slug(provider, model_slug)
-    if stored_model_slug and provider != "openrouter":
+    if stored_model_slug and provider != "openrouter" and allow_model_fallback:
         sql = """
             SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
@@ -183,7 +185,7 @@ def get_api_key_record(
             LIMIT 1
         """
         params = (user_id, provider, stored_model_slug, stored_model_slug)
-    elif stored_model_slug and provider == "openrouter":
+    elif stored_model_slug and provider == "openrouter" and allow_model_fallback:
         sql = """
             SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
@@ -195,17 +197,30 @@ def get_api_key_record(
             LIMIT 1
         """
         params = (user_id, provider, stored_model_slug)
-    elif provider == "openrouter":
+    elif provider == "openrouter" and not stored_model_slug:
         sql = """
             SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
             WHERE user_id = %s
               AND provider_code = %s
+              AND model_slug = %s
             ORDER BY COALESCE(last_used_at, updated_at, created_at) DESC,
                      id DESC
             LIMIT 1
         """
-        params = (user_id, provider)
+        params = (user_id, provider, stored_model_slug)
+    elif stored_model_slug:
+        sql = """
+            SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
+            FROM user_api_keys
+            WHERE user_id = %s
+              AND provider_code = %s
+              AND model_slug = %s
+            ORDER BY COALESCE(last_used_at, updated_at, created_at) DESC,
+                     id DESC
+            LIMIT 1
+        """
+        params = (user_id, provider, stored_model_slug)
     else:
         sql = """
             SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
@@ -368,6 +383,50 @@ def get_all_api_key_records() -> List[Dict[str, Any]]:
     except MySQLError as err:
         logging.error(
             "[DB:UserApiKey] Error fetching all API key records: %s",
+            err,
+            exc_info=True,
+        )
+        return []
+
+
+def get_admin_api_key_records(
+    provider_code: Optional[str] = None,
+    model_slug: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return keys owned by users whose role can access the admin panel.
+
+    Admin-managed model keys are the shared credentials that users without
+    key-management permission may use. When ``model_slug`` is supplied, only
+    that exact model row is returned; a provider-wide row is never a match for
+    a named model.
+    """
+    sql = """
+        SELECT k.id, k.user_id, k.provider_code, k.model_slug,
+               k.model_purposes, k.encrypted_key, k.created_at,
+               k.updated_at, k.last_used_at
+        FROM user_api_keys AS k
+        INNER JOIN users AS u ON u.id = k.user_id
+        INNER JOIN roles AS r ON r.id = u.role_id
+        WHERE r.access_admin_panel = TRUE
+    """
+    params: List[Any] = []
+    if provider_code:
+        provider = provider_code.lower()
+        sql += " AND k.provider_code = %s"
+        params.append(provider)
+    if model_slug is not None:
+        stored_model_slug = _stored_model_slug(provider_code or "", model_slug)
+        sql += " AND k.model_slug = %s"
+        params.append(stored_model_slug)
+    sql += " ORDER BY COALESCE(k.last_used_at, k.updated_at, k.created_at) DESC, k.id DESC"
+
+    cursor = get_cursor()
+    try:
+        cursor.execute(sql, tuple(params))
+        return cursor.fetchall() or []
+    except MySQLError as err:
+        logging.error(
+            "[DB:UserApiKey] Error fetching admin API key records: %s",
             err,
             exc_info=True,
         )

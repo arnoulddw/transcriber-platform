@@ -98,7 +98,7 @@ def _resolve_live_model(user, requested: Optional[str] = None) -> str:
     }
     if user:
         try:
-            key_status = user_service.get_user_api_key_status(user.id)
+            key_status = user_service.get_effective_key_status(user)
             # Catalog-registered live models (normal + OpenRouter) are the
             # canonical source; key purposes keep legacy OpenRouter slugs.
             for entry in transcription_catalog_model.get_live_models(key_status):
@@ -151,6 +151,9 @@ def _resolve_provider_api_key(user, provider: str, model: Optional[str] = None) 
             return api_key
         if check_permission(user, "allow_api_key_management"):
             raise MissingApiKeyError(_("%(provider)s API key is not configured.", provider=provider.title()))
+        api_key = user_service.get_admin_decrypted_api_key(provider, model)
+        if api_key:
+            return api_key
     api_key = current_app.config.get(f"{provider.upper()}_API_KEY")
     if not api_key:
         raise MissingApiKeyError(_("%(provider)s API key is not configured.", provider=provider.title()))

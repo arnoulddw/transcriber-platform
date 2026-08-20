@@ -75,3 +75,27 @@ def test_live_provider_api_key_lookup_is_model_scoped(monkeypatch):
     with app.app_context():
         with pytest.raises(service.MissingApiKeyError):
             service._resolve_provider_api_key(user, "gemini", "gemini-2.5-flash-native-audio")
+
+
+def test_live_provider_api_key_uses_admin_model_key_without_user_key_management(monkeypatch):
+    app = Flask(__name__)
+    app.config.update(
+        SECRET_KEY="test-secret",
+        DEPLOYMENT_MODE="multi",
+        OPENAI_API_KEY=None,
+    )
+    Babel(app)
+    user = SimpleNamespace(id=7)
+    monkeypatch.setattr(service, "check_permission", lambda *_: False)
+    monkeypatch.setattr(service.user_service, "get_decrypted_api_key", lambda *_: None)
+    get_admin_key = MagicMock(return_value="admin-model-key")
+    monkeypatch.setattr(service.user_service, "get_admin_decrypted_api_key", get_admin_key)
+
+    with app.app_context():
+        assert service._resolve_provider_api_key(
+            user,
+            "openai",
+            "gpt-live-transcribe",
+        ) == "admin-model-key"
+
+    get_admin_key.assert_called_once_with("openai", "gpt-live-transcribe")

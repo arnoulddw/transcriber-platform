@@ -177,7 +177,10 @@ def save_user_api_key(
 
         if api_key.startswith('***'):
             existing_key = get_decrypted_api_key(
-                user_id, service, normalized_model_name
+                user_id,
+                service,
+                normalized_model_name,
+                allow_model_fallback=True,
             )
             if (
                 not existing_key
@@ -274,12 +277,15 @@ def get_decrypted_api_key(
     user_id: int,
     service: str,
     model_slug: Optional[str] = None,
+    *,
+    allow_model_fallback: bool = False,
 ) -> Optional[str]:
     """
     Retrieves and decrypts a user's API key.
 
-    OpenRouter lookups prefer an exact model slug and fall back to the most
-    recently used saved OpenRouter key, including legacy provider-only rows.
+    Named model lookups require an exact model row. The save flow can opt into
+    model fallback so a masked provider key can be reused when adding a new
+    model; normal runtime lookups stay model-scoped.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
     if not service:
@@ -302,7 +308,10 @@ def get_decrypted_api_key(
             return None
 
         record = user_api_key_model.get_api_key_record(
-            user_id, service, normalized_model_slug
+            user_id,
+            service,
+            normalized_model_slug,
+            allow_model_fallback=allow_model_fallback,
         )
         if not record:
             logger.debug(
@@ -342,6 +351,73 @@ def get_decrypted_api_key(
     except Exception as e:
         logger.error(f"Unexpected error getting API key for service '{service}': {e}", exc_info=True)
         return None
+
+
+def get_admin_decrypted_api_key(
+    service: str,
+    model_slug: Optional[str] = None,
+) -> Optional[str]:
+    """Return an exact model key configured by an admin, if one exists.
+
+    Provider-wide admin keys are deliberately not used for named models here:
+    the model must have its own admin-saved row before it is available to users
+    who cannot manage keys. The provider-wide row remains useful for the
+    provider's default/no-model path and for preloading a new model in the UI.
+    """
+    logger = get_logger(__name__, component="UserService")
+    if not service:
+        return None
+    service = service.lower()
+
+    normalized_model_slug = None
+    if model_slug:
+        try:
+            normalized_model_slug = _normalize_model_name(service, model_slug, required=True)
+        except ValueError as err:
+            logger.warning("Invalid model name while fetching admin API key: %s", err)
+            return None
+
+    try:
+        lookup_model_slug = normalized_model_slug if normalized_model_slug is not None else ''
+        records = user_api_key_model.get_admin_api_key_records(
+            service,
+            model_slug=lookup_model_slug,
+        )
+        security_svc: SecurityService = get_security_service()
+        for record in records:
+            # A named model requires a named admin row. This is the runtime
+            # counterpart to the exact-model UI gate. An unscoped request may
+            # use only a provider-wide row.
+            if str(record.get('model_slug') or '').strip() != lookup_model_slug:
+                continue
+            encrypted_key = record.get("encrypted_key")
+            if not encrypted_key:
+                continue
+            try:
+                decrypted_key = security_svc.decrypt_data(encrypted_key)
+            except (InvalidToken, ValueError, TypeError):
+                logger.warning(
+                    "Skipping an unreadable admin API key for provider '%s'.",
+                    service,
+                )
+                continue
+            if not decrypted_key:
+                continue
+            owner_id = record.get("user_id")
+            key_id = record.get("id")
+            if owner_id is not None and key_id is not None:
+                user_api_key_model.mark_api_key_used(owner_id, key_id)
+            return decrypted_key
+    except Exception as err:
+        logger.error(
+            "Error retrieving admin API key for service '%s' and model '%s': %s",
+            service,
+            normalized_model_slug,
+            err,
+            exc_info=True,
+        )
+    return None
+
 
 def delete_user_api_key(
     user_id: int,
@@ -494,10 +570,38 @@ def _new_empty_key_status() -> Dict[str, Any]:
     return status
 
 
+def _finalize_key_status(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Populate compatibility booleans and the OpenRouter slug alias."""
+    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
+    for provider in providers:
+        status[provider] = bool(status['provider_keys'][provider])
+    status['openrouter_keys'] = [
+        {
+            'model_slug': entry.get('model_slug'),
+            'last_three': entry.get('last_three'),
+        }
+        for entry in status['provider_keys']['openrouter']
+    ]
+    return status
+
+
+def _entry_has_purpose(entry: Dict[str, Any], purpose: str) -> bool:
+    """Return whether a key-status entry is usable for a given feature."""
+    raw_purposes = entry.get('model_purposes')
+    if isinstance(raw_purposes, str):
+        raw_purposes = raw_purposes.split(',')
+    purposes = {
+        str(value).strip().lower()
+        for value in (raw_purposes or [])
+        if str(value).strip()
+    }
+    # Entries from before purpose metadata existed are transcription keys.
+    return purpose in purposes or (not purposes and purpose == 'transcription')
+
+
 def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
     """Return configured provider/model key metadata without plaintext keys."""
     logger = get_logger(__name__, user_id=user_id, component="UserService")
-    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
     status = _new_empty_key_status()
     try:
         user = user_model.get_user_by_id(user_id)
@@ -513,15 +617,7 @@ def get_user_api_key_status(user_id: int) -> Dict[str, Any]:
         records = user_api_key_model.get_api_key_records_by_user(user_id)
         _collect_key_status_entries(status, records, security_svc, logger, user)
 
-        for provider in providers:
-            status[provider] = bool(status['provider_keys'][provider])
-        status['openrouter_keys'] = [
-            {
-                'model_slug': entry.get('model_slug'),
-                'last_three': entry.get('last_three'),
-            }
-            for entry in status['provider_keys']['openrouter']
-        ]
+        _finalize_key_status(status)
         status['live_model'] = getattr(user, 'default_live_transcription_model', None)
         status['public_api'] = get_public_api_key_status(user_id) if allow_public else status['public_api']
 
@@ -541,34 +637,112 @@ def get_aggregate_api_key_status() -> Dict[str, Any]:
     added by every user, not just their own keyring.
     """
     logger = get_logger(__name__, component="UserService")
-    providers = ('openai', 'assemblyai', 'gemini', 'openrouter')
     status = _new_empty_key_status()
     try:
         security_svc: SecurityService = get_security_service()
         records = user_api_key_model.get_all_api_key_records()
         _collect_key_status_entries(status, records, security_svc, logger)
 
-        for provider in providers:
-            status[provider] = bool(status['provider_keys'][provider])
-        status['openrouter_keys'] = [
-            {
-                'model_slug': entry.get('model_slug'),
-                'last_three': entry.get('last_three'),
-            }
-            for entry in status['provider_keys']['openrouter']
-        ]
+        _finalize_key_status(status)
         logger.debug(f"Aggregated API key status checked: {status}")
     except Exception as e:
         logger.error(f"Error checking aggregated API key status: {e}", exc_info=True)
     return status
 
 
+def get_admin_api_key_status() -> Dict[str, Any]:
+    """Return model/key metadata configured by admin-panel users only."""
+    logger = get_logger(__name__, component="UserService")
+    status = _new_empty_key_status()
+    try:
+        security_svc: SecurityService = get_security_service()
+        records = user_api_key_model.get_admin_api_key_records()
+        _collect_key_status_entries(status, records, security_svc, logger)
+        _finalize_key_status(status)
+        logger.debug("Admin-configured API key status checked: %s", status)
+    except Exception as err:
+        logger.error("Error checking admin-configured API key status: %s", err, exc_info=True)
+    return status
+
+
+def _merge_key_status(*statuses: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge admin and user status without losing model-level entries."""
+    merged: Dict[str, Any] = {}
+    provider_names = ('openai', 'assemblyai', 'gemini', 'openrouter')
+    for status in statuses:
+        if not status:
+            continue
+        for key, value in status.items():
+            if key == 'provider_keys':
+                target = merged.setdefault('provider_keys', {})
+                for provider, entries in (value or {}).items():
+                    destination = target.setdefault(provider, [])
+                    identities = {
+                        (
+                            str(entry.get('model_name') or entry.get('model_slug') or '').strip(),
+                            bool(entry.get('provider_wide')),
+                            tuple(entry.get('model_purposes') or []),
+                        )
+                        for entry in destination
+                        if isinstance(entry, dict)
+                    }
+                    for entry in entries or []:
+                        if not isinstance(entry, dict):
+                            continue
+                        identity = (
+                            str(entry.get('model_name') or entry.get('model_slug') or '').strip(),
+                            bool(entry.get('provider_wide')),
+                            tuple(entry.get('model_purposes') or []),
+                        )
+                        if identity not in identities:
+                            destination.append(entry)
+                            identities.add(identity)
+            elif key == 'openrouter_keys':
+                destination = merged.setdefault('openrouter_keys', [])
+                identities = {
+                    str(entry.get('model_slug') or '').strip()
+                    for entry in destination
+                    if isinstance(entry, dict)
+                }
+                for entry in value or []:
+                    if not isinstance(entry, dict):
+                        continue
+                    identity = str(entry.get('model_slug') or '').strip()
+                    if identity and identity not in identities:
+                        destination.append(entry)
+                        identities.add(identity)
+            elif key in provider_names:
+                merged[key] = bool(merged.get(key)) or bool(value)
+            elif key == 'public_api':
+                if value and (not merged.get(key) or value.get('enabled')):
+                    merged[key] = value
+            elif key == 'live_model':
+                if value and not merged.get(key):
+                    merged[key] = value
+            elif key not in merged:
+                merged[key] = value
+
+    if 'provider_keys' in merged:
+        for provider in provider_names:
+            merged.setdefault('provider_keys', {}).setdefault(provider, [])
+            merged[provider] = bool(merged.get(provider)) or bool(merged['provider_keys'][provider])
+        if not merged.get('openrouter_keys'):
+            merged['openrouter_keys'] = [
+                {
+                    'model_slug': entry.get('model_slug'),
+                    'last_three': entry.get('last_three'),
+                }
+                for entry in merged['provider_keys']['openrouter']
+            ]
+    return merged
+
+
 def get_effective_key_status(user: Optional[Any]) -> Dict[str, Any]:
     """Return the key status that drives model dropdowns for ``user``.
 
     Admins (roles with ``access_admin_panel``) see every model added by every
-    user; regular users see exactly their own models so dropdowns stay
-    consistent across pages.
+    user. Other users see their own keys plus exact models configured by an
+    admin, so users without key-management permission can use shared models.
     """
     if not user:
         return {}
@@ -578,7 +752,10 @@ def get_effective_key_status(user: Optional[Any]) -> Dict[str, Any]:
     user_id = getattr(user, 'id', None)
     if user_id is None:
         return {}
-    return get_user_api_key_status(user_id)
+    return _merge_key_status(
+        get_admin_api_key_status(),
+        get_user_api_key_status(user_id),
+    )
 
 def resolve_effective_openrouter_model(
     user: Any,
@@ -586,29 +763,50 @@ def resolve_effective_openrouter_model(
 ) -> Optional[str]:
     """Return the model slug that should label OpenRouter in the UI.
 
-    A saved user or role preference takes precedence. When neither exists,
-    fall back to the model slug attached to the user's most recently saved
-    OpenRouter key so the selector reflects the configured transcription
-    model instead of the generic provider name.
+    A saved user or role preference takes precedence only when that exact slug
+    is configured. Otherwise fall back to a configured OpenRouter slug so the
+    selector never points at a model with no usable key.
     """
     if not user:
         return None
+
+    if key_status is None:
+        key_status = get_effective_key_status(user)
+
+    configured_slugs: List[str] = []
+    provider_keys = key_status.get('provider_keys') or {}
+    for entry in provider_keys.get('openrouter', []) or []:
+        if (
+            not isinstance(entry, dict)
+            or entry.get('provider_wide')
+            or not _entry_has_purpose(entry, 'transcription')
+        ):
+            continue
+        slug = str(entry.get('model_slug') or entry.get('model_name') or '').strip()
+        if slug and slug not in configured_slugs:
+            configured_slugs.append(slug)
+
+    # The compatibility alias has no purpose metadata. Use it only when the
+    # structured provider bucket is unavailable, where legacy entries are
+    # treated as normal transcription keys.
+    if not provider_keys.get('openrouter'):
+        for entry in key_status.get('openrouter_keys', []) or []:
+            if not isinstance(entry, dict):
+                continue
+            model_slug = str(entry.get('model_slug') or '').strip()
+            if model_slug and model_slug.lower() != 'openrouter' and model_slug not in configured_slugs:
+                configured_slugs.append(model_slug)
 
     for candidate in (
         getattr(user, 'default_openrouter_model', None),
         getattr(getattr(user, 'role', None), 'default_openrouter_model', None),
     ):
         normalized = str(candidate or '').strip()
-        if normalized:
+        if normalized and normalized in configured_slugs:
             return normalized
 
-    if key_status is None:
-        key_status = get_user_api_key_status(user.id)
-
-    for entry in key_status.get('openrouter_keys', []) or []:
-        model_slug = str(entry.get('model_slug') or '').strip()
-        if model_slug and model_slug.lower() != 'openrouter':
-            return model_slug
+    if configured_slugs:
+        return configured_slugs[0]
     return None
 
 

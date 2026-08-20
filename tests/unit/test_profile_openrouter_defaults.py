@@ -73,7 +73,7 @@ def form_context():
             )
             stack.enter_context(
                 patch(
-                    "app.forms.user_service.get_aggregate_api_key_status",
+                    "app.forms.user_service.get_admin_api_key_status",
                     return_value=OPENROUTER_KEY_STATUS,
                 )
             )
@@ -216,9 +216,39 @@ def test_llm_model_catalog_hides_models_without_an_available_provider_key():
     ]
 
     available_models = llm_catalog.filter_models_by_api_key_status(
-        models, {"openrouter": True, "gemini": False}
+        models,
+        {
+            "openrouter": True,
+            "gemini": False,
+            "provider_keys": {
+                "openrouter": [
+                    {
+                        "model_name": "google/gemini-3.7-flash",
+                        "provider_wide": True,
+                        "model_purposes": ["llm"],
+                    },
+                ],
+            },
+        },
     )
 
+    assert [model["code"] for model in available_models] == [
+        "local-model",
+    ]
+
+    available_models = llm_catalog.filter_models_by_api_key_status(
+        models,
+        {
+            "provider_keys": {
+                "openrouter": [
+                    {
+                        "model_name": "google/gemini-3.7-flash",
+                        "model_purposes": ["llm"],
+                    },
+                ],
+            },
+        },
+    )
     assert [model["code"] for model in available_models] == [
         "google/gemini-3.7-flash",
         "local-model",
@@ -353,7 +383,6 @@ def test_shared_transcription_model_expansion_includes_all_openrouter_slugs():
     )
 
     assert [(model["code"], model["display_name"], model.get("model_slug")) for model in expanded] == [
-        ("whisper", "Whisper", None),
         ("openrouter", "x-ai/grok-stt-1.0", "x-ai/grok-stt-1.0"),
         ("openrouter", "openai/gpt-transcribe", "openai/gpt-transcribe"),
     ]
@@ -379,8 +408,6 @@ def test_scoped_transcription_key_only_expands_the_matching_catalog_model():
     )
 
     assert [(model["code"], model.get("model_name")) for model in expanded] == [
-        ("whisper", None),
-        ("gpt-4o-transcribe", None),
         ("gpt-transcribe", "gpt-transcribe"),
     ]
     assert sum(model.get("model_name") == "gpt-transcribe" for model in expanded) == 1
@@ -455,7 +482,7 @@ def test_resolve_effective_openrouter_model_uses_saved_key_slug():
 
     with patch.object(
         user_service,
-        "get_user_api_key_status",
+        "get_effective_key_status",
         return_value={"openrouter_keys": [{"model_slug": "x-ai/grok-stt-1.0"}]},
     ):
         assert user_service.resolve_effective_openrouter_model(user) == "x-ai/grok-stt-1.0"
@@ -465,13 +492,50 @@ def test_resolve_effective_openrouter_model_prefers_user_and_role_defaults():
     role = SimpleNamespace(default_openrouter_model="role/model")
     user = SimpleNamespace(id=7, default_openrouter_model=None, role=role)
     assert user_service.resolve_effective_openrouter_model(
-        user, {"openrouter_keys": [{"model_slug": "key/model"}]}
+        user, {"openrouter_keys": [{"model_slug": "role/model"}, {"model_slug": "key/model"}]}
     ) == "role/model"
 
     user.default_openrouter_model = "user/model"
     assert user_service.resolve_effective_openrouter_model(
-        user, {"openrouter_keys": [{"model_slug": "key/model"}]}
+        user, {"openrouter_keys": [{"model_slug": "user/model"}, {"model_slug": "key/model"}]}
     ) == "user/model"
+
+
+def test_resolve_effective_openrouter_model_drops_stale_saved_defaults():
+    role = SimpleNamespace(default_openrouter_model="role/stale")
+    user = SimpleNamespace(id=7, default_openrouter_model="user/stale", role=role)
+
+    assert user_service.resolve_effective_openrouter_model(
+        user, {"openrouter_keys": [{"model_slug": "configured/model"}]}
+    ) == "configured/model"
+
+    assert user_service.resolve_effective_openrouter_model(
+        user, {"openrouter_keys": []}
+    ) is None
+
+
+def test_resolve_effective_openrouter_model_ignores_non_transcription_keys():
+    user = SimpleNamespace(
+        id=7,
+        default_openrouter_model="llm/model",
+        role=SimpleNamespace(default_openrouter_model=None),
+    )
+
+    assert user_service.resolve_effective_openrouter_model(
+        user,
+        {
+            "provider_keys": {
+                "openrouter": [
+                    {"model_name": "llm/model", "model_purposes": ["llm"]},
+                    {"model_name": "live/model", "model_purposes": ["live"]},
+                ],
+            },
+            "openrouter_keys": [
+                {"model_slug": "llm/model"},
+                {"model_slug": "live/model"},
+            ],
+        },
+    ) is None
 
 
 def test_service_normalizes_and_passes_openrouter_default():
@@ -600,7 +664,7 @@ def test_admin_role_form_exposes_each_openrouter_slug_as_option(form_context):
     from app.forms import AdminRoleForm
 
     with patch(
-        "app.forms.user_service.get_aggregate_api_key_status",
+        "app.forms.user_service.get_admin_api_key_status",
         return_value={
             "provider_keys": {
                 "openrouter": [
@@ -636,13 +700,13 @@ def test_admin_role_form_exposes_each_openrouter_slug_as_option(form_context):
     assert submit.default_openrouter_model.data == "x-ai/grok-stt-1.0"
 
 
-def test_admin_role_form_keeps_current_openrouter_slug_when_catalog_changes(form_context):
+def test_admin_role_form_does_not_keep_current_openrouter_slug_without_a_key(form_context):
     from unittest.mock import patch
 
     from app.forms import AdminRoleForm
 
     with patch(
-        "app.forms.user_service.get_aggregate_api_key_status",
+        "app.forms.user_service.get_admin_api_key_status",
         return_value={"provider_keys": {"openrouter": []}},
     ):
         form = AdminRoleForm(
@@ -654,4 +718,4 @@ def test_admin_role_form_keeps_current_openrouter_slug_when_catalog_changes(form
         )
 
     or_options = [m for m in form.transcription_model_options if m.get("code") == "openrouter"]
-    assert "legacy/slug-1" in [m.get("model_name") for m in or_options]
+    assert "legacy/slug-1" not in [m.get("model_name") for m in or_options]

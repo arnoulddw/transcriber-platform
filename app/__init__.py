@@ -506,17 +506,18 @@ def create_app(config_class=Config) -> Flask:
                 api_name_map_for_frontend_subset[live_entry['code']] = live_entry['display_name']
 
         if user or not is_multi:
-            can_use_user_keys = not is_multi or bool(
-                role and getattr(role, 'allow_api_key_management', False)
-            )
-            effective_key_status = dict(initial_key_status) if can_use_user_keys else {}
+            # ``initial_key_status`` already contains the admin-configured
+            # models shared with users who cannot manage their own keys.
+            effective_key_status = dict(initial_key_status)
             for service in ('openai', 'assemblyai', 'gemini', 'openrouter'):
                 effective_key_status[service] = bool(
                     effective_key_status.get(service)
                     or app.config.get(f'{service.upper()}_API_KEY')
                 )
             llm_model_catalog = llm_catalog_model.filter_models_by_api_key_status(
-                llm_model_catalog, effective_key_status
+                llm_model_catalog,
+                effective_key_status,
+                allow_provider_wide=not is_multi,
             )
 
         effective_openrouter_model = (

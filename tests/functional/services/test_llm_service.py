@@ -48,6 +48,7 @@ def mock_dependencies(monkeypatch, app):
     # Mock user_service
     mock_user_service = MagicMock()
     mock_user_service.get_decrypted_api_key.return_value = None # Default to no key
+    mock_user_service.get_admin_decrypted_api_key.return_value = None # Default to no admin key
     monkeypatch.setattr('app.services.llm_service.user_service', mock_user_service)
 
     # Mock user_model
@@ -152,6 +153,31 @@ def test_generate_text_fallback_to_global_key_when_permission_missing(client, mo
     # Ensure we never tried to fetch the user's key
     mock_dependencies['user_service'].get_decrypted_api_key.assert_not_called()
     mock_dependencies['get_llm_client'].assert_called_with('openai', 'global_openai_key', mock_dependencies['config'])
+
+
+def test_generate_text_uses_admin_configured_key_when_user_cannot_manage_keys(
+    client, mock_dependencies, mock_user
+):
+    """
+    GIVEN a user without key-management permission and an admin-configured model key
+    WHEN generate_text_via_llm is called for that model
+    THEN it should use the admin key instead of requiring a user or global key.
+    """
+    mock_dependencies['user_model'].get_user_by_id.return_value = mock_user
+    mock_dependencies['user_service'].get_admin_decrypted_api_key.return_value = 'admin_openai_key'
+
+    with client.application.app_context():
+        result = llm_service.generate_text_via_llm(
+            'openai', 'test prompt', user_id=mock_user.id, model='gpt-4o-transcribe'
+        )
+
+    assert result == "Mocked LLM response"
+    mock_dependencies['user_service'].get_admin_decrypted_api_key.assert_called_once_with(
+        'openai', 'gpt-4o-transcribe'
+    )
+    mock_dependencies['get_llm_client'].assert_called_with(
+        'openai', 'admin_openai_key', mock_dependencies['config']
+    )
 
 
 def test_generate_text_uses_global_openrouter_key_when_user_cannot_manage_keys(client, mock_dependencies, mock_user):

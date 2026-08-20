@@ -303,8 +303,30 @@ def test_expand_models_skips_generic_openrouter_when_no_slug_is_known():
 
     expanded = transcription_catalog.expand_models_for_ui(models, {"openai": True}, None)
 
-    assert [model["code"] for model in expanded] == ["whisper"]
+    assert expanded == []
     assert all(model["code"] != "openrouter" for model in expanded)
+
+
+def test_provider_wide_key_does_not_unlock_other_provider_models():
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
+        {"code": "gpt-4o-transcribe", "display_name": "OpenAI GPT-4o Transcribe", "permission_key": None, "required_api_key": "openai"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(
+        models,
+        {
+            "provider_keys": {
+                "openai": [
+                    {"model_name": "OpenAI", "provider_wide": True, "model_purposes": ["transcription"]},
+                ],
+            },
+        },
+    )
+
+    assert expanded == []
 
 
 def test_expand_models_returns_empty_when_no_provider_key_exists():
@@ -319,6 +341,19 @@ def test_expand_models_returns_empty_when_no_provider_key_exists():
     expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
 
     assert expanded == []
+
+
+def test_models_without_required_api_keys_remain_available():
+    from app.models import transcription_catalog
+
+    models = [
+        {"code": "local-model", "display_name": "Local Model", "permission_key": None, "required_api_key": None},
+        {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
+    ]
+
+    expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
+
+    assert [model["code"] for model in expanded] == ["local-model"]
 
 
 def test_expand_models_uses_configured_slug_when_present():
@@ -351,6 +386,10 @@ def test_build_model_options_keeps_each_openrouter_slug_separate():
     status = {
         "openai": True,
         "provider_keys": {
+            "openai": [
+                {"model_name": "gpt-4o-transcribe", "model_purposes": ["transcription"]},
+                {"model_name": "whisper", "model_purposes": ["transcription"]},
+            ],
             "openrouter": [
                 # Listed in reverse alphabetical order on purpose: the canonical
                 # options sort the slugs alphabetically.
@@ -365,8 +404,8 @@ def test_build_model_options_keeps_each_openrouter_slug_separate():
     # Catalog order is preserved (gpt-4o-transcribe before whisper as passed),
     # and OpenRouter slugs are sorted alphabetically within their group.
     assert [(m["code"], m.get("model_name")) for m in options] == [
-        ("gpt-4o-transcribe", None),
-        ("whisper", None),
+        ("gpt-4o-transcribe", "gpt-4o-transcribe"),
+        ("whisper", "whisper"),
         ("openrouter", "qwen/qwen3-asr-1.7b"),
         ("openrouter", "x-ai/grok-stt-1.0"),
     ]
@@ -409,16 +448,34 @@ def test_effective_key_status_aggregates_for_admins_but_not_users(monkeypatch):
     from app.services import user_service
 
     admin = SimpleNamespace(id=1, role=SimpleNamespace(access_admin_panel=True))
-    regular = SimpleNamespace(id=2, role=SimpleNamespace(access_admin_panel=False))
+    regular = SimpleNamespace(
+        id=2,
+        role=SimpleNamespace(access_admin_panel=False, allow_api_key_management=False),
+    )
+    key_manager = SimpleNamespace(
+        id=3,
+        role=SimpleNamespace(access_admin_panel=False, allow_api_key_management=True),
+    )
     with patch.object(
         user_service, "get_aggregate_api_key_status", return_value={"aggregated": True}
     ) as aggregate, patch.object(
+        user_service, "get_admin_api_key_status", return_value={"admin_configured": True}
+    ) as admin_configured, patch.object(
         user_service, "get_user_api_key_status", return_value={"own": True}
     ) as own:
         assert user_service.get_effective_key_status(admin) == {"aggregated": True}
-        assert user_service.get_effective_key_status(regular) == {"own": True}
+        assert user_service.get_effective_key_status(regular) == {
+            "admin_configured": True,
+            "own": True,
+        }
+        assert user_service.get_effective_key_status(key_manager) == {
+            "admin_configured": True,
+            "own": True,
+        }
         aggregate.assert_called_once_with()
-        own.assert_called_once_with(2)
+        assert admin_configured.call_count == 2
+        assert own.call_args_list[0].args == (2,)
+        assert own.call_args_list[1].args == (3,)
 
 
 def test_all_jinja_templates_parse_without_escaping_artifacts():

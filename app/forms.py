@@ -338,7 +338,9 @@ class UserProfileForm(FlaskForm):
                 pass
         try:
             catalog_llm_models = llm_catalog_model.filter_models_by_api_key_status(
-                catalog_llm_models, availability_status
+                catalog_llm_models,
+                availability_status,
+                allow_provider_wide=current_app.config.get('DEPLOYMENT_MODE') != 'multi',
             )
         except Exception as filter_err:
             logging.warning(f"[FORMS] Failed to filter LLM models for profile form: {filter_err}", exc_info=True)
@@ -528,12 +530,12 @@ class AdminRoleForm(FlaskForm):
 
         placeholder_choice = [('', '-- Use System Default --')]
 
-        # Admins see the union of every user's configured keys so role
-        # defaults can reference any model present in the deployment.
+        # Role defaults are shared with users, so in multi-user mode they may
+        # reference only models backed by an admin-panel user's key.
         try:
-            admin_key_status = user_service.get_aggregate_api_key_status()
+            admin_key_status = user_service.get_admin_api_key_status()
         except Exception as key_err:
-            logging.warning(f"[FORMS] Failed to load aggregated key status for admin role form: {key_err}", exc_info=True)
+            logging.warning(f"[FORMS] Failed to load admin key status for admin role form: {key_err}", exc_info=True)
             admin_key_status = {}
 
         # Populate transcription model choices
@@ -551,25 +553,6 @@ class AdminRoleForm(FlaskForm):
         except Exception as expand_err:
             logging.warning(f"[FORMS] Failed to expand transcription models for admin role form: {expand_err}", exc_info=True)
             expanded_models = list(catalog_models)
-
-        # Keep the role's current OpenRouter slug selectable even when it is no
-        # longer offered by the catalog, so saving the form cannot silently drop it.
-        current_slug = str(self.default_openrouter_model.data or '').strip()
-        if current_slug:
-            slug_known = any(
-                model.get('code') == 'openrouter'
-                and (model.get('model_name') or '') == current_slug
-                for model in expanded_models
-            )
-            if not slug_known:
-                expanded_models = [*expanded_models, {
-                    'code': 'openrouter',
-                    'model_name': current_slug,
-                    'model_slug': current_slug,
-                    'display_name': current_slug,
-                    'permission_key': 'use_api_openrouter',
-                    'required_api_key': 'openrouter',
-                }]
 
         # Each OpenRouter slug is a distinct option (rendered manually by the
         # template), so the form carries the canonical per-slug list for the
@@ -594,6 +577,11 @@ class AdminRoleForm(FlaskForm):
         seen_llm_models = set()
         try:
             catalog_llm_models = llm_catalog_model.get_llm_model_options(admin_key_status)
+            catalog_llm_models = llm_catalog_model.filter_models_by_api_key_status(
+                catalog_llm_models,
+                admin_key_status,
+                allow_provider_wide=current_app.config.get('DEPLOYMENT_MODE') != 'multi',
+            )
         except Exception as catalog_err:
             logging.warning(f"[FORMS] Failed to load LLM models from catalog for admin role form: {catalog_err}", exc_info=True)
             catalog_llm_models = []
