@@ -172,20 +172,11 @@ def get_api_key_record(
 ) -> Optional[Dict[str, Any]]:
     provider = provider_code.lower()
     stored_model_slug = _stored_model_slug(provider, model_slug)
-    if stored_model_slug and provider != "openrouter" and allow_model_fallback:
-        sql = """
-            SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
-            FROM user_api_keys
-            WHERE user_id = %s
-              AND provider_code = %s
-              AND (model_slug = %s OR model_slug = '')
-            ORDER BY CASE WHEN model_slug = %s THEN 0 ELSE 1 END,
-                     COALESCE(last_used_at, updated_at, created_at) DESC,
-                     id DESC
-            LIMIT 1
-        """
-        params = (user_id, provider, stored_model_slug, stored_model_slug)
-    elif stored_model_slug and provider == "openrouter" and allow_model_fallback:
+    if stored_model_slug and allow_model_fallback:
+        # The save flow uses this opt-in lookup only when the user submits a
+        # masked key for a new model. Prefer that exact model, otherwise reuse
+        # the most recently used key for the same provider. Runtime lookups
+        # keep the default exact-model behavior below.
         sql = """
             SELECT id, provider_code, model_slug, model_purposes, encrypted_key, created_at, updated_at, last_used_at
             FROM user_api_keys
