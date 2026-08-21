@@ -38,9 +38,9 @@
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% set periods_data = ['24h', '7d', '30d', 'all'] %}
                         {% for period in periods_data %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
-                            <td data-label="Period" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">{{ period_labels.get(period, period) }}</td>
-                            <td data-label="Rate" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative border-b sm:border-none">
+                        <tr class="block sm:table-row {% if not loop.last %}border-b sm:border-none mb-4 sm:mb-0{% endif %}">
+                            <td data-label="Period" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative {% if not loop.last %}border-b sm:border-none{% endif %}">{{ period_labels.get(period, period) }}</td>
+                            <td data-label="Rate" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ format_percent(metrics.get('overall_transcription_error_rate', {}).get(period, 0), locale=formatting_locale) }}
                             </td>
                         </tr>
@@ -174,9 +174,9 @@
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% set periods_data_wf_overall = ['24h', '7d', '30d', 'all'] %}
                         {% for period in periods_data_wf_overall %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
-                            <td data-label="Period" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">{{ period_labels.get(period, period) }}</td>
-                            <td data-label="Rate" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative border-b sm:border-none">
+                        <tr class="block sm:table-row {% if not loop.last %}border-b sm:border-none mb-4 sm:mb-0{% endif %}">
+                            <td data-label="Period" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative {% if not loop.last %}border-b sm:border-none{% endif %}">{{ period_labels.get(period, period) }}</td>
+                            <td data-label="Rate" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ format_percent(metrics.get('overall_workflow_error_rate', {}).get(period, 0), locale=formatting_locale) }}
                             </td>
                         </tr>

@@ -52,8 +52,8 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% for key, label in period_labels %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
-                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">
+                        <tr class="block sm:table-row {% if not loop.last %}border-b sm:border-none mb-4 sm:mb-0{% endif %}">
+                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ label }}
                             </td>
                             <td data-label="{{ _('Users') }}" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative border-b sm:border-none">
@@ -78,8 +78,8 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% for key, label in period_labels %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
-                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">
+                        <tr class="block sm:table-row {% if not loop.last %}border-b sm:border-none mb-4 sm:mb-0{% endif %}">
+                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ label }}
                             </td>
                             <td data-label="{{ _('Count') }}" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative border-b sm:border-none">
@@ -106,8 +106,8 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% for key, label in period_labels %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
-                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">
+                        <tr class="block sm:table-row {% if not loop.last %}border-b sm:border-none mb-4 sm:mb-0{% endif %}">
+                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ label }}
                             </td>
                             <td data-label="{{ _('Count') }}" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative border-b sm:border-none">
@@ -133,11 +133,11 @@
                     </thead>
                     <tbody class="bg-surface divide-y divide-border-default">
                         {% for key, label in period_labels %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0">
-                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none whitespace-nowrap">
+                        <tr class="block sm:table-row {% if not loop.last %}border-b sm:border-none mb-4 sm:mb-0{% endif %}">
+                            <td data-label="{{ _('Period') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative whitespace-nowrap {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ label }}
                             </td>
-                            <td data-label="{{ _('Transcriptions') }}" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative border-b sm:border-none">
+                            <td data-label="{{ _('Transcriptions') }}" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative {% if not loop.last %}border-b sm:border-none{% endif %}">
                                 {{ format_percent(metrics.get('error_rate', {}).get(key, 0), locale=formatting_locale) }}
                             </td>
                             <td data-label="{{ _('Workflows') }}" class="px-6 py-4 text-sm text-text-muted block sm:table-cell sm:text-center relative">
