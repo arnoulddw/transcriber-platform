@@ -645,24 +645,25 @@ def get_all_roles() -> List[Role]:
 
 # This function is no longer needed as the 'monthly_usage' table has been removed.
 
-def increment_usage(user_id: int, cost: float, minutes_processed: float) -> None:
+def increment_usage(user_id: int, cost: float, minutes_processed: float, live_minutes_processed: float = 0.0) -> None:
     """
     Increments usage stats for a user after a transcription.
     """
     now = datetime.now(timezone.utc)
     date_ts = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     log_prefix = f"[DB:Usage:User:{user_id}]"
-    
+
     cursor = get_cursor()
     try:
         sql = """
-            INSERT INTO user_usage (user_id, date, cost, minutes, workflows)
-            VALUES (%s, %s, %s, %s, 0)
+            INSERT INTO user_usage (user_id, date, cost, minutes, workflows, live_minutes)
+            VALUES (%s, %s, %s, %s, 0, %s)
             ON DUPLICATE KEY UPDATE
             cost = cost + VALUES(cost),
-            minutes = minutes + VALUES(minutes)
+            minutes = minutes + VALUES(minutes),
+            live_minutes = live_minutes + VALUES(live_minutes)
         """
-        cursor.execute(sql, (user_id, date_ts, cost, minutes_processed))
+        cursor.execute(sql, (user_id, date_ts, cost, minutes_processed, live_minutes_processed))
         get_db().commit()
         logging.debug(f"{log_prefix} Successfully incremented usage stats.")
     except MySQLError as e:
@@ -703,6 +704,7 @@ def reserve_usage_if_allowed(
     cost_to_add: float = 0.0,
     minutes_to_add: float = 0.0,
     workflows_to_add: int = 0,
+    live_minutes_to_add: float = 0.0,
 ) -> Tuple[bool, str]:
     """Atomically check role quotas and reserve usage under a per-user row lock."""
     now = datetime.now(timezone.utc)
@@ -728,10 +730,14 @@ def reserve_usage_if_allowed(
                 COALESCE(SUM(CASE WHEN date >= %s THEN minutes ELSE 0 END), 0) AS monthly_minutes,
                 COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS daily_workflows,
                 COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS weekly_workflows,
-                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS monthly_workflows
+                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS monthly_workflows,
+                COALESCE(SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END), 0) AS daily_live_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END), 0) AS weekly_live_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END), 0) AS monthly_live_minutes
             FROM user_usage WHERE user_id = %s
             """,
             (
+                day_start, week_start, month_start,
                 day_start, week_start, month_start,
                 day_start, week_start, month_start,
                 day_start, week_start, month_start,
@@ -749,6 +755,9 @@ def reserve_usage_if_allowed(
             (role.limit_daily_workflows, int(usage.get("daily_workflows") or 0) + workflows_to_add),
             (role.limit_weekly_workflows, int(usage.get("weekly_workflows") or 0) + workflows_to_add),
             (role.limit_monthly_workflows, int(usage.get("monthly_workflows") or 0) + workflows_to_add),
+            (role.limit_daily_live_minutes, float(usage.get("daily_live_minutes") or 0) + live_minutes_to_add),
+            (role.limit_weekly_live_minutes, float(usage.get("weekly_live_minutes") or 0) + live_minutes_to_add),
+            (role.limit_monthly_live_minutes, float(usage.get("monthly_live_minutes") or 0) + live_minutes_to_add),
         )
         if any(limit > 0 and projected > limit for limit, projected in checks):
             connection.rollback()
@@ -756,14 +765,15 @@ def reserve_usage_if_allowed(
 
         cursor.execute(
             """
-            INSERT INTO user_usage (user_id, date, cost, minutes, workflows)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO user_usage (user_id, date, cost, minutes, workflows, live_minutes)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 cost = cost + VALUES(cost),
                 minutes = minutes + VALUES(minutes),
-                workflows = workflows + VALUES(workflows)
+                workflows = workflows + VALUES(workflows),
+                live_minutes = live_minutes + VALUES(live_minutes)
             """,
-            (user_id, day_start, cost_to_add, minutes_to_add, workflows_to_add),
+            (user_id, day_start, cost_to_add, minutes_to_add, workflows_to_add, live_minutes_to_add),
         )
         connection.commit()
         return True, "Usage reserved."

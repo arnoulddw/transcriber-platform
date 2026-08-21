@@ -25,6 +25,16 @@ def live_app():
     return app
 
 
+@pytest.fixture(autouse=True)
+def allow_live_reservation(monkeypatch):
+    """Default live-minutes reservation to success; individual tests override."""
+    monkeypatch.setattr(
+        service.role_model,
+        "reserve_usage_if_allowed",
+        MagicMock(return_value=(True, "")),
+    )
+
+
 def test_openrouter_model_slugs_default_to_openrouter_transport(live_app):
     live_app.config.update(LIVE_TRANSCRIPTION_PROVIDERS={})
 
@@ -58,7 +68,7 @@ def test_build_session_config_adds_language_and_prompt():
 
 
 def test_create_session_posts_multipart_without_exposing_api_key(live_app, monkeypatch):
-    user = SimpleNamespace(id=42)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
     response = SimpleNamespace(
         status_code=200,
         text="answer-sdp",
@@ -86,7 +96,7 @@ def test_create_session_routes_openrouter_to_sse_without_webrtc(live_app, monkey
         LIVE_TRANSCRIPTION_PROVIDERS={"openai/whisper-1": "openrouter"},
         OPENROUTER_API_KEY="server-only-openrouter-key",
     )
-    user = SimpleNamespace(id=42)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
     post = MagicMock()
     monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
     monkeypatch.setattr(service.httpx, "post", post)
@@ -114,7 +124,7 @@ def test_create_session_openrouter_token_carries_context_prompt(live_app, monkey
 
     with live_app.app_context():
         result = service.create_session(
-            SimpleNamespace(id=42),
+            SimpleNamespace(id=42, role=SimpleNamespace(name="member")),
             "",
             "en",
             "Project Falcon budget",
@@ -418,7 +428,9 @@ def test_finalize_session_saves_usage_and_normalizes_auto_language(live_app, mon
     assert create_job.call_args.args[6] is True
     finalize_job.assert_called_once_with("live-job", "Hello from live mode.", "und")
     update_cost.assert_called_once_with("live-job", pytest.approx(0.5))
-    increment_usage.assert_called_once_with(7, pytest.approx(0.5), pytest.approx(2.0))
+    increment_usage.assert_called_once_with(
+        7, pytest.approx(0.5), pytest.approx(2.0), live_minutes_processed=pytest.approx(2.0)
+    )
     disable_title.assert_called_once_with("live-job", "disabled")
 
 
@@ -560,7 +572,7 @@ def test_resolve_openai_key_falls_back_to_global_for_managed_users(
 
 
 def test_create_session_maps_openai_transport_failure(live_app, monkeypatch):
-    user = SimpleNamespace(id=42)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
     monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
     monkeypatch.setattr(
         service.httpx,
@@ -573,7 +585,7 @@ def test_create_session_maps_openai_transport_failure(live_app, monkeypatch):
 
 
 def test_create_session_retries_transient_gateway_failure(live_app, monkeypatch):
-    user = SimpleNamespace(id=42)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
     post = MagicMock(
         side_effect=[
             SimpleNamespace(status_code=504, text="gateway timeout"),
@@ -595,7 +607,7 @@ def test_create_session_retries_transient_gateway_failure(live_app, monkeypatch)
 
 
 def test_create_session_does_not_retry_non_transient_rejection(live_app, monkeypatch):
-    user = SimpleNamespace(id=42)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
     post = MagicMock(
         return_value=SimpleNamespace(status_code=400, text="invalid session")
     )
@@ -656,3 +668,115 @@ def test_finalize_session_rejects_wrong_owner(live_app, monkeypatch):
 
     with live_app.app_context(), pytest.raises(service.LiveTranscriptionPermissionError):
         service.finalize_session(user, "token", "Text")
+
+
+def test_create_session_reserves_live_minutes_before_openai_call(live_app, monkeypatch):
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    reserve = MagicMock(return_value=(True, ""))
+    monkeypatch.setattr(service.role_model, "reserve_usage_if_allowed", reserve)
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    post = MagicMock(
+        return_value=SimpleNamespace(
+            status_code=200,
+            text="answer-sdp",
+            headers={"Location": "/v1/realtime/calls/rtc_reserve"},
+        )
+    )
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        service.create_session(user, "offer-sdp", "auto", "")
+
+    assert post.call_count == 1
+    assert reserve.call_count == 1
+    assert reserve.call_args.kwargs["live_minutes_to_add"] == 10.0
+    assert reserve.call_args.args[0] == 42
+
+
+def test_create_session_reserves_before_openrouter_token(live_app, monkeypatch):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["openai/whisper-1"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"openai/whisper-1": "openrouter"},
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+    )
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    reserve = MagicMock(return_value=(True, ""))
+    monkeypatch.setattr(service.role_model, "reserve_usage_if_allowed", reserve)
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+
+    with live_app.app_context():
+        result = service.create_session(
+            user, "", "auto", "", requested_model="openai/whisper-1"
+        )
+
+    assert result["transport"] == "openrouter-sse"
+    assert reserve.call_count == 1
+    assert reserve.call_args.kwargs["live_minutes_to_add"] == 10.0
+
+
+def test_create_session_rejects_when_live_quota_exhausted(live_app, monkeypatch):
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(
+        service.role_model,
+        "reserve_usage_if_allowed",
+        MagicMock(return_value=(False, "You have reached your fair use limit.")),
+    )
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    post = MagicMock()
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionPermissionError
+    ):
+        service.create_session(user, "offer-sdp", "auto", "")
+
+    post.assert_not_called()
+
+
+def test_create_session_fails_closed_when_reservation_errors(live_app, monkeypatch):
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(
+        service.role_model,
+        "reserve_usage_if_allowed",
+        MagicMock(side_effect=RuntimeError("db down")),
+    )
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    post = MagicMock()
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionUpstreamError
+    ):
+        service.create_session(user, "offer-sdp", "auto", "")
+
+    post.assert_not_called()
+
+
+def test_finalize_session_records_actual_live_minutes(live_app, monkeypatch):
+    user = SimpleNamespace(id=7, enable_auto_title_generation=False)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "live-job",
+            "started_at": 1000.0,
+            "language": "auto",
+            "context_prompt_used": False,
+        },
+    )
+    monkeypatch.setattr(service.time, "time", lambda: 1120.0)
+    monkeypatch.setattr(service.transcription_model, "get_transcription_by_id", lambda *_: None)
+    monkeypatch.setattr(service.transcription_model, "create_transcription_job", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "update_transcription_cost", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "finalize_job_success", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "update_title_generation_status", MagicMock())
+    increment_usage = MagicMock()
+    monkeypatch.setattr(service.role_model, "increment_usage", increment_usage)
+    monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: None)
+
+    with live_app.app_context():
+        service.finalize_session(user, "token", "Hello from live mode.")
+
+    assert increment_usage.call_count == 1
+    assert increment_usage.call_args.kwargs.get("live_minutes_processed") == pytest.approx(2.0)

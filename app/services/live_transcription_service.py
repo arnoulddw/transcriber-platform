@@ -31,6 +31,8 @@ SESSION_TOKEN_SALT = "live-transcription-session-v1"
 MAX_CONTEXT_WORDS = 120
 MAX_TRANSCRIPT_CHARS = 10_000_000
 MAX_SESSION_DURATION_MINUTES = 120
+# Minutes reserved against the role's live-minutes quota when a session starts.
+LIVE_MINUTES_RESERVATION = 10.0
 RETRYABLE_SESSION_STATUS_CODES = frozenset({502, 503, 504})
 ENDED_CALL_STATUS_CODES = frozenset({404, 409})
 MAX_OPENROUTER_CHUNK_BYTES = 8 * 1024 * 1024
@@ -229,6 +231,24 @@ def create_session(
     language, prompt = _validate_settings(user, language_code, context_prompt)
     model = _resolve_live_model(user, requested_model)
     provider = _resolve_provider(user, model)
+    role = getattr(user, "role", None)
+    if role is None:
+        raise LiveTranscriptionPermissionError(
+            _("No role is assigned to your account.")
+        )
+    try:
+        allowed, reason = role_model.reserve_usage_if_allowed(
+            user.id,
+            role,
+            live_minutes_to_add=LIVE_MINUTES_RESERVATION,
+        )
+    except Exception:
+        LOGGER.exception("Could not verify live transcription usage limits.")
+        raise LiveTranscriptionUpstreamError(
+            _("Could not verify your usage limits. Please try again.")
+        )
+    if not allowed:
+        raise LiveTranscriptionPermissionError(reason)
     if provider == "openrouter":
         # OpenRouter documents HTTP audio input plus SSE model output, not a
         # WebRTC/WebSocket realtime session. The browser uses this signed
@@ -582,7 +602,12 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         )
     transcription_model.update_transcription_cost(transcription_id, cost)
     transcription_model.finalize_job_success(transcription_id, text, language)
-    role_model.increment_usage(user.id, cost, duration_minutes)
+    role_model.increment_usage(
+        user.id,
+        cost,
+        duration_minutes,
+        live_minutes_processed=duration_minutes,
+    )
 
     if user.enable_auto_title_generation and check_permission(
         user, "allow_auto_title_generation"
