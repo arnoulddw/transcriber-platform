@@ -199,6 +199,18 @@
                 <div>
                     {{ form.limit_monthly_workflows(type="number", min="0", step="1", class="input-control" + (" border-red-500" if form.limit_monthly_workflows.errors else "")) }}
                 </div>
+
+                {# Live Minutes Row #}
+                <div class="form-label self-center">Live Minutes</div>
+                <div>
+                    {{ form.limit_daily_live_minutes(type="number", min="0", step="1", class="input-control" + (" border-red-500" if form.limit_daily_live_minutes.errors else "")) }}
+                </div>
+                <div>
+                    {{ form.limit_weekly_live_minutes(type="number", min="0", step="1", class="input-control" + (" border-red-500" if form.limit_weekly_live_minutes.errors else "")) }}
+                </div>
+                <div>
+                    {{ form.limit_monthly_live_minutes(type="number", min="0", step="1", class="input-control" + (" border-red-500" if form.limit_monthly_live_minutes.errors else "")) }}
+                </div>
             </div>
             <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
                  <div>

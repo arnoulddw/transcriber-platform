@@ -185,6 +185,9 @@ class Role:
     limit_daily_workflows: int
     limit_weekly_workflows: int
     limit_monthly_workflows: int
+    limit_daily_live_minutes: int
+    limit_weekly_live_minutes: int
+    limit_monthly_live_minutes: int
     # History Limits
     max_history_items: int
     history_retention_days: int
@@ -233,6 +236,7 @@ class Role:
         int_fields = [
             'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
             'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
+            'limit_daily_live_minutes', 'limit_weekly_live_minutes', 'limit_monthly_live_minutes',
             'max_history_items', 'history_retention_days'
         ]
         for field in int_fields:
@@ -358,6 +362,9 @@ def init_roles_table() -> None:
                 limit_daily_workflows INT NOT NULL DEFAULT 0,
                 limit_weekly_workflows INT NOT NULL DEFAULT 0,
                 limit_monthly_workflows INT NOT NULL DEFAULT 0,
+                limit_daily_live_minutes INT NOT NULL DEFAULT 0,
+                limit_weekly_live_minutes INT NOT NULL DEFAULT 0,
+                limit_monthly_live_minutes INT NOT NULL DEFAULT 0,
                 max_history_items INT NOT NULL DEFAULT 0,
                 history_retention_days INT NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -369,6 +376,9 @@ def init_roles_table() -> None:
         # --- END MODIFIED ---
         _ensure_column(cursor, "roles", None, "max_transcriptions_monthly", "INT NOT NULL DEFAULT 0", after="limit_monthly_workflows", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "max_transcriptions_total", "INT NOT NULL DEFAULT 0", after="max_transcriptions_monthly", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "limit_daily_live_minutes", "INT NOT NULL DEFAULT 0", after="limit_monthly_workflows", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "limit_weekly_live_minutes", "INT NOT NULL DEFAULT 0", after="limit_daily_live_minutes", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "limit_monthly_live_minutes", "INT NOT NULL DEFAULT 0", after="limit_weekly_live_minutes", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", "max_seconds_monthly", "max_minutes_monthly",
                        "INT NOT NULL DEFAULT 0", after="max_transcriptions_total", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", "max_seconds_total", "max_minutes_total",
@@ -524,6 +534,7 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
+        'limit_daily_live_minutes', 'limit_weekly_live_minutes', 'limit_monthly_live_minutes',
         'max_history_items', 'history_retention_days'
     ]
     # --- END MODIFIED ---
@@ -796,6 +807,7 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
+        'limit_daily_live_minutes', 'limit_weekly_live_minutes', 'limit_monthly_live_minutes',
         'max_history_items', 'history_retention_days'
     ]
     # --- END MODIFIED ---
@@ -901,6 +913,7 @@ def init_user_usage_table() -> None:
                 cost DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
                 minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                 workflows INT NOT NULL DEFAULT 0,
+                live_minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 UNIQUE KEY uk_user_date (user_id, date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -921,6 +934,12 @@ def init_user_usage_table() -> None:
         if minutes_col and 'decimal' not in minutes_type:
             logging.info(f"{log_prefix} Converting user_usage.minutes to DECIMAL for accurate quota accounting.")
             cursor.execute("ALTER TABLE user_usage MODIFY COLUMN minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00")
+        cursor.execute("SHOW COLUMNS FROM user_usage LIKE 'live_minutes'")
+        live_minutes_col = cursor.fetchone()
+        cursor.fetchall()
+        if not live_minutes_col:
+            logging.info(f"{log_prefix} Adding 'live_minutes' column to 'user_usage' table.")
+            cursor.execute("ALTER TABLE user_usage ADD COLUMN live_minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00")
         get_db().commit()
         logging.info(f"{log_prefix} 'user_usage' table schema verified/initialized.")
     except MySQLError as err:

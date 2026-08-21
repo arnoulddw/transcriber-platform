@@ -545,6 +545,9 @@ class AdminRoleForm(FlaskForm):
     limit_daily_workflows = IntegerField(_('Daily Quota'), validators=[NumberRange(min=0)], default=0)
     limit_weekly_workflows = IntegerField(_('Weekly Quota'), validators=[NumberRange(min=0)], default=0)
     limit_monthly_workflows = IntegerField(_('Monthly Quota'), validators=[NumberRange(min=0)], default=0)
+    limit_daily_live_minutes = IntegerField(_('Daily Quota'), validators=[NumberRange(min=0)], default=0)
+    limit_weekly_live_minutes = IntegerField(_('Weekly Quota'), validators=[NumberRange(min=0)], default=0)
+    limit_monthly_live_minutes = IntegerField(_('Monthly Quota'), validators=[NumberRange(min=0)], default=0)
     max_history_items = IntegerField(
         _('Max History Items'),
         validators=[NumberRange(min=0)], default=0
