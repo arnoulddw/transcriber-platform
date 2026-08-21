@@ -46,12 +46,21 @@
         constructor() {
             this.order = [];
             this.turns = new Map();
+            this.detectedLanguage = null;
         }
 
         apply(event) {
             const isDelta = event.type === 'conversation.item.input_audio_transcription.delta';
             const isComplete = event.type === 'conversation.item.input_audio_transcription.completed';
             if ((!isDelta && !isComplete) || !event.item_id) return false;
+
+            if (isComplete && !this.detectedLanguage
+                && Array.isArray(event.languages) && event.languages.length > 0) {
+                const code = event.languages[0] && event.languages[0].code;
+                if (typeof code === 'string' && code.trim()) {
+                    this.detectedLanguage = code.trim().toLowerCase();
+                }
+            }
 
             if (!this.turns.has(event.item_id)) {
                 this.order.push(event.item_id);
@@ -84,6 +93,7 @@
         clear() {
             this.order = [];
             this.turns.clear();
+            this.detectedLanguage = null;
         }
     }
 
@@ -698,6 +708,7 @@
                 const result = await postJson('/api/live/finalize', {
                     session_token: sessionToken,
                     transcript: transcriptText,
+                    detected_language: reducer.detectedLanguage,
                 });
                 unsavedTranscript = false;
                 setStatus('saved', labels.saved);

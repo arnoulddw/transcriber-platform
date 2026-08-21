@@ -124,3 +124,48 @@ test('waits for the realtime data channel before reporting a live connection', a
 
     await opened;
 });
+
+test('captures the first detected language from completed events', () => {
+    const reducer = new LiveTranscriptReducer();
+
+    reducer.apply({
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'first',
+        transcript: 'Bonjour',
+        languages: [{ code: 'fr' }],
+    });
+    reducer.apply({
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'second',
+        transcript: 'Hello',
+        languages: [{ code: 'en' }],
+    });
+
+    assert.equal(reducer.detectedLanguage, 'fr');
+});
+
+test('keeps detectedLanguage null when the API reports no languages', () => {
+    const reducer = new LiveTranscriptReducer();
+
+    reducer.apply({
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'first',
+        transcript: 'Hello',
+    });
+
+    assert.equal(reducer.detectedLanguage, null);
+});
+
+test('clear resets the detected language', () => {
+    const reducer = new LiveTranscriptReducer();
+
+    reducer.apply({
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'first',
+        transcript: 'Hola',
+        languages: [{ code: 'es' }],
+    });
+    reducer.clear();
+
+    assert.equal(reducer.detectedLanguage, null);
+});

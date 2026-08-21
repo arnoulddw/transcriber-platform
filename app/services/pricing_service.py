@@ -62,6 +62,77 @@ def update_price(item_type: str, item_key: str, price: float) -> None:
         raise PricingServiceError(f"Could not update price: {e}") from e
 
 
+def _price_key_tail(key: str) -> str:
+    """Return the model identity tail of a pricing key (after ':' or '/')."""
+    normalized = str(key or "").strip().lower()
+    return normalized.rsplit(":", 1)[-1].rsplit("/", 1)[-1]
+
+
+def _resolve_price_by_identity(item_key: str, item_type: str) -> Optional[float]:
+    """Find a transcription price by model identity when exact lookup fails.
+
+    Prefers a vendor-suffix match (saved key ends with ``/<requested>`` or
+    ``:<requested>``), then an equal-tail match. Only unambiguous results are
+    returned: several distinct prices for the same identity resolve to None.
+    """
+    try:
+        all_prices = pricing_model.get_all_prices()
+    except Exception as scan_err:
+        logging.debug("[SERVICE:Pricing] Identity fallback unavailable: %s", scan_err)
+        return None
+
+    candidates = all_prices.get(item_type) or {}
+    if not candidates:
+        return None
+
+    requested = str(item_key).strip().lower()
+    requested_tail = _price_key_tail(requested)
+
+    vendor_matches = {
+        saved_key: saved_price
+        for saved_key, saved_price in candidates.items()
+        if saved_key != requested
+        and requested_tail
+        and str(saved_key).strip().lower().endswith((f"/{requested_tail}", f":{requested_tail}"))
+    }
+    if len(set(vendor_matches.values())) > 1:
+        logging.info(
+            "[SERVICE:Pricing] Ambiguous transcription price for '%s'; skipping fallback.",
+            item_key,
+        )
+        return None
+    if vendor_matches:
+        resolved_key, price = next(iter(vendor_matches.items()))
+        logging.info(
+            "[SERVICE:Pricing] Resolved '%s' via vendor-suffix match on '%s'.",
+            item_key,
+            resolved_key,
+        )
+        return price
+
+    tail_matches = {
+        saved_key: saved_price
+        for saved_key, saved_price in candidates.items()
+        if requested_tail and _price_key_tail(saved_key) == requested_tail
+    }
+    if len(set(tail_matches.values())) > 1:
+        logging.info(
+            "[SERVICE:Pricing] Ambiguous transcription price for '%s'; skipping fallback.",
+            item_key,
+        )
+        return None
+    if tail_matches:
+        resolved_key, price = next(iter(tail_matches.items()))
+        logging.info(
+            "[SERVICE:Pricing] Resolved '%s' via tail match on '%s'.",
+            item_key,
+            resolved_key,
+        )
+        return price
+
+    return None
+
+
 def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]:
     """
     Retrieves the price for a given item type.
@@ -111,6 +182,19 @@ def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]
             price = pricing_model.get_price(item_key=lookup_key, item_type=type_to_use)
             if price is not None:
                 break
+
+        # --- IDENTITY FALLBACK (transcription only) ---
+        # Saved keys and requested keys can disagree on qualification
+        # (``openrouter:openai/whisper-large-v3`` vs ``openai/whisper-large-v3``
+        # vs ``gpt-4o-mini``). Match on model identity, never guessing between
+        # different prices.
+        if (
+            price is None
+            and type_to_use == 'transcription'
+            and item_key_to_use
+        ):
+            price = _resolve_price_by_identity(item_key_to_use, type_to_use)
+        # --- END IDENTITY FALLBACK ---
 
         # --- BACKWARD COMPATIBILITY ---
         # If no price is found for the specific model, try falling back to the generic key.

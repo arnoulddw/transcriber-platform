@@ -29,9 +29,9 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
     earliest = min(start_of_week, start_of_month)
 
     usage_stats = {
-        'daily':   {'cost': 0, 'minutes': 0, 'workflows': 0},
-        'weekly':  {'cost': 0, 'minutes': 0, 'workflows': 0},
-        'monthly': {'cost': 0, 'minutes': 0, 'workflows': 0},
+        'daily':   {'cost': 0, 'minutes': 0, 'workflows': 0, 'live_minutes': 0},
+        'weekly':  {'cost': 0, 'minutes': 0, 'workflows': 0, 'live_minutes': 0},
+        'monthly': {'cost': 0, 'minutes': 0, 'workflows': 0, 'live_minutes': 0},
     }
 
     try:
@@ -41,19 +41,22 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
                 SUM(CASE WHEN date = %s  THEN cost      ELSE 0 END) AS daily_cost,
                 SUM(CASE WHEN date = %s  THEN minutes   ELSE 0 END) AS daily_minutes,
                 SUM(CASE WHEN date = %s  THEN workflows ELSE 0 END) AS daily_workflows,
+                SUM(CASE WHEN date = %s  THEN live_minutes ELSE 0 END) AS daily_live_minutes,
                 SUM(CASE WHEN date >= %s THEN cost      ELSE 0 END) AS weekly_cost,
                 SUM(CASE WHEN date >= %s THEN minutes   ELSE 0 END) AS weekly_minutes,
                 SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END) AS weekly_workflows,
+                SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END) AS weekly_live_minutes,
                 SUM(CASE WHEN date >= %s THEN cost      ELSE 0 END) AS monthly_cost,
                 SUM(CASE WHEN date >= %s THEN minutes   ELSE 0 END) AS monthly_minutes,
-                SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END) AS monthly_workflows
+                SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END) AS monthly_workflows,
+                SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END) AS monthly_live_minutes
             FROM user_usage
             WHERE user_id = %s AND date >= %s
             """,
             (
-                today, today, today,
-                start_of_week, start_of_week, start_of_week,
-                start_of_month, start_of_month, start_of_month,
+                today, today, today, today,
+                start_of_week, start_of_week, start_of_week, start_of_week,
+                start_of_month, start_of_month, start_of_month, start_of_month,
                 user_id, earliest,
             )
         )
@@ -64,16 +67,19 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
                     'cost':      float(row['daily_cost'] or 0),
                     'minutes':   int(row['daily_minutes'] or 0),
                     'workflows': int(row['daily_workflows'] or 0),
+                    'live_minutes': float(row['daily_live_minutes'] or 0),
                 },
                 'weekly': {
                     'cost':      float(row['weekly_cost'] or 0),
                     'minutes':   int(row['weekly_minutes'] or 0),
                     'workflows': int(row['weekly_workflows'] or 0),
+                    'live_minutes': float(row['weekly_live_minutes'] or 0),
                 },
                 'monthly': {
                     'cost':      float(row['monthly_cost'] or 0),
                     'minutes':   int(row['monthly_minutes'] or 0),
                     'workflows': int(row['monthly_workflows'] or 0),
+                    'live_minutes': float(row['monthly_live_minutes'] or 0),
                 },
             }
     except Exception as e:

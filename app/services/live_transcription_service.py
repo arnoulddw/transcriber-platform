@@ -31,6 +31,8 @@ SESSION_TOKEN_SALT = "live-transcription-session-v1"
 MAX_CONTEXT_WORDS = 120
 MAX_TRANSCRIPT_CHARS = 10_000_000
 MAX_SESSION_DURATION_MINUTES = 120
+# Minutes reserved against the role's live-minutes quota when a session starts.
+LIVE_MINUTES_RESERVATION = 10.0
 RETRYABLE_SESSION_STATUS_CODES = frozenset({502, 503, 504})
 ENDED_CALL_STATUS_CODES = frozenset({404, 409})
 MAX_OPENROUTER_CHUNK_BYTES = 8 * 1024 * 1024
@@ -222,6 +224,28 @@ def _call_id_from_location(location: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _reserve_live_minutes_or_raise(user) -> None:
+    """Reserve LIVE_MINUTES_RESERVATION against the user's role quota or fail."""
+    role = getattr(user, "role", None)
+    if role is None:
+        raise LiveTranscriptionPermissionError(
+            _("No role is assigned to your account.")
+        )
+    try:
+        allowed, reason = role_model.reserve_usage_if_allowed(
+            user.id,
+            role,
+            live_minutes_to_add=LIVE_MINUTES_RESERVATION,
+        )
+    except Exception:
+        LOGGER.exception("Could not verify live transcription usage limits.")
+        raise LiveTranscriptionUpstreamError(
+            _("Could not verify your usage limits. Please try again.")
+        )
+    if not allowed:
+        raise LiveTranscriptionPermissionError(reason)
+
+
 def create_session(
     user, sdp: str, language_code: str, context_prompt: str,
     requested_model: Optional[str] = None,
@@ -233,6 +257,7 @@ def create_session(
         # OpenRouter documents HTTP audio input plus SSE model output, not a
         # WebRTC/WebSocket realtime session. The browser uses this signed
         # token while posting short, valid WAV payloads to the chunk endpoint.
+        _reserve_live_minutes_or_raise(user)
         _resolve_provider_api_key(user, provider, model)
         transcription_id = str(uuid.uuid4())
         token = _serializer().dumps(
@@ -242,6 +267,7 @@ def create_session(
                 "started_at": time.time(),
                 "language": language,
                 "context_prompt_used": bool(prompt),
+                "context_prompt": prompt,
                 "model": model,
                 "provider": provider,
                 "transport": "openrouter-sse",
@@ -258,6 +284,7 @@ def create_session(
         raise LiveTranscriptionValidationError(
             _("The selected Live transcription provider is not supported by this runtime yet.")
         )
+    _reserve_live_minutes_or_raise(user)
     api_key = _resolve_provider_api_key(user, provider, model)
     session_config = build_session_config(model, language, prompt)
 
@@ -410,6 +437,14 @@ def transcribe_openrouter_chunk(
 
     model = str(payload.get("model") or "").strip()
     api_key = _resolve_provider_api_key(user, "openrouter", model)
+    instruction = (
+        "Transcribe only the spoken words in this audio. Return only the transcript."
+    )
+    context_prompt = str(payload.get("context_prompt") or "").strip()
+    if context_prompt:
+        instruction += (
+            f" Use this context for names and terminology: {context_prompt}"
+        )
     request_body: Dict[str, Any] = {
         "model": model,
         "messages": [{
@@ -417,7 +452,7 @@ def transcribe_openrouter_chunk(
             "content": [
                 {
                     "type": "text",
-                    "text": "Transcribe only the spoken words in this audio. Return only the transcript.",
+                    "text": instruction,
                 },
                 {
                     "type": "input_audio",
@@ -522,7 +557,27 @@ def hangup_session(user, session_token: str) -> Dict[str, bool]:
     return {"stopped": True}
 
 
-def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any]:
+def _resolve_saved_language(requested: Optional[str], detected: Optional[str]) -> str:
+    """Pick the language to persist: API-detected first, then requested, else unknown."""
+    if isinstance(detected, str):
+        candidate = detected.strip().lower()
+        if (
+            candidate
+            and len(candidate) <= 12
+            and not any(char.isspace() or char == "/" for char in candidate)
+        ):
+            return candidate
+    if requested and requested != "auto":
+        return requested
+    return "unknown"
+
+
+def finalize_session(
+    user,
+    session_token: str,
+    transcript: str,
+    detected_language: Optional[str] = None,
+) -> Dict[str, Any]:
     payload = _decode_session_token(session_token)
     if int(payload["user_id"]) != int(user.id):
         raise LiveTranscriptionPermissionError(
@@ -553,7 +608,7 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         MAX_SESSION_DURATION_MINUTES,
         max(0.0, (time.time() - started_at) / 60.0),
     )
-    language = payload["language"] if payload["language"] != "auto" else "und"
+    language = _resolve_saved_language(payload["language"], detected_language)
     model = session_model
     filename = datetime.now(timezone.utc).strftime(
         "Live transcription %Y-%m-%d %H-%M UTC"
@@ -573,7 +628,12 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         )
     transcription_model.update_transcription_cost(transcription_id, cost)
     transcription_model.finalize_job_success(transcription_id, text, language)
-    role_model.increment_usage(user.id, cost, duration_minutes)
+    role_model.increment_usage(
+        user.id,
+        cost,
+        duration_minutes,
+        live_minutes_processed=duration_minutes,
+    )
 
     if user.enable_auto_title_generation and check_permission(
         user, "allow_auto_title_generation"

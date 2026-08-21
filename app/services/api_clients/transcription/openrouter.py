@@ -17,6 +17,9 @@ class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
     ) -> None:
         self.model_code = str(model_code or "openrouter").strip() or "openrouter"
         self.CATALOG_MODEL_CODE = self.model_code
+        # OpenRouter's transcription endpoint has no portable prompt support,
+        # so a user context prompt cannot be applied. Report that once per job.
+        self._context_prompt_unsupported_reported = False
         super().__init__(api_key, config)
         api_limits = self.config.get("API_LIMITS", {}).get("openrouter", {})
         self.SPLIT_THRESHOLD_SECONDS = api_limits.get("duration_s")
@@ -51,6 +54,12 @@ class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
         }
         if language_code and language_code != "auto":
             api_params["language"] = language_code
+        if context_prompt and not self._context_prompt_unsupported_reported:
+            self._context_prompt_unsupported_reported = True
+            self._report_progress(
+                "Warning: OpenRouter transcription models do not support context prompts; the prompt was ignored.",
+                False,
+            )
         return api_params
 
     def _process_response(

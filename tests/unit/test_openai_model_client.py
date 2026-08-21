@@ -86,6 +86,18 @@ def test_languages_array_parses_first_language_code():
     assert client._process_response(response, "json") == ("Bonjour", "fr")
 
 
+def test_languages_array_falls_back_to_language_attribute():
+    client = _make_client("gpt-transcribe")
+    response = SimpleNamespace(text="Bonjour", language="fr")
+    assert client._process_response(response, "json") == ("Bonjour", "fr")
+
+
+def test_languages_array_returns_none_when_no_language_reported():
+    client = _make_client("gpt-transcribe")
+    response = SimpleNamespace(text="Hello")
+    assert client._process_response(response, "json") == ("Hello", None)
+
+
 # --- provider resolution + factory routing (no DB context -> legacy fallback map) ---
 
 @pytest.mark.parametrize("code", [

@@ -185,6 +185,9 @@ class Role:
     limit_daily_workflows: int
     limit_weekly_workflows: int
     limit_monthly_workflows: int
+    limit_daily_live_minutes: int
+    limit_weekly_live_minutes: int
+    limit_monthly_live_minutes: int
     # History Limits
     max_history_items: int
     history_retention_days: int
@@ -233,6 +236,7 @@ class Role:
         int_fields = [
             'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
             'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
+            'limit_daily_live_minutes', 'limit_weekly_live_minutes', 'limit_monthly_live_minutes',
             'max_history_items', 'history_retention_days'
         ]
         for field in int_fields:
@@ -358,6 +362,9 @@ def init_roles_table() -> None:
                 limit_daily_workflows INT NOT NULL DEFAULT 0,
                 limit_weekly_workflows INT NOT NULL DEFAULT 0,
                 limit_monthly_workflows INT NOT NULL DEFAULT 0,
+                limit_daily_live_minutes INT NOT NULL DEFAULT 0,
+                limit_weekly_live_minutes INT NOT NULL DEFAULT 0,
+                limit_monthly_live_minutes INT NOT NULL DEFAULT 0,
                 max_history_items INT NOT NULL DEFAULT 0,
                 history_retention_days INT NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -369,6 +376,9 @@ def init_roles_table() -> None:
         # --- END MODIFIED ---
         _ensure_column(cursor, "roles", None, "max_transcriptions_monthly", "INT NOT NULL DEFAULT 0", after="limit_monthly_workflows", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "max_transcriptions_total", "INT NOT NULL DEFAULT 0", after="max_transcriptions_monthly", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "limit_daily_live_minutes", "INT NOT NULL DEFAULT 0", after="limit_monthly_workflows", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "limit_weekly_live_minutes", "INT NOT NULL DEFAULT 0", after="limit_daily_live_minutes", log_prefix=log_prefix)
+        _ensure_column(cursor, "roles", None, "limit_monthly_live_minutes", "INT NOT NULL DEFAULT 0", after="limit_weekly_live_minutes", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", "max_seconds_monthly", "max_minutes_monthly",
                        "INT NOT NULL DEFAULT 0", after="max_transcriptions_total", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", "max_seconds_total", "max_minutes_total",
@@ -524,6 +534,7 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
+        'limit_daily_live_minutes', 'limit_weekly_live_minutes', 'limit_monthly_live_minutes',
         'max_history_items', 'history_retention_days'
     ]
     # --- END MODIFIED ---
@@ -634,24 +645,25 @@ def get_all_roles() -> List[Role]:
 
 # This function is no longer needed as the 'monthly_usage' table has been removed.
 
-def increment_usage(user_id: int, cost: float, minutes_processed: float) -> None:
+def increment_usage(user_id: int, cost: float, minutes_processed: float, live_minutes_processed: float = 0.0) -> None:
     """
     Increments usage stats for a user after a transcription.
     """
     now = datetime.now(timezone.utc)
     date_ts = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     log_prefix = f"[DB:Usage:User:{user_id}]"
-    
+
     cursor = get_cursor()
     try:
         sql = """
-            INSERT INTO user_usage (user_id, date, cost, minutes, workflows)
-            VALUES (%s, %s, %s, %s, 0)
+            INSERT INTO user_usage (user_id, date, cost, minutes, workflows, live_minutes)
+            VALUES (%s, %s, %s, %s, 0, %s)
             ON DUPLICATE KEY UPDATE
             cost = cost + VALUES(cost),
-            minutes = minutes + VALUES(minutes)
+            minutes = minutes + VALUES(minutes),
+            live_minutes = live_minutes + VALUES(live_minutes)
         """
-        cursor.execute(sql, (user_id, date_ts, cost, minutes_processed))
+        cursor.execute(sql, (user_id, date_ts, cost, minutes_processed, live_minutes_processed))
         get_db().commit()
         logging.debug(f"{log_prefix} Successfully incremented usage stats.")
     except MySQLError as e:
@@ -692,6 +704,7 @@ def reserve_usage_if_allowed(
     cost_to_add: float = 0.0,
     minutes_to_add: float = 0.0,
     workflows_to_add: int = 0,
+    live_minutes_to_add: float = 0.0,
 ) -> Tuple[bool, str]:
     """Atomically check role quotas and reserve usage under a per-user row lock."""
     now = datetime.now(timezone.utc)
@@ -717,10 +730,14 @@ def reserve_usage_if_allowed(
                 COALESCE(SUM(CASE WHEN date >= %s THEN minutes ELSE 0 END), 0) AS monthly_minutes,
                 COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS daily_workflows,
                 COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS weekly_workflows,
-                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS monthly_workflows
+                COALESCE(SUM(CASE WHEN date >= %s THEN workflows ELSE 0 END), 0) AS monthly_workflows,
+                COALESCE(SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END), 0) AS daily_live_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END), 0) AS weekly_live_minutes,
+                COALESCE(SUM(CASE WHEN date >= %s THEN live_minutes ELSE 0 END), 0) AS monthly_live_minutes
             FROM user_usage WHERE user_id = %s
             """,
             (
+                day_start, week_start, month_start,
                 day_start, week_start, month_start,
                 day_start, week_start, month_start,
                 day_start, week_start, month_start,
@@ -738,6 +755,9 @@ def reserve_usage_if_allowed(
             (role.limit_daily_workflows, int(usage.get("daily_workflows") or 0) + workflows_to_add),
             (role.limit_weekly_workflows, int(usage.get("weekly_workflows") or 0) + workflows_to_add),
             (role.limit_monthly_workflows, int(usage.get("monthly_workflows") or 0) + workflows_to_add),
+            (role.limit_daily_live_minutes, float(usage.get("daily_live_minutes") or 0) + live_minutes_to_add),
+            (role.limit_weekly_live_minutes, float(usage.get("weekly_live_minutes") or 0) + live_minutes_to_add),
+            (role.limit_monthly_live_minutes, float(usage.get("monthly_live_minutes") or 0) + live_minutes_to_add),
         )
         if any(limit > 0 and projected > limit for limit, projected in checks):
             connection.rollback()
@@ -745,14 +765,15 @@ def reserve_usage_if_allowed(
 
         cursor.execute(
             """
-            INSERT INTO user_usage (user_id, date, cost, minutes, workflows)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO user_usage (user_id, date, cost, minutes, workflows, live_minutes)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 cost = cost + VALUES(cost),
                 minutes = minutes + VALUES(minutes),
-                workflows = workflows + VALUES(workflows)
+                workflows = workflows + VALUES(workflows),
+                live_minutes = live_minutes + VALUES(live_minutes)
             """,
-            (user_id, day_start, cost_to_add, minutes_to_add, workflows_to_add),
+            (user_id, day_start, cost_to_add, minutes_to_add, workflows_to_add, live_minutes_to_add),
         )
         connection.commit()
         return True, "Usage reserved."
@@ -796,6 +817,7 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
+        'limit_daily_live_minutes', 'limit_weekly_live_minutes', 'limit_monthly_live_minutes',
         'max_history_items', 'history_retention_days'
     ]
     # --- END MODIFIED ---
@@ -901,6 +923,7 @@ def init_user_usage_table() -> None:
                 cost DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
                 minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                 workflows INT NOT NULL DEFAULT 0,
+                live_minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 UNIQUE KEY uk_user_date (user_id, date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -921,6 +944,12 @@ def init_user_usage_table() -> None:
         if minutes_col and 'decimal' not in minutes_type:
             logging.info(f"{log_prefix} Converting user_usage.minutes to DECIMAL for accurate quota accounting.")
             cursor.execute("ALTER TABLE user_usage MODIFY COLUMN minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00")
+        cursor.execute("SHOW COLUMNS FROM user_usage LIKE 'live_minutes'")
+        live_minutes_col = cursor.fetchone()
+        cursor.fetchall()
+        if not live_minutes_col:
+            logging.info(f"{log_prefix} Adding 'live_minutes' column to 'user_usage' table.")
+            cursor.execute("ALTER TABLE user_usage ADD COLUMN live_minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00")
         get_db().commit()
         logging.info(f"{log_prefix} 'user_usage' table schema verified/initialized.")
     except MySQLError as err:

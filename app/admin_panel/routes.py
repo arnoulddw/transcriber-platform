@@ -335,6 +335,9 @@ def create_role():
                 'limit_daily_workflows': form.limit_daily_workflows.data or 0,
                 'limit_weekly_workflows': form.limit_weekly_workflows.data or 0,
                 'limit_monthly_workflows': form.limit_monthly_workflows.data or 0,
+                'limit_daily_live_minutes': form.limit_daily_live_minutes.data or 0,
+                'limit_weekly_live_minutes': form.limit_weekly_live_minutes.data or 0,
+                'limit_monthly_live_minutes': form.limit_monthly_live_minutes.data or 0,
                 'max_history_items': form.max_history_items.data or 0,
                 'history_retention_days': form.history_retention_days.data or 0,
             }
@@ -413,6 +416,9 @@ def edit_role(role_id):
                 'limit_daily_workflows': temp_form.limit_daily_workflows.data or 0,
                 'limit_weekly_workflows': temp_form.limit_weekly_workflows.data or 0,
                 'limit_monthly_workflows': temp_form.limit_monthly_workflows.data or 0,
+                'limit_daily_live_minutes': temp_form.limit_daily_live_minutes.data or 0,
+                'limit_weekly_live_minutes': temp_form.limit_weekly_live_minutes.data or 0,
+                'limit_monthly_live_minutes': temp_form.limit_monthly_live_minutes.data or 0,
                 'max_history_items': temp_form.max_history_items.data or 0,
                 'history_retention_days': temp_form.history_retention_days.data or 0,
             }
@@ -469,6 +475,9 @@ def edit_role(role_id):
                 'limit_daily_workflows': form.limit_daily_workflows.data or 0,
                 'limit_weekly_workflows': form.limit_weekly_workflows.data or 0,
                 'limit_monthly_workflows': form.limit_monthly_workflows.data or 0,
+                'limit_daily_live_minutes': form.limit_daily_live_minutes.data or 0,
+                'limit_weekly_live_minutes': form.limit_weekly_live_minutes.data or 0,
+                'limit_monthly_live_minutes': form.limit_monthly_live_minutes.data or 0,
                 'max_history_items': form.max_history_items.data or 0,
                 'history_retention_days': form.history_retention_days.data or 0,
             }

@@ -122,14 +122,18 @@ class OpenAIModelTranscriptionClient(OpenAIBaseTranscriptionClient):
 
             if self.response_style == "languages_array":
                 text = response.text
-                languages = getattr(response, "languages", None) or []
                 detected_language = None
+                languages = getattr(response, "languages", None) or []
                 if languages:
                     first = languages[0]
                     detected_language = (
                         first.get("code") if isinstance(first, dict)
                         else getattr(first, "code", None)
                     )
+                if not detected_language:
+                    # Some providers report a single language instead of the
+                    # languages array; capture it whenever it is present.
+                    detected_language = getattr(response, "language", None)
                 return text, detected_language
 
             # standard
