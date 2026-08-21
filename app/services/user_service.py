@@ -484,10 +484,10 @@ def delete_user_api_key(
         raise ValueError("Service name cannot be empty.")
 
     allowed_services = ['openai', 'assemblyai', 'gemini', 'openrouter']
+    service = service.lower()
     if service not in allowed_services:
         logger.error(f"Attempted to delete API key for invalid service: {service}")
         raise ValueError(f"Invalid service specified: {service}. Must be one of {allowed_services}.")
-    service = service.lower()
     if model_slug is not None:
         model_slug = _normalize_model_name(service, model_slug, required=True)
 
