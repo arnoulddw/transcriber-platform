@@ -377,6 +377,15 @@ def edit_workflow_result(user_id: int, operation_id: int, new_result: str) -> No
 
     with current_app.app_context():
         try:
+            # Only completed runs are editable — the background thread owns
+            # pending/processing records and would overwrite the edit.
+            operation = llm_operation_model.get_llm_operation_by_id(operation_id, user_id)
+            if not operation:
+                raise OperationNotFoundError("Failed to update workflow result (record not found or permission issue).")
+            if operation.get('status') != 'finished':
+                logger.warning(f"Edit rejected: operation status is '{operation.get('status')}', not 'finished'.")
+                raise OperationNotFoundError("Only finished workflow results can be edited.")
+
             success = llm_operation_model.update_llm_operation_result(
                 operation_id=operation_id,
                 user_id=user_id,

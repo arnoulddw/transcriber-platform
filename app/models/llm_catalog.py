@@ -400,10 +400,9 @@ def _get_default_code(column: str) -> Optional[str]:
     if row:
         return row["code"]
 
-    # Fall back to the first active model if a specific default is not designated.
-    models = get_active_models()
-    if models:
-        return models[0]["code"]
+    # No silent "first active model" fallback: an unspecified default must
+    # stay unspecified so callers fall through to their configured env
+    # defaults deterministically instead of drifting with catalog order.
     return None
 
 

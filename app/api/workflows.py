@@ -20,9 +20,8 @@ from app.services.workflow_service import (
     # --- END ADDED ---
 )
 # --- END MODIFIED ---
-# --- MODIFIED: Import LLM exceptions for potential re-raise ---
-from app.services.api_clients.exceptions import LlmApiError, LlmRateLimitError, LlmSafetyError
-# --- END MODIFIED ---
+# Note: LLM exceptions are not caught here — start_workflow only validates
+# and spawns the background thread; the LLM call happens asynchronously.
 
 # Import decorators
 from app.core.decorators import permission_required
@@ -97,15 +96,10 @@ def run_workflow(transcription_id: str):
     except WorkflowInProgressError as e:
         logging.warning(f"{log_prefix} Workflow start failed: {e}")
         return jsonify({'error': _compose_error_message(_('A workflow is already running for this transcription. Please wait for it to finish.'), str(e))}), 400
-    # --- ADDED: Catch specific LLM errors ---
-    except LlmRateLimitError as e:
-        logging.warning(f"{log_prefix} Workflow start failed due to LLM Rate Limit: {e}")
-        return jsonify({'error': _compose_error_message(_('The AI provider temporarily rate-limited this workflow. Please wait a moment and try again.'), str(e))}), 429 # Too Many Requests
-    except LlmSafetyError as e:
-        logging.warning(f"{log_prefix} Workflow start failed due to LLM Safety Filter: {e}")
-        return jsonify({'error': _compose_error_message(_('The AI provider blocked this workflow because of its safety filters. Please adjust your prompt and try again.'), str(e))}), 400 # Bad Request
-    # --- END ADDED ---
-    except (WorkflowError, LlmApiError) as e: # Catch generic workflow and LLM API errors
+    # Note: LLM errors (rate limit, safety, API) cannot occur here — the LLM
+    # is only called asynchronously in the background thread after this
+    # endpoint returns. Those failures surface via operation polling instead.
+    except WorkflowError as e: # Catch remaining workflow setup errors
         logging.error(f"{log_prefix} Workflow start failed: {e}", exc_info=True)
         return jsonify({'error': _compose_error_message(_('We were unable to run this workflow. Please try again.'), str(e))}), 500
     except Exception as e:
