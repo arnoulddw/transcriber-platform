@@ -81,3 +81,6 @@ test-results/
 coverage/
 *.test.log
 test-database.*
+
+# Local planning documents
+docs/plans/
