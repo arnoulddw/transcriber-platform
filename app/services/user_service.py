@@ -560,11 +560,24 @@ def _collect_key_status_entries(
             if provider == 'openrouter':
                 if record.get('model_slug'):
                     entry['model_slug'] = model_name
-            existing_names = {
-                item.get('model_name') or item.get('model_slug')
+            # Dedupe on the full identity (name + provider-wide flag +
+            # purposes), matching _merge_key_status. Deduping by name alone
+            # would drop purpose-distinct entries when several users saved
+            # the same model for different purposes.
+            identity = (
+                model_name,
+                entry['provider_wide'],
+                tuple(purposes),
+            )
+            existing_identities = {
+                (
+                    str(item.get('model_name') or item.get('model_slug') or '').strip(),
+                    bool(item.get('provider_wide')),
+                    tuple(item.get('model_purposes') or []),
+                )
                 for item in status['provider_keys'][provider]
             }
-            if model_name in existing_names:
+            if identity in existing_identities:
                 continue
             status['provider_keys'][provider].append(entry)
 
