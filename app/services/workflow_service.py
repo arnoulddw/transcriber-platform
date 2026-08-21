@@ -165,16 +165,15 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
         role_provider_override: Optional[str] = None
         role_model_override: Optional[str] = None
         if role_obj:
-            role_model_candidate = getattr(role_obj, 'default_workflow_model', None)
-            if role_model_candidate:
-                candidate_clean = role_model_candidate.strip()
-                if candidate_clean:
-                    resolved_role_provider = llm_service.get_provider_for_model_code(candidate_clean)
-                    if resolved_role_provider:
-                        role_model_override = candidate_clean
-                        role_provider_override = resolved_role_provider
-                    else:
-                        logger.warning(f"Role override workflow model '{candidate_clean}' not recognized; falling back to configured provider.")
+            role_model_override_tuple = llm_service.resolve_role_model_override(
+                getattr(role_obj, 'default_workflow_model', None)
+            )
+            if role_model_override_tuple:
+                role_provider_override, role_model_override = role_model_override_tuple
+            else:
+                role_candidate = (getattr(role_obj, 'default_workflow_model', None) or '').strip()
+                if role_candidate:
+                    logger.warning(f"Role override workflow model '{role_candidate}' not recognized or inactive; falling back to configured provider.")
 
         catalog_default_model: Optional[str] = None
         try:

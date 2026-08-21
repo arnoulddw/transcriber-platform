@@ -83,6 +83,38 @@ def test_resolve_user_model_preference_rejects_inactive_or_unknown_models(llm_ap
         assert llm_service.resolve_user_model_preference(user, "default_workflow_model") is None
 
 
+def test_resolve_role_model_override_returns_active_catalog_provider(llm_app_context):
+    catalog_entry = {
+        "code": "gpt-4.1",
+        "provider": "OPENAI",
+        "is_active": True,
+    }
+
+    with patch.object(llm_service.llm_catalog_model, "get_model_by_code", return_value=catalog_entry):
+        result = llm_service.resolve_role_model_override(" gpt-4.1 ")
+
+    assert result == ("OPENAI", "gpt-4.1")
+
+
+def test_resolve_role_model_override_rejects_inactive_or_unknown_models(llm_app_context):
+    inactive_entry = {
+        "code": "retired-model",
+        "provider": "OPENAI",
+        "is_active": False,
+    }
+
+    with patch.object(llm_service.llm_catalog_model, "get_model_by_code", return_value=inactive_entry):
+        assert llm_service.resolve_role_model_override("retired-model") is None
+
+    with patch.object(llm_service.llm_catalog_model, "get_model_by_code", return_value=None), patch.object(
+        llm_service, "get_provider_for_model_code", return_value=None
+    ):
+        assert llm_service.resolve_role_model_override("unknown-model") is None
+
+    assert llm_service.resolve_role_model_override("   ") is None
+    assert llm_service.resolve_role_model_override(None) is None
+
+
 def test_workflow_start_uses_user_workflow_model(llm_app_context):
     user = SimpleNamespace(role=SimpleNamespace(default_workflow_model=None))
     cursor = Mock()

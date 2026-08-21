@@ -97,6 +97,39 @@ def resolve_user_model_preference(user: Any, attribute_name: str) -> Optional[Tu
         return None
     return str(provider).upper(), candidate
 
+def resolve_role_model_override(model_candidate: Optional[str]) -> Optional[Tuple[str, str]]:
+    """Return an active catalog model's code and provider for a role default.
+
+    Mirrors ``resolve_user_model_preference``: retired (inactive) or unknown
+    models are rejected so a stale role default cannot keep running a model
+    that was deactivated in the admin catalog.
+    """
+    if not isinstance(model_candidate, str):
+        return None
+    candidate = model_candidate.strip()
+    if not candidate:
+        return None
+
+    model_entry = None
+    try:
+        model_entry = llm_catalog_model.get_model_by_code(candidate)
+    except Exception as catalog_err:
+        logging.warning(
+            "[LLM Service] Failed to validate role model override '%s': %s",
+            candidate,
+            catalog_err,
+        )
+
+    if model_entry and model_entry.get('is_active') is False:
+        logging.warning("[LLM Service] Ignoring inactive role model override '%s'.", candidate)
+        return None
+
+    provider = (model_entry or {}).get('provider') or get_provider_for_model_code(candidate)
+    if not provider:
+        logging.warning("[LLM Service] Ignoring unknown role model override '%s'.", candidate)
+        return None
+    return str(provider).upper(), candidate
+
 def generate_text_via_llm(
     provider_name: str,
     prompt: str,
