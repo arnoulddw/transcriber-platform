@@ -2,9 +2,10 @@
 # This file contains functions for calculating user usage statistics.
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, Any
 
+from app.core.utils import get_usage_period_starts
 from app.database import get_cursor
 
 def get_user_usage(user_id: int) -> Dict[str, Any]:
@@ -20,9 +21,9 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
     log_prefix = f"[UsageService:User:{user_id}]"
     cursor = get_cursor()
 
-    today = datetime.now(timezone.utc).date()
-    start_of_week = today - timedelta(days=today.weekday())
-    start_of_month = today.replace(day=1)
+    today = datetime.now(timezone.utc)
+    day_start, start_of_week, start_of_month = get_usage_period_starts(now=today)
+    today = day_start
     # Use the earlier of the two boundaries so that weekly totals are correct
     # when the current week started in the previous month (e.g. today is the
     # 1st or 2nd of the month and Monday fell in the previous month).

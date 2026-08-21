@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 
 from mysql.connector import Error as MySQLError
+from app.core.utils import get_usage_period_starts
 from app.database import get_db, get_cursor
 
 
@@ -647,10 +648,9 @@ def get_all_roles() -> List[Role]:
 
 def increment_usage(user_id: int, cost: float, minutes_processed: float, live_minutes_processed: float = 0.0) -> None:
     """
-    Increments usage stats for a user after a transcription.
+    Increments usage stats for a user.
     """
-    now = datetime.now(timezone.utc)
-    date_ts = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    date_ts = get_usage_period_starts()[0]
     log_prefix = f"[DB:Usage:User:{user_id}]"
 
     cursor = get_cursor()
@@ -677,8 +677,7 @@ def increment_workflow_usage(user_id: int) -> None:
     """
     Increments workflow usage stats for a user.
     """
-    now = datetime.now(timezone.utc)
-    date_ts = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    date_ts = get_usage_period_starts()[0]
     log_prefix = f"[DB:Usage:Workflow:User:{user_id}]"
     cursor = get_cursor()
     try:
@@ -707,10 +706,7 @@ def reserve_usage_if_allowed(
     live_minutes_to_add: float = 0.0,
 ) -> Tuple[bool, str]:
     """Atomically check role quotas and reserve usage under a per-user row lock."""
-    now = datetime.now(timezone.utc)
-    day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-    week_start = day_start - timedelta(days=day_start.weekday())
-    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    day_start, week_start, month_start = get_usage_period_starts(now=datetime.now(timezone.utc))
     connection = get_db()
     cursor = connection.cursor(dictionary=True)
     try:
