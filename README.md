@@ -287,11 +287,11 @@ npm run build:css:prod
 Run tests with the dedicated MySQL test container:
 
 ```bash
-docker compose -f docker-compose.test.yml up -d
+docker compose -f tests/docker-compose.test.yml up -d
 env MYSQL_HOST=127.0.0.1 MYSQL_PORT=3308 MYSQL_USER=test MYSQL_PASSWORD=test MYSQL_DB=test_db \
     MYSQL_TEST_HOST=127.0.0.1 MYSQL_TEST_PORT=3308 MYSQL_TEST_USER=test MYSQL_TEST_PASSWORD=test MYSQL_TEST_DB=test_db \
     venv/bin/pytest -q
-docker compose -f docker-compose.test.yml down
+docker compose -f tests/docker-compose.test.yml down
 ```
 
 Both the plain `MYSQL_*` (config guard) and `MYSQL_TEST_*` (functional suite) variable sets are required. Unit tests run without a database.

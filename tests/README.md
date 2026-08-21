@@ -23,7 +23,7 @@ This method ensures a consistent, isolated environment with all necessary servic
 This command starts the dedicated MySQL container for testing.
 
 ```bash
-docker compose -f docker-compose.test.yml up -d
+docker compose -f tests/docker-compose.test.yml up -d
 ```
 
 **2. Run the Test Suite**
@@ -39,7 +39,7 @@ docker compose run --rm -e PYTHONPATH=/app transcriber-platform ./tests/run_test
 Once you are finished with testing, run this command to stop and remove the test database container.
 
 ```bash
-docker compose -f docker-compose.test.yml down
+docker compose -f tests/docker-compose.test.yml down
 ```
 
 ## Test Fixtures
