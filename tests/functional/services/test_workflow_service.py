@@ -249,6 +249,9 @@ def test_start_workflow_transcription_not_found(app, workflow_user):
 
 def test_edit_workflow_result_success(app, workflow_user):
     with patch(
+        "app.services.workflow_service.llm_operation_model.get_llm_operation_by_id",
+        return_value={"id": 10, "status": "finished"},
+    ) as mock_get, patch(
         "app.services.workflow_service.llm_operation_model.update_llm_operation_result",
         return_value=True,
     ) as mock_update:
@@ -256,15 +259,33 @@ def test_edit_workflow_result_success(app, workflow_user):
             workflow_user.id, operation_id=10, new_result="Updated result"
         )
 
+    # The edit is gated on the ownership-scoped lookup first.
+    mock_get.assert_called_once_with(10, workflow_user.id)
     mock_update.assert_called_once_with(
         operation_id=10, user_id=workflow_user.id, new_result="Updated result"
     )
 
 
+def test_edit_workflow_result_rejects_non_finished(app, workflow_user):
+    with patch(
+        "app.services.workflow_service.llm_operation_model.get_llm_operation_by_id",
+        return_value={"id": 10, "status": "processing"},
+    ), patch(
+        "app.services.workflow_service.llm_operation_model.update_llm_operation_result",
+        return_value=True,
+    ) as mock_update:
+        with pytest.raises(OperationNotFoundError):
+            workflow_service.edit_workflow_result(
+                workflow_user.id, operation_id=10, new_result="Too early"
+            )
+
+    mock_update.assert_not_called()
+
+
 def test_edit_workflow_result_not_found(app, workflow_user):
     with patch(
-        "app.services.workflow_service.llm_operation_model.update_llm_operation_result",
-        return_value=False,
+        "app.services.workflow_service.llm_operation_model.get_llm_operation_by_id",
+        return_value=None,
     ):
         with pytest.raises(OperationNotFoundError):
             workflow_service.edit_workflow_result(
