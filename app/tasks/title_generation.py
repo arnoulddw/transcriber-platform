@@ -298,22 +298,6 @@ Transcription Content:
 
 Generated Title:"""
 
-            operation_id = llm_operation_model.create_llm_operation(
-                user_id=user_id,
-                provider=provider_config,
-                operation_type='title_generation',
-                input_text=prompt,
-                transcription_id=transcription_id,
-                status='processing',
-                model=model_name,
-            )
-            if not operation_id:
-                error_reason = "db_create_failed"
-                logger.error(f"{log_prefix} Failed to create LLM Operation record for title generation.", extra=log_extra)
-                final_status = 'failed'
-                transcription_model.update_title_generation_status(transcription_id, 'failed')
-                return
-
             def llm_call_wrapper(flask_app: Flask, current_user_id: int, op_id: int, op_type: str, provider_override: str, model_override: Optional[str]):
                 with flask_app.app_context():
                     try:
@@ -322,7 +306,26 @@ Generated Title:"""
                         exception_container['error'] = e
 
             attempts = _build_title_generation_attempts(provider_config, model_name, current_app.config)
+            operation_id = None
             for attempt_index, (attempt_provider, attempt_model) in enumerate(attempts, start=1):
+                # Each attempt owns its own llm_operations row so an abandoned
+                # timed-out thread can never overwrite a later attempt's record.
+                operation_id = llm_operation_model.create_llm_operation(
+                    user_id=user_id,
+                    provider=attempt_provider,
+                    operation_type='title_generation',
+                    input_text=prompt,
+                    transcription_id=transcription_id,
+                    status='processing',
+                    model=attempt_model,
+                )
+                if not operation_id:
+                    error_reason = "db_create_failed"
+                    logger.error(f"{log_prefix} Failed to create LLM Operation record for title generation.", extra=log_extra)
+                    final_status = 'failed'
+                    transcription_model.update_title_generation_status(transcription_id, 'failed')
+                    return
+
                 result_container = {}
                 exception_container = {}
                 llm_thread = threading.Thread(target=llm_call_wrapper, args=(app, user_id, operation_id, 'title_generation', attempt_provider, attempt_model))
@@ -333,7 +336,10 @@ Generated Title:"""
                 if llm_thread.is_alive():
                     # The abandoned daemon thread cannot be killed (Python
                     # limitation); it may still finish and write its result to
-                    # the operation record, but this task moves on.
+                    # its own operation record, but this task moves on.
+                    llm_operation_model.update_llm_operation_status(
+                        operation_id, 'error', error=f"Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds."
+                    )
                     has_next_attempt = attempt_index < len(attempts)
                     if has_next_attempt:
                         error_reason = "timeout"
@@ -353,6 +359,7 @@ Generated Title:"""
                             f"{log_prefix} Title generation failed with provider '{attempt_provider}' model '{attempt_model}'. Trying fallback model.",
                             extra={**log_extra, "error": str(attempt_error)}
                         )
+                        llm_operation_model.update_llm_operation_status(operation_id, 'error', error=str(attempt_error))
                         continue
                     llm_operation_model.update_llm_operation_status(operation_id, 'error', error=str(attempt_error))
                     raise attempt_error
