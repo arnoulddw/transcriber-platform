@@ -41,7 +41,8 @@ def test_build_title_generation_attempts_deduplicates_fallback(monkeypatch):
     assert attempts == [("GEMINI", "gemini-3.0-flash")]
 
 
-def test_only_generation_errors_are_title_model_retryable():
+def test_provider_level_errors_are_title_model_retryable():
     assert title_generation._should_try_next_title_model(LlmGenerationError("provider failed"))
-    assert not title_generation._should_try_next_title_model(LlmConfigurationError("bad config"))
-    assert not title_generation._should_try_next_title_model(LlmRateLimitError("rate limit"))
+    # Config and rate-limit errors are exactly where a fallback model helps.
+    assert title_generation._should_try_next_title_model(LlmConfigurationError("bad config"))
+    assert title_generation._should_try_next_title_model(LlmRateLimitError("rate limit"))
