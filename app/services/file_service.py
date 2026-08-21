@@ -92,7 +92,7 @@ def get_audio_duration(file_path: str) -> Tuple[float, float]:
         elif 'streams' in media_info and media_info['streams']:
             # Find the first stream with a duration
             for stream in media_info['streams']:
-                if 'duration' in stream and 'duration_ts' in stream: # Ensure duration is present
+                if 'duration' in stream: # Ensure duration is present
                     duration_seconds = float(stream['duration'])
                     break
         
