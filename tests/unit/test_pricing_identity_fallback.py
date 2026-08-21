@@ -68,9 +68,24 @@ def test_no_match_returns_none():
         assert get_price("transcription", "totally-unrelated-model") is None
 
 
-def test_non_transcription_types_do_not_use_identity_fallback():
-    prices = {"workflow": {"generic": 0.01}}
+def test_non_transcription_types_use_identity_fallback_too():
+    prices = {"workflow": {"openrouter:google/gemini-3.7-flash": 0.01}}
     with contextlib.ExitStack() as stack:
         for p in _patched_pricing(prices):
             stack.enter_context(p)
-        assert get_price("workflow", "Generic") is None
+        # LLM types resolve by identity the same way transcription does.
+        assert get_price("workflow", "google/gemini-3.7-flash") == 0.01
+
+
+def test_non_transcription_ambiguous_fallback_returns_none():
+    prices = {
+        "workflow": {
+            "openrouter:vendor-a/gemma": 0.01,
+            "openrouter:vendor-b/gemma": 0.02,
+        }
+    }
+    with contextlib.ExitStack() as stack:
+        for p in _patched_pricing(prices):
+            stack.enter_context(p)
+        # Two different prices for the same identity: never guess.
+        assert get_price("workflow", "gemma") is None

@@ -55,6 +55,8 @@ class GeminiClient(BaseLLMClient):
     # Resolves display names from the catalog (single source of truth).
     CATALOG_MODEL_CODE = "gemini"
 
+    DEFAULT_MODEL = "gemini-3.0-flash"
+
     # --- MODIFIED: Accept config in _initialize_client ---
     def _initialize_client(self, api_key: str, config: Dict[str, Any]) -> None:
         """Initializes the Gemini client using genai.Client."""
@@ -73,8 +75,13 @@ class GeminiClient(BaseLLMClient):
 
     # --- MODIFIED: Accept config in _get_model_name and update default ---
     def _get_model_name(self, config: Dict[str, Any]) -> str:
-        """Gets the configured Gemini model name from the passed config dictionary."""
-        return config.get('WORKFLOW_LLM_MODEL') or 'gemini-3.0-flash'
+        """Gets the Gemini default model name from the passed config dictionary.
+
+        Provider-native constant only: callers pass the operation's model
+        explicitly, and a config default like WORKFLOW_LLM_MODEL (an
+        OpenRouter slug) would be invalid when sent to the Gemini API.
+        """
+        return self.DEFAULT_MODEL
     # --- END MODIFIED ---
 
     def generate_text(self, prompt: str, **kwargs) -> str:

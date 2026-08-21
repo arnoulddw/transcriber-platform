@@ -12,6 +12,7 @@ from typing import Optional
 # Import services and exceptions
 # --- MODIFIED: Import only workflow_service and its specific exceptions ---
 from app.services import workflow_service
+from app.models import llm_operation as llm_operation_model
 from app.services.workflow_service import (
     WorkflowError, PermissionDeniedError, UsageLimitExceededError,
     TranscriptionNotFoundError, InvalidPromptError, WorkflowInProgressError,
@@ -20,9 +21,8 @@ from app.services.workflow_service import (
     # --- END ADDED ---
 )
 # --- END MODIFIED ---
-# --- MODIFIED: Import LLM exceptions for potential re-raise ---
-from app.services.api_clients.exceptions import LlmApiError, LlmRateLimitError, LlmSafetyError
-# --- END MODIFIED ---
+# Note: LLM exceptions are not caught here — start_workflow only validates
+# and spawns the background thread; the LLM call happens asynchronously.
 
 # Import decorators
 from app.core.decorators import permission_required
@@ -53,6 +53,15 @@ def run_workflow(transcription_id: str):
     """
     user_id = current_user.id
     log_prefix = f"[API:Workflow:Run:{transcription_id[:8]}:User:{user_id}]"
+
+    # Opportunistically fail LLM operations stalled beyond the configured age
+    # so a crashed background run cannot block this transcription forever.
+    try:
+        stale_seconds = current_app.config.get('LLM_OPERATION_STALE_SECONDS', 1800)
+        llm_operation_model.mark_stale_operations_interrupted(stale_seconds)
+    except Exception as sweep_err:
+        logging.warning(f"{log_prefix} Stale LLM operation sweep failed: {sweep_err}")
+
     data = request.get_json()
 
     if not data or 'prompt' not in data:
@@ -97,15 +106,10 @@ def run_workflow(transcription_id: str):
     except WorkflowInProgressError as e:
         logging.warning(f"{log_prefix} Workflow start failed: {e}")
         return jsonify({'error': _compose_error_message(_('A workflow is already running for this transcription. Please wait for it to finish.'), str(e))}), 400
-    # --- ADDED: Catch specific LLM errors ---
-    except LlmRateLimitError as e:
-        logging.warning(f"{log_prefix} Workflow start failed due to LLM Rate Limit: {e}")
-        return jsonify({'error': _compose_error_message(_('The AI provider temporarily rate-limited this workflow. Please wait a moment and try again.'), str(e))}), 429 # Too Many Requests
-    except LlmSafetyError as e:
-        logging.warning(f"{log_prefix} Workflow start failed due to LLM Safety Filter: {e}")
-        return jsonify({'error': _compose_error_message(_('The AI provider blocked this workflow because of its safety filters. Please adjust your prompt and try again.'), str(e))}), 400 # Bad Request
-    # --- END ADDED ---
-    except (WorkflowError, LlmApiError) as e: # Catch generic workflow and LLM API errors
+    # Note: LLM errors (rate limit, safety, API) cannot occur here — the LLM
+    # is only called asynchronously in the background thread after this
+    # endpoint returns. Those failures surface via operation polling instead.
+    except WorkflowError as e: # Catch remaining workflow setup errors
         logging.error(f"{log_prefix} Workflow start failed: {e}", exc_info=True)
         return jsonify({'error': _compose_error_message(_('We were unable to run this workflow. Please try again.'), str(e))}), 500
     except Exception as e:

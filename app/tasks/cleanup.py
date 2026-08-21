@@ -16,6 +16,7 @@ from app.models import transcription as transcription_model
 from app.models import transcription_utils # Import the new utils file
 # <<< END MODIFIED >>>
 from app.models import user as user_model # Uses MySQL now
+from app.models import llm_operation as llm_operation_model
 from app.models.role import Role # Import Role for type hint
 
 # Import Flask type hint
@@ -125,6 +126,22 @@ def run_cleanup_task(app: Flask) -> None:
                     logger.error(f"DB error during physical deletion: {physical_del_db_err}", exc_info=True)
                 except Exception as physical_del_err:
                     logger.error(f"Error during physical deletion: {physical_del_err}", exc_info=True)
+
+                # --- 4. Physical Deletion of Orphaned LLM Operations ---
+                # Transcription deletion severs llm_operations links (ON DELETE
+                # SET NULL); purge the orphaned rows on the same schedule so
+                # their stored prompt/result text follows the same policy.
+                logger.debug(f"Running orphaned LLM operation cleanup (older than {physical_delete_days} days).")
+                try:
+                    orphans_deleted = llm_operation_model.delete_orphaned_llm_operations(physical_delete_days)
+                    if orphans_deleted > 0:
+                        logger.info(f"Deleted {orphans_deleted} orphaned LLM operation record(s).")
+                    elif orphans_deleted == 0:
+                        logger.debug("No orphaned LLM operations found for cleanup.")
+                except MySQLError as orphan_db_err:
+                    logger.error(f"DB error during orphaned LLM operation cleanup: {orphan_db_err}", exc_info=True)
+                except Exception as orphan_err:
+                    logger.error(f"Error during orphaned LLM operation cleanup: {orphan_err}", exc_info=True)
 
         except Exception as cycle_err:
             try:

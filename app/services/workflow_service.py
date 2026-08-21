@@ -108,7 +108,15 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
             logger.warning(f"Cannot run workflow on non-finished transcription (status: {transcription.get('status')}).")
             raise WorkflowError("Workflows can only be run on finished transcriptions.")
 
+        # Serialize concurrent starts on the transcription row: the second
+        # request blocks here until the first one's INSERT commits, then sees
+        # its pending operation below instead of racing past the check.
         cursor = get_cursor()
+        cursor.execute(
+            "SELECT id FROM transcriptions WHERE id = %s FOR UPDATE",
+            (transcription_id,)
+        )
+        cursor.fetchall()
         cursor.execute(
             "SELECT id FROM llm_operations WHERE transcription_id = %s AND status IN ('pending', 'processing')",
             (transcription_id,)
@@ -165,16 +173,15 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
         role_provider_override: Optional[str] = None
         role_model_override: Optional[str] = None
         if role_obj:
-            role_model_candidate = getattr(role_obj, 'default_workflow_model', None)
-            if role_model_candidate:
-                candidate_clean = role_model_candidate.strip()
-                if candidate_clean:
-                    resolved_role_provider = llm_service.get_provider_for_model_code(candidate_clean)
-                    if resolved_role_provider:
-                        role_model_override = candidate_clean
-                        role_provider_override = resolved_role_provider
-                    else:
-                        logger.warning(f"Role override workflow model '{candidate_clean}' not recognized; falling back to configured provider.")
+            role_model_override_tuple = llm_service.resolve_role_model_override(
+                getattr(role_obj, 'default_workflow_model', None)
+            )
+            if role_model_override_tuple:
+                role_provider_override, role_model_override = role_model_override_tuple
+            else:
+                role_candidate = (getattr(role_obj, 'default_workflow_model', None) or '').strip()
+                if role_candidate:
+                    logger.warning(f"Role override workflow model '{role_candidate}' not recognized or inactive; falling back to configured provider.")
 
         catalog_default_model: Optional[str] = None
         try:
@@ -378,6 +385,15 @@ def edit_workflow_result(user_id: int, operation_id: int, new_result: str) -> No
 
     with current_app.app_context():
         try:
+            # Only completed runs are editable — the background thread owns
+            # pending/processing records and would overwrite the edit.
+            operation = llm_operation_model.get_llm_operation_by_id(operation_id, user_id)
+            if not operation:
+                raise OperationNotFoundError("Failed to update workflow result (record not found or permission issue).")
+            if operation.get('status') != 'finished':
+                logger.warning(f"Edit rejected: operation status is '{operation.get('status')}', not 'finished'.")
+                raise OperationNotFoundError("Only finished workflow results can be edited.")
+
             success = llm_operation_model.update_llm_operation_result(
                 operation_id=operation_id,
                 user_id=user_id,
@@ -387,8 +403,28 @@ def edit_workflow_result(user_id: int, operation_id: int, new_result: str) -> No
             if not success:
                 logger.error(f"Update failed: LLM Operation record {operation_id} not found or not owned during update.")
                 raise OperationNotFoundError("Failed to update workflow result (record not found or permission issue).")
-            else:
-                logger.debug("Workflow result updated successfully.")
+
+            # Keep the denormalized copy on the transcription row in sync —
+            # some surfaces read it directly and would otherwise show stale
+            # pre-edit text.
+            try:
+                cursor = get_cursor()
+                cursor.execute(
+                    """
+                    UPDATE transcriptions t
+                    JOIN llm_operations lo ON lo.id = t.llm_operation_id
+                    SET t.llm_operation_result = %s
+                    WHERE lo.id = %s AND lo.user_id = %s AND lo.operation_type = 'workflow'
+                    """,
+                    (new_result, operation_id, user_id),
+                )
+                get_db().commit()
+                logger.debug("Mirrored edited workflow result to transcription record.")
+            except MySQLError as mirror_err:
+                logger.error(f"Failed to mirror edited result to transcription record: {mirror_err}", exc_info=True)
+                raise WorkflowError("Workflow result updated but could not be synced to the transcription record.") from mirror_err
+
+            logger.debug("Workflow result updated successfully.")
 
         except MySQLError as db_err:
             logger.error(f"Database error updating LLM operation result: {db_err}", exc_info=True)

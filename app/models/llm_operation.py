@@ -316,6 +316,90 @@ def update_llm_operation_result(operation_id: int, user_id: int, new_result: str
         pass
     return success
 
+def mark_stale_operations_interrupted(stale_seconds: Optional[int] = None) -> int:
+    """Fail pending/processing operations abandoned by a restart or crash.
+
+    Background LLM work runs in daemon threads, so rows can stay
+    'pending'/'processing' forever after the app dies mid-run — which then
+    blocks new workflows for that transcription. Called at bootstrap with
+    ``stale_seconds=None`` (sweep everything: no threads can survive a
+    restart) or opportunistically with an age threshold to also catch stalls.
+
+    Returns the number of operations marked as interrupted.
+    """
+    log_prefix = "[DB:LLMOperation:Recovery]"
+    if stale_seconds is not None and stale_seconds <= 0:
+        return 0
+
+    base_sql = """
+        UPDATE llm_operations
+        SET status = 'error',
+            error = 'Interrupted: application restarted or operation stalled.',
+            completed_at = NOW()
+        WHERE status IN ('pending', 'processing')
+    """
+    sql = base_sql + " AND created_at < (NOW() - INTERVAL %s SECOND)" if stale_seconds is not None else base_sql
+    params = (stale_seconds,) if stale_seconds is not None else ()
+
+    cursor = get_cursor()
+    interrupted = 0
+    try:
+        cursor.execute(sql, params)
+        interrupted = cursor.rowcount
+        get_db().commit()
+        if interrupted > 0:
+            logging.warning(f"{log_prefix} Marked {interrupted} stuck LLM operation(s) as interrupted.")
+        else:
+            logging.debug(f"{log_prefix} No stuck LLM operations found.")
+    except MySQLError as err:
+        get_db().rollback()
+        logging.error(f"{log_prefix} Error marking stale LLM operations interrupted: {err}", exc_info=True)
+    finally:
+        # The cursor is managed by the application context, so we don't close it here.
+        pass
+    return interrupted
+
+def delete_orphaned_llm_operations(retention_period_days: int) -> int:
+    """Physically deletes LLM operations whose transcription is gone.
+
+    Transcription rows are physically deleted by the retention pipeline and
+    their llm_operations links are severed (ON DELETE SET NULL), leaving
+    orphaned rows — including stored prompt/result text — behind forever.
+    This removes orphans older than the retention period, mirroring the
+    transcription deletion policy. Returns the number of rows deleted.
+    """
+    log_prefix = "[DB:LLMOperation:OrphanCleanup]"
+    if retention_period_days <= 0:
+        logging.warning(
+            "%s Orphan retention period is zero or negative (%s days). Skipping.",
+            log_prefix,
+            retention_period_days,
+        )
+        return 0
+
+    cursor = get_cursor()
+    deleted_count = 0
+    try:
+        sql = """
+            DELETE FROM llm_operations
+            WHERE transcription_id IS NULL
+              AND created_at < (NOW() - INTERVAL %s DAY)
+        """
+        cursor.execute(sql, (retention_period_days,))
+        deleted_count = cursor.rowcount
+        get_db().commit()
+        if deleted_count > 0:
+            logging.info(f"{log_prefix} Physically deleted {deleted_count} orphaned LLM operation(s).")
+        else:
+            logging.debug(f"{log_prefix} No orphaned LLM operations older than {retention_period_days} day(s).")
+    except MySQLError as err:
+        get_db().rollback()
+        logging.error(f"{log_prefix} Error deleting orphaned LLM operations: {err}", exc_info=True)
+    finally:
+        # The cursor is managed by the application context, so we don't close it here.
+        pass
+    return deleted_count
+
 def get_llm_operation_by_id(operation_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves a specific LLM operation by its ID.

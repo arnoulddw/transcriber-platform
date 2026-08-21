@@ -206,16 +206,15 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
             role_provider_override: Optional[str] = None
             role_model_override: Optional[str] = None
             if role_obj:
-                role_model_candidate = getattr(role_obj, 'default_title_generation_model', None)
-                if role_model_candidate:
-                    candidate_clean = role_model_candidate.strip()
-                    if candidate_clean:
-                        resolved_provider = llm_service.get_provider_for_model_code(candidate_clean)
-                        if resolved_provider:
-                            role_model_override = candidate_clean
-                            role_provider_override = resolved_provider
-                        else:
-                            logger.warning(f"{log_prefix} Role default title model '{candidate_clean}' is not recognized. Falling back to configured provider.", extra=log_extra)
+                role_model_override_tuple = llm_service.resolve_role_model_override(
+                    getattr(role_obj, 'default_title_generation_model', None)
+                )
+                if role_model_override_tuple:
+                    role_provider_override, role_model_override = role_model_override_tuple
+                else:
+                    role_candidate = (getattr(role_obj, 'default_title_generation_model', None) or '').strip()
+                    if role_candidate:
+                        logger.warning(f"{log_prefix} Role default title model '{role_candidate}' is not recognized or inactive. Falling back to configured provider.", extra=log_extra)
 
             catalog_default_model: Optional[str] = None
             try:
@@ -257,14 +256,15 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
             try:
                 rate_limit_item = parse(TITLE_GENERATION_RATE_LIMIT)
                 limit_key = f"title_gen:user:{user_id}:provider:{provider_suffix}"
-                allowed = limiter.limiter.test(rate_limit_item, limit_key)
+                # hit() both consumes and tells us whether the limit allowed it,
+                # avoiding a check-then-act race between test() and hit().
+                allowed = limiter.limiter.hit(rate_limit_item, limit_key)
                 if not allowed:
                     error_reason = "rate_limit_exceeded"
-                    logger.warning(f"{log_prefix} Rate limit check failed (would exceed limit).", extra=log_extra)
+                    logger.warning(f"{log_prefix} Rate limit exceeded.", extra=log_extra)
                     transcription_model.update_title_generation_status(transcription_id, 'failed')
                     return
-                limiter.limiter.hit(rate_limit_item, limit_key)
-                logger.debug(f"{log_prefix} Rate limit check passed and hit.", extra=log_extra)
+                logger.debug(f"{log_prefix} Rate limit hit recorded.", extra=log_extra)
             except Exception as rl_err:
                 error_reason = "rate_limit_error"
                 logger.error(f"{log_prefix} Error checking/hitting rate limit: {rl_err}", exc_info=True, extra=log_extra)
@@ -331,8 +331,19 @@ Generated Title:"""
                 llm_thread.join(timeout=TITLE_GENERATION_TIMEOUT_SECONDS)
 
                 if llm_thread.is_alive():
+                    # The abandoned daemon thread cannot be killed (Python
+                    # limitation); it may still finish and write its result to
+                    # the operation record, but this task moves on.
+                    has_next_attempt = attempt_index < len(attempts)
+                    if has_next_attempt:
+                        error_reason = "timeout"
+                        logger.warning(
+                            f"{log_prefix} Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds with provider '{attempt_provider}' model '{attempt_model}'. Trying fallback model.",
+                            extra=log_extra
+                        )
+                        continue
                     error_reason = "timeout"
-                    logger.error(f"{log_prefix} Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds.", extra=log_extra)
+                    logger.error(f"{log_prefix} Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds on the final attempt.", extra=log_extra)
                     break
                 if 'error' in exception_container:
                     attempt_error = exception_container['error']

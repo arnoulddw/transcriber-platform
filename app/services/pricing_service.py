@@ -183,16 +183,13 @@ def get_price(item_type: str, item_key: Optional[str] = None) -> Optional[float]
             if price is not None:
                 break
 
-        # --- IDENTITY FALLBACK (transcription only) ---
+        # --- IDENTITY FALLBACK ---
         # Saved keys and requested keys can disagree on qualification
         # (``openrouter:openai/whisper-large-v3`` vs ``openai/whisper-large-v3``
-        # vs ``gpt-4o-mini``). Match on model identity, never guessing between
-        # different prices.
-        if (
-            price is None
-            and type_to_use == 'transcription'
-            and item_key_to_use
-        ):
+        # vs ``gpt-4o-mini``). Applies to transcription and LLM types alike:
+        # user-selected workflow/title models are priced by model identity,
+        # never guessing between different prices.
+        if price is None and item_key_to_use:
             price = _resolve_price_by_identity(item_key_to_use, type_to_use)
         # --- END IDENTITY FALLBACK ---
 

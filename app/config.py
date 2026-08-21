@@ -220,7 +220,9 @@ class Config:
     # --- Workflow Configuration ---
     WORKFLOW_MAX_OUTPUT_TOKENS = int(os.environ.get('WORKFLOW_MAX_OUTPUT_TOKENS', 1024))
     WORKFLOW_RATE_LIMIT = os.environ.get('WORKFLOW_RATE_LIMIT', '10 per hour')
-    DIRECT_LLM_RATE_LIMIT = os.environ.get('DIRECT_LLM_RATE_LIMIT', '5 per hour')
+    # Pending/processing LLM operations older than this are treated as stalled
+    # and failed by the opportunistic recovery sweep (bootstrap sweeps all).
+    LLM_OPERATION_STALE_SECONDS = int(os.environ.get('LLM_OPERATION_STALE_SECONDS', 1800))
 
     # --- NEW: Centralized API Limits ---
     API_LIMITS = {
