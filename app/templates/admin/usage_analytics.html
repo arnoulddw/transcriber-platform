@@ -300,7 +300,7 @@
                             {% endfor %}
                         </tr>
                         {% endfor %}
-                        <tr class="block sm:table-row border-b sm:border-none mb-4 sm:mb-0 font-semibold">
+                        <tr class="block sm:table-row">
                             <td data-label="Total" class="px-6 py-4 text-sm text-text-strong block sm:table-cell text-right sm:text-left relative border-b sm:border-none">Total Workflows Run</td>
                              {% for period in periods %}
                                 <td data-label="{{ period|replace('h', 'h Total WF')|replace('d', 'd Total WF')|replace('all', 'All Total WF') }}" class="px-6 py-4 text-sm text-text-strong block sm:table-cell sm:text-center relative">{{ format_number(metrics.workflows_run.get(period, 0), locale=formatting_locale) }}</td>

@@ -5,16 +5,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const selects = Array.from(modelsForm.querySelectorAll('.model-rename-select'));
 
     // Pre-fill the display-name input when a model is selected. The input shows
-    // the currently selected option's text (its display name) for editing.
+    // the currently selected option's text (its display name) for editing, and
+    // stays blank while no model is chosen (the placeholder option).
     function populateInput(type) {
         const select = modelsForm.querySelector(`.model-rename-select[data-type="${type}"]`);
         const input = modelsForm.querySelector(`.model-rename-input[data-type="${type}"]`);
         if (!select || !input) return;
         const option = select.options[select.selectedIndex];
-        input.value = option ? option.textContent : '';
+        input.value = option && option.value ? option.textContent : '';
     }
 
-    // Initial paint: reflect the placeholder selection (empty).
+    // Initial paint: reflect the placeholder selection (blank field).
     selects.forEach(select => populateInput(select.dataset.type));
 
     selects.forEach(select => {
