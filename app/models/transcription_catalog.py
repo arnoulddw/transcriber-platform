@@ -144,7 +144,7 @@ def _row_to_model(row: Dict[str, Any]) -> Dict[str, Any]:
         "required_api_key": row.get("required_api_key"),
         "is_default": bool(row.get("is_default", False)),
         "is_active": bool(row.get("is_active", True)),
-        "model_purpose": str(row.get("model_purpose") or "transcription").strip().lower(),
+        "model_purposes": canonicalize_model_purposes(row.get("model_purposes")),
     }
 
 
@@ -196,8 +196,9 @@ def get_active_models() -> List[Dict[str, Any]]:
     Returns active normal transcription models sorted by configured order.
 
     Models are registered at runtime from saved API keys; nothing is
-    pre-seeded (see ``register_model_from_provider``). ``model_purpose``
-    distinguishes normal (``transcription``) from ``live`` models.
+    pre-seeded (see ``register_model_from_provider``). ``model_purposes``
+    distinguishes normal (``transcription``) from ``live`` models; a model
+    serving both purposes is returned here and by ``get_live_models``.
     """
     if not _table_has_rows(MODELS_TABLE):
         seed_from_config()
@@ -211,12 +212,12 @@ def get_active_models() -> List[Dict[str, Any]]:
             COALESCE(p.permission_key, m.permission_key) AS permission_key,
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
-            m.model_purpose
+            m.model_purposes
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
         WHERE m.is_active = TRUE
-          AND m.model_purpose = 'transcription'
+          AND FIND_IN_SET('transcription', m.model_purposes)
           AND LOWER(m.code) NOT IN ('openai', 'assemblyai', 'openrouter', 'whisper', 'gpt-4o-transcribe-diarize')
         ORDER BY m.sort_order ASC, m.display_name ASC
     """
@@ -255,7 +256,7 @@ def get_all_active_models(
             COALESCE(p.permission_key, m.permission_key) AS permission_key,
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
-            m.model_purpose
+            m.model_purposes
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -265,7 +266,7 @@ def get_all_active_models(
     params: List[str] = []
     purpose = str(model_purpose or "").strip().lower()
     if purpose in {'transcription', 'live'}:
-        sql += " AND model_purpose = %s"
+        sql += " AND FIND_IN_SET(%s, m.model_purposes)"
         params.append(purpose)
     sql += " ORDER BY sort_order ASC, display_name ASC"
     cursor.execute(sql, tuple(params))
@@ -322,7 +323,7 @@ def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[st
             LEFT JOIN {PROVIDERS_TABLE} AS p
                 ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
             WHERE m.is_active = TRUE
-              AND m.model_purpose = 'live'
+              AND FIND_IN_SET('live', m.model_purposes)
             ORDER BY m.sort_order ASC, m.display_name ASC
             """
         )
@@ -575,7 +576,7 @@ def get_model_by_code(
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
             m.is_active,
-            m.model_purpose
+            m.model_purposes
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -769,7 +770,7 @@ def _normalize_legacy_model_rows() -> None:
         f"""
         INSERT INTO {MODELS_TABLE} (
             code, provider_code, display_name, permission_key, required_api_key,
-            sort_order, is_active, is_default, model_purpose
+            sort_order, is_active, is_default, model_purposes
         )
         SELECT 'universal', 'assemblyai', 'AssemblyAI Universal',
                'use_api_assemblyai', 'assemblyai', 0, TRUE, FALSE, 'transcription'
@@ -909,7 +910,7 @@ def _normalize_persisted_model_references(cursor) -> None:
                 INNER JOIN {MODELS_TABLE} AS model
                     ON model.code = target.default_live_transcription_model
                    AND model.is_active = TRUE
-                   AND model.model_purpose = 'live'
+                   AND FIND_IN_SET('live', model.model_purposes)
                 SET target.default_live_transcription_model = CONCAT(model.provider_code, ':', model.code)
                 WHERE target.default_live_transcription_model NOT LIKE '%:%'
                   AND model.provider_code IS NOT NULL
@@ -917,7 +918,7 @@ def _normalize_persisted_model_references(cursor) -> None:
                       SELECT COUNT(*) FROM {MODELS_TABLE} AS candidate
                       WHERE candidate.code = target.default_live_transcription_model
                         AND candidate.is_active = TRUE
-                        AND candidate.model_purpose = 'live'
+                        AND FIND_IN_SET('live', candidate.model_purposes)
                   ) = 1
                 """
             )

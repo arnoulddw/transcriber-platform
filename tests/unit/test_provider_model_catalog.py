@@ -247,3 +247,40 @@ def test_registration_rejects_invalid_purpose_sets_but_accepts_canonical_ones():
             "openai", "model-b", model_purpose="transcription,live"
         )
         assert [params[-1] for _, params in cursor.calls] == ["transcription,live"]
+
+
+def test_dual_purpose_row_is_returned_by_both_reader_filters():
+    """A 'transcription,live' row must surface in both dropdown sources."""
+    cursor = Mock()
+    row = {
+        "code": "gpt-transcribe",
+        "display_name": "OpenAI GPT Transcribe",
+        "provider_code": "openai",
+        "required_api_key": "openai",
+        "permission_key": "use_api_openai",
+        "is_default": 0,
+        "model_purposes": "transcription,live",
+    }
+    cursor.fetchall.return_value = [dict(row)]
+
+    with patch.object(transcription_catalog, "get_cursor", return_value=cursor):
+        transcription_models = transcription_catalog.get_active_models()
+        executed_sql = cursor.execute.call_args[0][0]
+        assert "FIND_IN_SET('transcription', m.model_purposes)" in executed_sql
+        assert [m["model_key"] for m in transcription_models] == ["openai:gpt-transcribe"]
+        assert transcription_models[0]["model_purposes"] == "transcription,live"
+
+        live_models = transcription_catalog.get_live_models()
+        live_sql = cursor.execute.call_args[0][0]
+        assert "FIND_IN_SET('live', m.model_purposes)" in live_sql
+        assert [m["model_key"] for m in live_models] == ["openai:gpt-transcribe"]
+
+
+def test_admin_models_purpose_filter_uses_membership():
+    cursor = Mock()
+    cursor.fetchall.return_value = []
+    with patch.object(transcription_catalog, "get_cursor", return_value=cursor):
+        transcription_catalog.get_all_active_models("live")
+    executed_sql = cursor.execute.call_args[0][0]
+    assert "FIND_IN_SET(%s, m.model_purposes)" in executed_sql
+    assert cursor.execute.call_args[0][1] == ("live",)
