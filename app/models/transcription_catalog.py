@@ -17,6 +17,40 @@ MODELS_TABLE = "transcription_models_catalog"
 PROVIDERS_TABLE = "transcription_providers_catalog"
 LANGUAGES_TABLE = "transcription_languages_catalog"
 
+# One catalog row serves every usage kind through a comma-separated purpose
+# set (mirroring user_api_keys.model_purposes), so saving a live key can no
+# longer clobber the transcription purpose of the same model identity.
+VALID_MODEL_PURPOSES = frozenset({"transcription", "live"})
+DEFAULT_MODEL_PURPOSE = "transcription"
+
+
+def canonicalize_model_purposes(value: Any) -> str:
+    """Return a canonical comma string for a purpose value or list.
+
+    Accepts ``"Live, Transcription"``, ``["live"]``, ``None``, ... Unknown
+    purposes are dropped; an empty result falls back to
+    ``DEFAULT_MODEL_PURPOSE`` so legacy single-purpose callers keep working.
+    The canonical order is fixed (``transcription`` first) so every writer
+    stores the same normalized set regardless of merge order.
+    """
+    if isinstance(value, str):
+        raw_items = value.split(",")
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        raw_items = list(value)
+    else:
+        raw_items = []
+    purposes = {
+        str(item).strip().lower()
+        for item in raw_items
+        if str(item).strip().lower() in VALID_MODEL_PURPOSES
+    }
+    if not purposes:
+        purposes = {DEFAULT_MODEL_PURPOSE}
+    return ",".join(
+        purpose for purpose in ("transcription", "live") if purpose in purposes
+    )
+
+
 # Provider metadata is deliberately separate from selectable model rows. The
 # supported provider adapters remain fixed in application code, while model
 # identifiers/display names can be registered as data at runtime.
@@ -106,7 +140,7 @@ def _row_to_model(row: Dict[str, Any]) -> Dict[str, Any]:
         "required_api_key": row.get("required_api_key"),
         "is_default": bool(row.get("is_default", False)),
         "is_active": bool(row.get("is_active", True)),
-        "model_purpose": str(row.get("model_purpose") or "transcription").strip().lower(),
+        "model_purposes": canonicalize_model_purposes(row.get("model_purposes")),
     }
 
 
@@ -158,8 +192,9 @@ def get_active_models() -> List[Dict[str, Any]]:
     Returns active normal transcription models sorted by configured order.
 
     Models are registered at runtime from saved API keys; nothing is
-    pre-seeded (see ``register_model_from_provider``). ``model_purpose``
-    distinguishes normal (``transcription``) from ``live`` models.
+    pre-seeded (see ``register_model_from_provider``). ``model_purposes``
+    distinguishes normal (``transcription``) from ``live`` models; a model
+    serving both purposes is returned here and by ``get_live_models``.
     """
     if not _table_has_rows(MODELS_TABLE):
         seed_from_config()
@@ -173,12 +208,12 @@ def get_active_models() -> List[Dict[str, Any]]:
             COALESCE(p.permission_key, m.permission_key) AS permission_key,
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
-            m.model_purpose
+            m.model_purposes
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
         WHERE m.is_active = TRUE
-          AND m.model_purpose = 'transcription'
+          AND FIND_IN_SET('transcription', m.model_purposes)
           AND LOWER(m.code) NOT IN ('openai', 'assemblyai', 'openrouter', 'whisper', 'gpt-4o-transcribe-diarize')
         ORDER BY m.sort_order ASC, m.display_name ASC
     """
@@ -217,7 +252,7 @@ def get_all_active_models(
             COALESCE(p.permission_key, m.permission_key) AS permission_key,
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
-            m.model_purpose
+            m.model_purposes
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -227,7 +262,7 @@ def get_all_active_models(
     params: List[str] = []
     purpose = str(model_purpose or "").strip().lower()
     if purpose in {'transcription', 'live'}:
-        sql += " AND model_purpose = %s"
+        sql += " AND FIND_IN_SET(%s, m.model_purposes)"
         params.append(purpose)
     sql += " ORDER BY sort_order ASC, display_name ASC"
     cursor.execute(sql, tuple(params))
@@ -284,7 +319,7 @@ def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[st
             LEFT JOIN {PROVIDERS_TABLE} AS p
                 ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
             WHERE m.is_active = TRUE
-              AND m.model_purpose = 'live'
+              AND FIND_IN_SET('live', m.model_purposes)
             ORDER BY m.sort_order ASC, m.display_name ASC
             """
         )
@@ -537,7 +572,7 @@ def get_model_by_code(
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
             m.is_active,
-            m.model_purpose
+            m.model_purposes
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -731,7 +766,7 @@ def _normalize_legacy_model_rows() -> None:
         f"""
         INSERT INTO {MODELS_TABLE} (
             code, provider_code, display_name, permission_key, required_api_key,
-            sort_order, is_active, is_default, model_purpose
+            sort_order, is_active, is_default, model_purposes
         )
         SELECT 'universal', 'assemblyai', 'AssemblyAI Universal',
                'use_api_assemblyai', 'assemblyai', 0, TRUE, FALSE, 'transcription'
@@ -871,7 +906,7 @@ def _normalize_persisted_model_references(cursor) -> None:
                 INNER JOIN {MODELS_TABLE} AS model
                     ON model.code = target.default_live_transcription_model
                    AND model.is_active = TRUE
-                   AND model.model_purpose = 'live'
+                   AND FIND_IN_SET('live', model.model_purposes)
                 SET target.default_live_transcription_model = CONCAT(model.provider_code, ':', model.code)
                 WHERE target.default_live_transcription_model NOT LIKE '%:%'
                   AND model.provider_code IS NOT NULL
@@ -879,7 +914,7 @@ def _normalize_persisted_model_references(cursor) -> None:
                       SELECT COUNT(*) FROM {MODELS_TABLE} AS candidate
                       WHERE candidate.code = target.default_live_transcription_model
                         AND candidate.is_active = TRUE
-                        AND candidate.model_purpose = 'live'
+                        AND FIND_IN_SET('live', candidate.model_purposes)
                   ) = 1
                 """
             )
@@ -937,20 +972,15 @@ def _sync_models_from_saved_keys() -> None:
         purposes = {purpose.strip().lower() for purpose in raw_purposes}
         if not purposes:
             purposes = {"transcription"}
-        if "transcription" in purposes:
-            register_model_from_provider(
-                provider=provider,
-                code=model_slug,
-                display_name=model_slug,
-                model_purpose="transcription",
-            )
-        if "live" in purposes:
-            register_model_from_provider(
-                provider=provider,
-                code=model_slug,
-                display_name=model_slug,
-                model_purpose="live",
-            )
+        # One registration carrying the full purpose set: purposes accumulate
+        # on the catalog row, so a key saved for both file transcription and
+        # live keeps the model listed in both dropdowns after every restart.
+        register_model_from_provider(
+            provider=provider,
+            code=model_slug,
+            display_name=model_slug,
+            model_purpose=canonicalize_model_purposes(purposes),
+        )
 
 
 def _ensure_models_table(cursor) -> None:
@@ -966,7 +996,7 @@ def _ensure_models_table(cursor) -> None:
             sort_order INT NOT NULL DEFAULT 0,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
-            model_purpose VARCHAR(20) NOT NULL DEFAULT 'transcription',
+            model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY uq_transcription_provider_model (provider_code, code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -988,16 +1018,49 @@ def _ensure_models_table(cursor) -> None:
             f"ALTER TABLE {MODELS_TABLE} ADD INDEX idx_transcription_models_provider (provider_code)"
         )
 
-    # Migration-safe: add model_purpose to existing tables created before the
-    # column existed (models are now key-registered with a transcription/live flag).
+    # Migration-safe: convert the legacy single-valued model_purpose column
+    # into the model_purposes comma set (mirrors user_api_keys.model_purposes
+    # and migrations/V20260821_2__catalog_model_purposes_set.py).
     cursor.execute(
         f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'model_purpose'"
     )
-    if cursor.fetchone() is None:
-        logger.info("[DB:Catalog] Adding 'model_purpose' column to '%s'.", MODELS_TABLE)
+    legacy_purpose_present = cursor.fetchone() is not None
+
+    cursor.execute(
+        f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'model_purposes'"
+    )
+    purposes_present = cursor.fetchone() is not None
+
+    if not purposes_present:
+        logger.info("[DB:Catalog] Adding 'model_purposes' set column to '%s'.", MODELS_TABLE)
         cursor.execute(
-            f"ALTER TABLE {MODELS_TABLE} ADD COLUMN model_purpose VARCHAR(20) NOT NULL DEFAULT 'transcription' AFTER is_default"
+            f"""
+            ALTER TABLE {MODELS_TABLE}
+            ADD COLUMN model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription'
+            AFTER is_default
+            """
         )
+
+    if legacy_purpose_present:
+        # Fold each legacy value into the new set, then drop the old column.
+        cursor.execute(f"SELECT id, model_purpose, model_purposes FROM {MODELS_TABLE}")
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                row_id = row.get("id")
+                merged = canonicalize_model_purposes(
+                    [row.get("model_purpose"), row.get("model_purposes")]
+                )
+            else:
+                row_id = row[0]
+                merged = canonicalize_model_purposes([row[1], row[2]])
+            cursor.execute(
+                f"UPDATE {MODELS_TABLE} SET model_purposes = %s WHERE id = %s",
+                (merged, row_id),
+            )
+        cursor.execute(
+            f"ALTER TABLE {MODELS_TABLE} DROP COLUMN model_purpose"
+        )
+        logger.info("[DB:Catalog] Migrated legacy 'model_purpose' into 'model_purposes'.")
 
 
 def _ensure_languages_table(cursor) -> None:
@@ -1027,6 +1090,12 @@ def register_model_from_provider(
     Provider metadata is stored in ``transcription_providers_catalog``; this
     function only creates a model row. Saving an API key is one way to invoke
     it, and future admin/configuration/discovery flows can use the same path.
+
+    Purposes accumulate on the ``model_purposes`` set (like
+    ``user_api_keys.model_purposes``): registering the same model for another
+    purpose merges into the existing row instead of overwriting it, so a live
+    key save can never remove the model from transcription dropdowns (or vice
+    versa).
     """
     provider = str(provider or "").strip().lower()
     if provider not in _PROVIDER_METADATA:
@@ -1046,25 +1115,46 @@ def register_model_from_provider(
         logger.warning("[Catalog] Ignoring provider/retired model code '%s'.", code)
         return
 
-    purpose = str(model_purpose or 'transcription').strip().lower()
-    if purpose not in {'transcription', 'live'}:
+    requested_purposes = [
+        item.strip().lower()
+        for item in str(model_purpose or 'transcription').split(",")
+        if item.strip()
+    ]
+    if not requested_purposes or any(
+        item not in VALID_MODEL_PURPOSES for item in requested_purposes
+    ):
         logger.warning("[Catalog] Ignoring model registration with invalid purpose '%s'.", model_purpose)
         return
 
     metadata = _PROVIDER_METADATA[provider]
+    purposes = canonicalize_model_purposes(requested_purposes)
     cursor = get_cursor()
     cursor.execute(
         f"""
         INSERT INTO {MODELS_TABLE} (
             code, provider_code, display_name, permission_key, required_api_key,
-            sort_order, is_active, is_default, model_purpose
+            sort_order, is_active, is_default, model_purposes
         ) VALUES (%s, %s, %s, %s, %s, 0, 1, 0, %s)
         ON DUPLICATE KEY UPDATE
             provider_code = VALUES(provider_code),
             permission_key = VALUES(permission_key),
             required_api_key = VALUES(required_api_key),
             is_active = 1,
-            model_purpose = VALUES(model_purpose)
+            model_purposes = CONCAT_WS(
+                ',',
+                IF(
+                    FIND_IN_SET('transcription', model_purposes)
+                    OR FIND_IN_SET('transcription', VALUES(model_purposes)),
+                    'transcription',
+                    NULL
+                ),
+                IF(
+                    FIND_IN_SET('live', model_purposes)
+                    OR FIND_IN_SET('live', VALUES(model_purposes)),
+                    'live',
+                    NULL
+                )
+            )
         """,
         (
             code,
@@ -1072,11 +1162,11 @@ def register_model_from_provider(
             _coerce_string(display_name) or code,
             metadata.get("permission_key"),
             metadata.get("required_api_key"),
-            purpose,
+            purposes,
         ),
     )
     get_db().commit()
-    logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purpose)
+    logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purposes)
 
 
 def rename_model(code: str, display_name: str) -> bool:
