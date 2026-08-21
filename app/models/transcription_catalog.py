@@ -17,6 +17,40 @@ MODELS_TABLE = "transcription_models_catalog"
 PROVIDERS_TABLE = "transcription_providers_catalog"
 LANGUAGES_TABLE = "transcription_languages_catalog"
 
+# One catalog row serves every usage kind through a comma-separated purpose
+# set (mirroring user_api_keys.model_purposes), so saving a live key can no
+# longer clobber the transcription purpose of the same model identity.
+VALID_MODEL_PURPOSES = frozenset({"transcription", "live"})
+DEFAULT_MODEL_PURPOSE = "transcription"
+
+
+def canonicalize_model_purposes(value: Any) -> str:
+    """Return a canonical, sorted comma string for a purpose value or list.
+
+    Accepts ``"Live, Transcription"``, ``["live"]``, ``None``, ... Unknown
+    purposes are dropped; an empty result falls back to
+    ``DEFAULT_MODEL_PURPOSE`` so legacy single-purpose callers keep working.
+    """
+    if isinstance(value, str):
+        raw_items = value.split(",")
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        raw_items = list(value)
+    else:
+        raw_items = []
+    purposes = {
+        str(item).strip().lower()
+        for item in raw_items
+        if str(item).strip().lower() in VALID_MODEL_PURPOSES
+    }
+    if not purposes:
+        purposes = {DEFAULT_MODEL_PURPOSE}
+    return ",".join(sorted(purposes))
+
+
+def split_model_purposes(value: Any) -> List[str]:
+    """Return the canonicalized purpose list stored in a row column."""
+    return canonicalize_model_purposes(value).split(",")
+
 # Provider metadata is deliberately separate from selectable model rows. The
 # supported provider adapters remain fixed in application code, while model
 # identifiers/display names can be registered as data at runtime.
