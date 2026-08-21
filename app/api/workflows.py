@@ -12,6 +12,7 @@ from typing import Optional
 # Import services and exceptions
 # --- MODIFIED: Import only workflow_service and its specific exceptions ---
 from app.services import workflow_service
+from app.models import llm_operation as llm_operation_model
 from app.services.workflow_service import (
     WorkflowError, PermissionDeniedError, UsageLimitExceededError,
     TranscriptionNotFoundError, InvalidPromptError, WorkflowInProgressError,
@@ -52,6 +53,15 @@ def run_workflow(transcription_id: str):
     """
     user_id = current_user.id
     log_prefix = f"[API:Workflow:Run:{transcription_id[:8]}:User:{user_id}]"
+
+    # Opportunistically fail LLM operations stalled beyond the configured age
+    # so a crashed background run cannot block this transcription forever.
+    try:
+        stale_seconds = current_app.config.get('LLM_OPERATION_STALE_SECONDS', 1800)
+        llm_operation_model.mark_stale_operations_interrupted(stale_seconds)
+    except Exception as sweep_err:
+        logging.warning(f"{log_prefix} Stale LLM operation sweep failed: {sweep_err}")
+
     data = request.get_json()
 
     if not data or 'prompt' not in data:

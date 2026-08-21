@@ -14,6 +14,7 @@ from app.initialization import (
     create_initialization_marker,
 )
 from migrations.runner import run_migrations
+from app.models.llm_operation import mark_stale_operations_interrupted
 from app.tasks.transcription_queue import recover_abandoned_jobs
 
 
@@ -98,6 +99,11 @@ def bootstrap_command_cli():
         interrupted_count = recover_abandoned_jobs(current_app._get_current_object())
         if interrupted_count:
             click.echo(f"Marked {interrupted_count} abandoned transcription job(s) as interrupted.")
+        # No background thread survives a restart, so every pending/processing
+        # LLM operation at bootstrap time is abandoned; sweep them all.
+        llm_interrupted_count = mark_stale_operations_interrupted(stale_seconds=None)
+        if llm_interrupted_count:
+            click.echo(f"Marked {llm_interrupted_count} stuck LLM operation(s) as interrupted.")
         create_initialization_marker(current_app.config)
     except Exception as exc:
         click.echo(click.style(f"Bootstrap error: {exc}", fg="red"), err=True)
