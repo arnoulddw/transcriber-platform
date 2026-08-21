@@ -194,7 +194,8 @@ def test_registering_live_purpose_accumulates_instead_of_clobbering():
     # The accumulate idiom must merge purposes on duplicate instead of
     # overwriting them (same contract as user_api_keys.model_purposes).
     for sql in (first_sql, second_sql):
-        assert "FIND_IN_SET(VALUES(model_purposes), model_purposes)" in sql
+        assert "FIND_IN_SET('transcription', VALUES(model_purposes))" in sql
+        assert "FIND_IN_SET('live', VALUES(model_purposes))" in sql
         assert "CONCAT_WS" in sql
     assert cursor.calls[0][1][-1] == "transcription"
     assert cursor.calls[1][1][-1] == "live"

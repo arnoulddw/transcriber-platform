@@ -58,8 +58,10 @@ def test_openai_live_save_does_not_demote_transcription_model():
     calls = _save_sequence("openai", "gpt-transcribe")
     assert len(calls) == 2
     for sql, _ in calls:
-        # Accumulate idiom present: purposes merge instead of overwriting.
-        assert "FIND_IN_SET(VALUES(model_purposes), model_purposes)" in sql
+        # Both the existing row and the incoming purpose set contribute to
+        # the canonical transcription,live result.
+        assert "FIND_IN_SET('transcription', VALUES(model_purposes))" in sql
+        assert "FIND_IN_SET('live', VALUES(model_purposes))" in sql
         assert "CONCAT_WS" in sql
         assert "model_purposes = VALUES(model_purposes)" not in sql
 
@@ -74,7 +76,8 @@ def test_openrouter_slug_registration_accumulates_for_both_purposes():
     calls = _save_sequence("openrouter", "vendor/future-asr")
     assert len(calls) == 2
     for sql, _ in calls:
-        assert "FIND_IN_SET(VALUES(model_purposes), model_purposes)" in sql
+        assert "FIND_IN_SET('transcription', VALUES(model_purposes))" in sql
+        assert "FIND_IN_SET('live', VALUES(model_purposes))" in sql
 
 
 def test_home_page_default_resolution_survives_dual_purpose_save():

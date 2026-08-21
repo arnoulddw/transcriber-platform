@@ -51,10 +51,6 @@ def canonicalize_model_purposes(value: Any) -> str:
     )
 
 
-def split_model_purposes(value: Any) -> List[str]:
-    """Return the canonicalized purpose list stored in a row column."""
-    return canonicalize_model_purposes(value).split(",")
-
 # Provider metadata is deliberately separate from selectable model rows. The
 # supported provider adapters remain fixed in application code, while model
 # identifiers/display names can be registered as data at runtime.
@@ -1024,7 +1020,7 @@ def _ensure_models_table(cursor) -> None:
 
     # Migration-safe: convert the legacy single-valued model_purpose column
     # into the model_purposes comma set (mirrors user_api_keys.model_purposes
-    # and migrations/V20260822_1__catalog_model_purposes_set.py).
+    # and migrations/V20260821_2__catalog_model_purposes_set.py).
     cursor.execute(
         f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'model_purpose'"
     )
@@ -1144,10 +1140,20 @@ def register_model_from_provider(
             permission_key = VALUES(permission_key),
             required_api_key = VALUES(required_api_key),
             is_active = 1,
-            model_purposes = IF(
-                FIND_IN_SET(VALUES(model_purposes), model_purposes),
-                model_purposes,
-                CONCAT_WS(',', NULLIF(model_purposes, ''), VALUES(model_purposes))
+            model_purposes = CONCAT_WS(
+                ',',
+                IF(
+                    FIND_IN_SET('transcription', model_purposes)
+                    OR FIND_IN_SET('transcription', VALUES(model_purposes)),
+                    'transcription',
+                    NULL
+                ),
+                IF(
+                    FIND_IN_SET('live', model_purposes)
+                    OR FIND_IN_SET('live', VALUES(model_purposes)),
+                    'live',
+                    NULL
+                )
             )
         """,
         (

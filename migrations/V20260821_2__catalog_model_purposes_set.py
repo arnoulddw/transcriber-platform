@@ -10,8 +10,8 @@ This migration:
   1. Adds ``model_purposes VARCHAR(64)`` (same shape as
      ``user_api_keys.model_purposes``).
   2. Merges any legacy ``model_purpose`` value into the new set.
-  3. Merges ``live`` into catalog rows whose saved ``user_api_keys`` row
-     carries a live purpose (repairs rows clobbered by earlier saves).
+  3. Merges all known purposes from saved ``user_api_keys`` rows into
+     matching catalog models (repairs rows clobbered by earlier saves).
   4. Drops the legacy ``model_purpose`` column.
 
 Safe to run multiple times and safe on databases where the application's
@@ -79,8 +79,14 @@ def _merge_legacy_column(cursor) -> None:
         )
 
 
-def _merge_live_from_user_keys(cursor) -> None:
-    """Add ``live`` to catalog rows whose saved API keys are live-capable."""
+def _merge_purposes_from_user_keys(cursor) -> None:
+    """Merge every known purpose from saved keys into catalog rows.
+
+    This repairs a row independently even when the app's defensive startup
+    backfill has not run yet: the exact old failure left the catalog row as
+    ``live`` while the key row still correctly contained
+    ``transcription,live``.
+    """
     if not _table_exists(cursor, KEYS_TABLE):
         return
     cursor.execute(
@@ -97,14 +103,10 @@ def _merge_live_from_user_keys(cursor) -> None:
         }
         provider = str(entry.get("provider_code") or "").strip().lower()
         slug = str(entry.get("model_slug") or "").strip()
-        raw_purposes = str(entry.get("model_purposes") or "").split(",")
-        purposes = {item.strip().lower() for item in raw_purposes}
-        if provider != "assemblyai" and (not provider or not slug):
+        if not provider or not slug:
             continue
-        if provider == "assemblyai":
-            slug = "universal" if slug.casefold() == "assemblyai" else slug
-        if "live" not in purposes:
-            continue
+        if provider == "assemblyai" and slug.casefold() == "assemblyai":
+            slug = "universal"
         cursor.execute(
             f"""
             SELECT id, model_purposes FROM {MODELS_TABLE}
@@ -120,7 +122,7 @@ def _merge_live_from_user_keys(cursor) -> None:
                 current = match.get("model_purposes")
             else:
                 row_id, current = match[0], match[1]
-            merged = _canonical_set((current, "live"))
+            merged = _canonical_set((current, entry.get("model_purposes")))
             if merged != str(current or ""):
                 cursor.execute(
                     f"UPDATE {MODELS_TABLE} SET model_purposes = %s WHERE id = %s",
@@ -150,7 +152,7 @@ def upgrade(db) -> None:
         if legacy_present:
             _merge_legacy_column(cursor)
 
-        _merge_live_from_user_keys(cursor)
+        _merge_purposes_from_user_keys(cursor)
 
         if legacy_present:
             cursor.execute(
