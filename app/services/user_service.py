@@ -46,6 +46,15 @@ class MissingApiKeyError(ApiKeyManagementError):
     """Required API key is missing or not configured for the user."""
     pass
 
+class ApiKeyDecryptionError(MissingApiKeyError):
+    """A stored API key exists but could not be decrypted.
+
+    Raised instead of returning None so callers do not mistake a broken key
+    (corrupted ciphertext or rotated SECRET_KEY) for a missing one and
+    silently fall back to another credential.
+    """
+    pass
+
 class KeyNotFoundError(ApiKeyManagementError):
     """API key for a specific service not found for the user."""
     pass
@@ -360,11 +369,19 @@ def get_decrypted_api_key(
                 f"Decryption failed for service '{service}': Invalid Token. "
                 "Key might be corrupted or SECRET_KEY changed."
             )
-            return None
+            # A stored-but-unreadable key must not look like a missing key:
+            # callers would silently fall back to admin/global credentials.
+            raise ApiKeyDecryptionError(
+                f"Stored API key for '{service}' could not be decrypted. "
+                "It may be corrupted or the application secret has changed; re-save the key."
+            )
         except ValueError as ve:
             logger.error(f"Decryption error for service '{service}': {ve}", exc_info=True)
             return None
 
+    except ApiKeyDecryptionError:
+        # Propagate: a broken stored key must not fall back to other credentials.
+        raise
     except MySQLError as db_err:
         logger.error(f"Database error getting API key for service '{service}': {db_err}", exc_info=True)
         return None
@@ -415,7 +432,17 @@ def get_admin_decrypted_api_key(
                 continue
             try:
                 decrypted_key = security_svc.decrypt_data(encrypted_key)
-            except (InvalidToken, ValueError, TypeError):
+            except InvalidToken:
+                logger.error(
+                    "Admin API key for provider '%s' could not be decrypted "
+                    "(corrupted or SECRET_KEY changed).",
+                    service,
+                )
+                raise ApiKeyDecryptionError(
+                    f"Stored admin API key for '{service}' could not be decrypted. "
+                    "It may be corrupted or the application secret has changed; re-save the key."
+                )
+            except (ValueError, TypeError):
                 logger.warning(
                     "Skipping an unreadable admin API key for provider '%s'.",
                     service,
@@ -428,6 +455,9 @@ def get_admin_decrypted_api_key(
             if owner_id is not None and key_id is not None:
                 user_api_key_model.mark_api_key_used(owner_id, key_id)
             return decrypted_key
+    except ApiKeyDecryptionError:
+        # Propagate: a broken stored key must not fall back to other credentials.
+        raise
     except Exception as err:
         logger.error(
             "Error retrieving admin API key for service '%s' and model '%s': %s",

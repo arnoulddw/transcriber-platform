@@ -172,6 +172,10 @@ def generate_text_via_llm(
                         logger.debug(f"Using user-specific API key for '{key_service_name}'.")
                     else:
                         logger.debug(f"User-specific API key for '{key_service_name}' not found.")
+                except user_service.ApiKeyDecryptionError:
+                    # A stored key that cannot be decrypted is a hard failure:
+                    # falling through would silently bill the global key instead.
+                    raise
                 except Exception as e:
                     logger.warning(f"Error fetching user-specific API key for '{key_service_name}': {e}. Will try global key.")
                     effective_api_key = None # Ensure fallback if error occurs
@@ -201,6 +205,10 @@ def generate_text_via_llm(
                             "Admin-configured API key for '%s' not found.",
                             key_service_name,
                         )
+                except user_service.ApiKeyDecryptionError:
+                    # A stored key that cannot be decrypted is a hard failure:
+                    # falling through would silently bill the global key instead.
+                    raise
                 except Exception as e:
                     logger.warning(
                         "Error fetching admin-configured API key for '%s': %s. Will try global key.",
