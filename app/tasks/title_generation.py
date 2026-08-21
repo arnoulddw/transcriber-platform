@@ -120,7 +120,13 @@ def _build_title_generation_attempts(
 
 
 def _should_try_next_title_model(error: Exception) -> bool:
-    return isinstance(error, LlmGenerationError)
+    # Retry the fallback model on any provider-level failure, not just
+    # generation errors: auth/quota/config problems are exactly the cases
+    # where a different provider's fallback model helps. Safety blocks are
+    # content-based, so another model would hit the same filter.
+    if isinstance(error, LlmSafetyError):
+        return False
+    return isinstance(error, (LlmApiError, ValueError))
 
 
 # --- Background Task ---
