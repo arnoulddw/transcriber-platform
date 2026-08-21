@@ -101,6 +101,30 @@ def test_create_session_routes_openrouter_to_sse_without_webrtc(live_app, monkey
     post.assert_not_called()
 
 
+def test_create_session_openrouter_token_carries_context_prompt(live_app, monkeypatch):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_MODELS=["openai/whisper-1"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"openai/whisper-1": "openrouter"},
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+    )
+    monkeypatch.setattr(
+        service, "_validate_settings", lambda *_: ("en", "Project Falcon budget")
+    )
+    monkeypatch.setattr(service.httpx, "post", MagicMock())
+
+    with live_app.app_context():
+        result = service.create_session(
+            SimpleNamespace(id=42),
+            "",
+            "en",
+            "Project Falcon budget",
+            requested_model="openai/whisper-1",
+        )
+        payload = service._serializer().loads(result["session_token"])
+
+    assert payload["context_prompt"] == "Project Falcon budget"
+
+
 def test_live_model_from_config_is_allowed_for_openrouter(live_app, monkeypatch):
     live_app.config.update(
         LIVE_TRANSCRIPTION_MODELS=["openai/whisper-1"],
@@ -231,6 +255,101 @@ def test_openrouter_live_chunk_rejects_non_openrouter_session(live_app, monkeypa
         service.transcribe_openrouter_chunk(
             SimpleNamespace(id=42), "signed-token", "cmFuZG9t", "wav", 0
         )
+
+
+def test_openrouter_live_chunk_applies_context_prompt(live_app, monkeypatch):
+    class FakeStreamResponse:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def iter_lines(self):
+            return [
+                'data: {"choices":[{"delta":{"content":"Hi"}}]}',
+                "",
+                "data: [DONE]",
+            ]
+
+    live_app.config.update(
+        DEPLOYMENT_MODE="single",
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+    )
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 42,
+            "transcription_id": "openrouter-live-job",
+            "started_at": 1000.0,
+            "context_prompt_used": True,
+            "context_prompt": "Project Falcon budget",
+            "provider": "openrouter",
+            "model": "openai/whisper-1",
+            "language": "auto",
+        },
+    )
+    stream = MagicMock(return_value=FakeStreamResponse())
+    monkeypatch.setattr(service.httpx, "stream", stream)
+    audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
+
+    with live_app.app_context():
+        service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
+        )
+
+    text_part = stream.call_args.kwargs["json"]["messages"][0]["content"][0]["text"]
+    assert "Project Falcon budget" in text_part
+
+
+def test_openrouter_live_chunk_without_prompt_keeps_plain_instruction(live_app, monkeypatch):
+    class FakeStreamResponse:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def iter_lines(self):
+            return ["data: [DONE]"]
+
+    live_app.config.update(
+        DEPLOYMENT_MODE="single",
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+    )
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 42,
+            "transcription_id": "openrouter-live-job",
+            "started_at": 1000.0,
+            "context_prompt_used": False,
+            "provider": "openrouter",
+            "model": "openai/whisper-1",
+            "language": "auto",
+        },
+    )
+    stream = MagicMock(return_value=FakeStreamResponse())
+    monkeypatch.setattr(service.httpx, "stream", stream)
+    audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
+
+    with live_app.app_context():
+        service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
+        )
+
+    text_part = stream.call_args.kwargs["json"]["messages"][0]["content"][0]["text"]
+    assert text_part == (
+        "Transcribe only the spoken words in this audio. Return only the transcript."
+    )
 
 
 def test_hangup_session_stops_the_openai_call(live_app, monkeypatch):

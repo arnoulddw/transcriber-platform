@@ -242,6 +242,7 @@ def create_session(
                 "started_at": time.time(),
                 "language": language,
                 "context_prompt_used": bool(prompt),
+                "context_prompt": prompt,
                 "model": model,
                 "provider": provider,
                 "transport": "openrouter-sse",
@@ -410,6 +411,14 @@ def transcribe_openrouter_chunk(
 
     model = str(payload.get("model") or "").strip()
     api_key = _resolve_provider_api_key(user, "openrouter", model)
+    instruction = (
+        "Transcribe only the spoken words in this audio. Return only the transcript."
+    )
+    context_prompt = str(payload.get("context_prompt") or "").strip()
+    if context_prompt:
+        instruction += (
+            f" Use this context for names and terminology: {context_prompt}"
+        )
     request_body: Dict[str, Any] = {
         "model": model,
         "messages": [{
@@ -417,7 +426,7 @@ def transcribe_openrouter_chunk(
             "content": [
                 {
                     "type": "text",
-                    "text": "Transcribe only the spoken words in this audio. Return only the transcript.",
+                    "text": instruction,
                 },
                 {
                     "type": "input_audio",
