@@ -403,8 +403,28 @@ def edit_workflow_result(user_id: int, operation_id: int, new_result: str) -> No
             if not success:
                 logger.error(f"Update failed: LLM Operation record {operation_id} not found or not owned during update.")
                 raise OperationNotFoundError("Failed to update workflow result (record not found or permission issue).")
-            else:
-                logger.debug("Workflow result updated successfully.")
+
+            # Keep the denormalized copy on the transcription row in sync —
+            # some surfaces read it directly and would otherwise show stale
+            # pre-edit text.
+            try:
+                cursor = get_cursor()
+                cursor.execute(
+                    """
+                    UPDATE transcriptions t
+                    JOIN llm_operations lo ON lo.id = t.llm_operation_id
+                    SET t.llm_operation_result = %s
+                    WHERE lo.id = %s AND lo.user_id = %s AND lo.operation_type = 'workflow'
+                    """,
+                    (new_result, operation_id, user_id),
+                )
+                get_db().commit()
+                logger.debug("Mirrored edited workflow result to transcription record.")
+            except MySQLError as mirror_err:
+                logger.error(f"Failed to mirror edited result to transcription record: {mirror_err}", exc_info=True)
+                raise WorkflowError("Workflow result updated but could not be synced to the transcription record.") from mirror_err
+
+            logger.debug("Workflow result updated successfully.")
 
         except MySQLError as db_err:
             logger.error(f"Database error updating LLM operation result: {db_err}", exc_info=True)
