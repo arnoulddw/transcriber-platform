@@ -632,7 +632,10 @@ def finalize_session(
         user.id,
         cost,
         duration_minutes,
-        live_minutes_processed=duration_minutes,
+        # The LIVE_MINUTES_RESERVATION taken at session start already covered
+        # the first minutes against the live-minutes quota; bill only the
+        # overage so a session is not double-counted.
+        live_minutes_processed=max(0.0, duration_minutes - LIVE_MINUTES_RESERVATION),
     )
 
     if user.enable_auto_title_generation and check_permission(
