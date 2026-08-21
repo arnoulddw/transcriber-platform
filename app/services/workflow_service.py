@@ -108,7 +108,15 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
             logger.warning(f"Cannot run workflow on non-finished transcription (status: {transcription.get('status')}).")
             raise WorkflowError("Workflows can only be run on finished transcriptions.")
 
+        # Serialize concurrent starts on the transcription row: the second
+        # request blocks here until the first one's INSERT commits, then sees
+        # its pending operation below instead of racing past the check.
         cursor = get_cursor()
+        cursor.execute(
+            "SELECT id FROM transcriptions WHERE id = %s FOR UPDATE",
+            (transcription_id,)
+        )
+        cursor.fetchall()
         cursor.execute(
             "SELECT id FROM llm_operations WHERE transcription_id = %s AND status IN ('pending', 'processing')",
             (transcription_id,)
