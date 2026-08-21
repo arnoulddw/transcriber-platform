@@ -203,7 +203,7 @@ class TestTranscriptionManagement:
             "app.api.transcriptions.pricing_service.get_price",
             return_value=None,
         ), patch(
-            "app.api.transcriptions.check_usage_limits",
+            "app.api.transcriptions.role_model.reserve_usage_if_allowed",
             return_value=(True, ""),
         ), patch(
             "app.api.transcriptions.transcription_model.create_transcription_job"

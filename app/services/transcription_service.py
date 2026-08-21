@@ -16,7 +16,6 @@ from app.core.utils import format_currency
 # Import DB models
 from app.models import transcription as transcription_model
 from app.models import user as user_model
-from app.models import role as role_model
 from app.models import transcription_catalog as transcription_catalog_model
 
 # Import other services
@@ -234,16 +233,9 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             if price is not None:
                 cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
 
-            allowed, reason = role_model.reserve_usage_if_allowed(
-                user_id,
-                role_obj,
-                cost_to_add=cost_to_add,
-                minutes_to_add=audio_length_minutes,
-            )
-            if not allowed:
-                raise PermissionError(f"Usage limit exceeded: {reason}")
-
-            logger.debug("Permission checks passed and usage was reserved transactionally.")
+            # Usage was already reserved atomically by the submit route; this
+            # task only records the estimated cost on the job record.
+            logger.debug("Recording estimated usage cost for job.")
             _update_progress(app, job_id, "Permissions validated.", user_id=user_id)
 
             transcription_model.update_transcription_cost(job_id, cost_to_add)
