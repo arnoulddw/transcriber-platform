@@ -673,31 +673,6 @@ def increment_usage(user_id: int, cost: float, minutes_processed: float, live_mi
         # The cursor is managed by the application context, so we don't close it here.
         pass
 
-def increment_workflow_usage(user_id: int) -> None:
-    """
-    Increments workflow usage stats for a user.
-    """
-    now = datetime.now(timezone.utc)
-    date_ts = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-    log_prefix = f"[DB:Usage:Workflow:User:{user_id}]"
-    cursor = get_cursor()
-    try:
-        sql = """
-            INSERT INTO user_usage (user_id, date, cost, minutes, workflows)
-            VALUES (%s, %s, 0, 0, 1)
-            ON DUPLICATE KEY UPDATE
-            workflows = workflows + 1
-        """
-        cursor.execute(sql, (user_id, date_ts))
-        get_db().commit()
-        logging.debug(f"{log_prefix} Successfully incremented workflow usage stats.")
-    except MySQLError as e:
-        logging.error(f"{log_prefix} Error incrementing workflow usage stats: {e}", exc_info=True)
-        get_db().rollback()
-    finally:
-        # The cursor is managed by the application context, so we don't close it here.
-        pass
-
 def reserve_usage_if_allowed(
     user_id: int,
     role: Role,
