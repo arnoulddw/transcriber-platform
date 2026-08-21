@@ -220,7 +220,6 @@ class Config:
     # --- Workflow Configuration ---
     WORKFLOW_MAX_OUTPUT_TOKENS = int(os.environ.get('WORKFLOW_MAX_OUTPUT_TOKENS', 1024))
     WORKFLOW_RATE_LIMIT = os.environ.get('WORKFLOW_RATE_LIMIT', '10 per hour')
-    DIRECT_LLM_RATE_LIMIT = os.environ.get('DIRECT_LLM_RATE_LIMIT', '5 per hour')
 
     # --- NEW: Centralized API Limits ---
     API_LIMITS = {
