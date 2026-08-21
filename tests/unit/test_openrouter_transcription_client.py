@@ -59,3 +59,33 @@ def test_transcription_factory_routes_openrouter():
     with patch("app.services.api_clients.transcription.openai_base.OpenAI"):
         client = get_transcription_client("openrouter", "sk-or-test", config)
     assert isinstance(client, OpenRouterTranscriptionClient)
+
+
+def test_prepare_params_warns_once_on_context_prompt():
+    client = _make_client()
+    reported = []
+    client._report_progress = lambda msg, is_error=False: reported.append(msg)
+    for _ in range(2):
+        client._prepare_api_params(
+            language_code="auto",
+            context_prompt="Project Falcon budget review",
+            response_format="json",
+            is_chunk=False,
+            extra_options={"model": "openai/whisper-1"},
+        )
+    warnings = [m for m in reported if "context prompt" in m.lower()]
+    assert len(warnings) == 1
+
+
+def test_prepare_params_no_warning_without_prompt():
+    client = _make_client()
+    reported = []
+    client._report_progress = lambda msg, is_error=False: reported.append(msg)
+    client._prepare_api_params(
+        language_code="auto",
+        context_prompt="",
+        response_format="json",
+        is_chunk=False,
+        extra_options={"model": "openai/whisper-1"},
+    )
+    assert not any("context prompt" in m.lower() for m in reported)
