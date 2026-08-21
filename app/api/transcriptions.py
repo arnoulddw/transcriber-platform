@@ -380,6 +380,7 @@ def transcribe_audio_public():
         # all pass a racy pre-check and overshoot the role limits.
         role_obj = getattr(user, 'role', None)
         if not role_obj:
+            file_service.remove_files([temp_filename])
             return jsonify({'error': _('You do not have a role assigned.')}), 403
         allowed, reason = role_model.reserve_usage_if_allowed(
             user_id,
@@ -656,10 +657,11 @@ def transcribe_audio():
 
         # Reserve quota atomically at submission so concurrent uploads cannot
         # all pass a racy pre-check and overshoot the role limits. Like
-        # workflows, a job that later fails keeps its reservation: the provider
-        # may already have billed the key.
+        # workflows, a job that later fails keeps its reservation: the
+        # provider may already have billed the key.
         role_obj = user.role
         if not role_obj:
+            file_service.remove_files([temp_filename])
             return jsonify({'error': _('You do not have a role assigned.')}), 403
         allowed, reason = role_model.reserve_usage_if_allowed(
             user_id,

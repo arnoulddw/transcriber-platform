@@ -1,10 +1,10 @@
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
 from app.services.api_clients.exceptions import (
-    LlmApiError,
     LlmConfigurationError,
     LlmGenerationError,
     LlmRateLimitError,
@@ -76,18 +76,29 @@ def test_fallback_attempts_use_separate_operation_records():
     )
     created_ids = iter([101, 102])
     create_operation = MagicMock(side_effect=lambda **_kwargs: next(created_ids))
+    set_title = MagicMock(return_value=True)
     status_updates = []
     update_status = MagicMock(
         side_effect=lambda op_id, status, **kwargs: status_updates.append((op_id, status, kwargs))
         or True
     )
-    call_results = iter([LlmApiError("primary provider down"), "Test Title"])
+    release_primary = threading.Event()
+    primary_started = threading.Event()
+    thread_args = []
+    thread_targets = []
+    real_thread = threading.Thread
 
-    def fake_call(_app, _user_id, _prompt, _op_id, _op_type, _provider, _model):
-        result = next(call_results)
-        if isinstance(result, Exception):
-            raise result
-        return result
+    def capture_thread(*args, **kwargs):
+        thread_args.append(kwargs["args"])
+        thread_targets.append(kwargs["target"])
+        return real_thread(*args, **kwargs)
+
+    def fake_call(_app, _user_id, _prompt, op_id, _op_type, _provider, _model):
+        if op_id == 101:
+            primary_started.set()
+            release_primary.wait(timeout=1)
+            return "Late Primary Title"
+        return "Test Title"
 
     with (
         patch.object(
@@ -106,7 +117,7 @@ def test_fallback_attempts_use_separate_operation_records():
         patch.object(
             title_generation.transcription_model,
             "set_generated_title",
-            return_value=True,
+            side_effect=set_title,
         ),
         patch.object(
             title_generation.llm_catalog_model,
@@ -136,13 +147,27 @@ def test_fallback_attempts_use_separate_operation_records():
         patch.object(
             title_generation, "_call_gemini_for_title", side_effect=fake_call
         ),
+        patch.object(title_generation.threading, "Thread", side_effect=capture_thread),
+        patch.object(title_generation, "TITLE_GENERATION_TIMEOUT_SECONDS", 0.01),
     ):
-        with app.app_context():
-            title_generation.generate_title_task(app, "job-1", 7)
+        try:
+            with app.app_context():
+                title_generation.generate_title_task(app, "job-1", 7)
+        finally:
+            release_primary.set()
+
+    assert primary_started.is_set()
+    assert len(thread_args) == 2
+    assert len(thread_targets) == 2
+    assert thread_targets[0].__defaults__[0] is not thread_targets[1].__defaults__[0]
+    assert thread_targets[0].__defaults__[1] is not thread_targets[1].__defaults__[1]
 
     assert create_operation.call_count == 2
     updated_ops = {call[0] for call in status_updates}
     # Both attempts' records were finalized individually: the failed primary
     # and the successful fallback each own their own row.
     assert update_status.call_count >= 2
+    assert (101, "error") in {(op_id, status) for op_id, status, _kwargs in status_updates}
+    assert (102, "finished") in {(op_id, status) for op_id, status, _kwargs in status_updates}
     assert 102 in updated_ops
+    set_title.assert_called_once_with("job-1", "Test Title")

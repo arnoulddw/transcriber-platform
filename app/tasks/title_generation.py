@@ -298,13 +298,6 @@ Transcription Content:
 
 Generated Title:"""
 
-            def llm_call_wrapper(flask_app: Flask, current_user_id: int, op_id: int, op_type: str, provider_override: str, model_override: Optional[str]):
-                with flask_app.app_context():
-                    try:
-                        result_container['title'] = _call_gemini_for_title(flask_app, current_user_id, prompt, op_id, op_type, provider_override, model_override)
-                    except Exception as e:
-                        exception_container['error'] = e
-
             attempts = _build_title_generation_attempts(provider_config, model_name, current_app.config)
             operation_id = None
             for attempt_index, (attempt_provider, attempt_model) in enumerate(attempts, start=1):
@@ -326,9 +319,36 @@ Generated Title:"""
                     transcription_model.update_title_generation_status(transcription_id, 'failed')
                     return
 
-                result_container = {}
-                exception_container = {}
-                llm_thread = threading.Thread(target=llm_call_wrapper, args=(app, user_id, operation_id, 'title_generation', attempt_provider, attempt_model))
+                result_container: Dict[str, str] = {}
+                exception_container: Dict[str, Exception] = {}
+
+                def llm_call_wrapper(
+                    flask_app: Flask,
+                    current_user_id: int,
+                    op_id: int,
+                    op_type: str,
+                    provider_override: str,
+                    model_override: Optional[str],
+                    result_container: Dict[str, str] = result_container,
+                    exception_container: Dict[str, Exception] = exception_container,
+                ):
+                    with flask_app.app_context():
+                        try:
+                            result_container['title'] = _call_gemini_for_title(flask_app, current_user_id, prompt, op_id, op_type, provider_override, model_override)
+                        except Exception as e:
+                            exception_container['error'] = e
+
+                llm_thread = threading.Thread(
+                    target=llm_call_wrapper,
+                    args=(
+                        app,
+                        user_id,
+                        operation_id,
+                        'title_generation',
+                        attempt_provider,
+                        attempt_model,
+                    ),
+                )
                 # --- END MODIFIED ---
                 llm_thread.start()
                 llm_thread.join(timeout=TITLE_GENERATION_TIMEOUT_SECONDS)
