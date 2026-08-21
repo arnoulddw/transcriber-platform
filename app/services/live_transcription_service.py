@@ -224,13 +224,8 @@ def _call_id_from_location(location: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def create_session(
-    user, sdp: str, language_code: str, context_prompt: str,
-    requested_model: Optional[str] = None,
-) -> Dict[str, str]:
-    language, prompt = _validate_settings(user, language_code, context_prompt)
-    model = _resolve_live_model(user, requested_model)
-    provider = _resolve_provider(user, model)
+def _reserve_live_minutes_or_raise(user) -> None:
+    """Reserve LIVE_MINUTES_RESERVATION against the user's role quota or fail."""
     role = getattr(user, "role", None)
     if role is None:
         raise LiveTranscriptionPermissionError(
@@ -249,10 +244,20 @@ def create_session(
         )
     if not allowed:
         raise LiveTranscriptionPermissionError(reason)
+
+
+def create_session(
+    user, sdp: str, language_code: str, context_prompt: str,
+    requested_model: Optional[str] = None,
+) -> Dict[str, str]:
+    language, prompt = _validate_settings(user, language_code, context_prompt)
+    model = _resolve_live_model(user, requested_model)
+    provider = _resolve_provider(user, model)
     if provider == "openrouter":
         # OpenRouter documents HTTP audio input plus SSE model output, not a
         # WebRTC/WebSocket realtime session. The browser uses this signed
         # token while posting short, valid WAV payloads to the chunk endpoint.
+        _reserve_live_minutes_or_raise(user)
         _resolve_provider_api_key(user, provider, model)
         transcription_id = str(uuid.uuid4())
         token = _serializer().dumps(
@@ -279,6 +284,7 @@ def create_session(
         raise LiveTranscriptionValidationError(
             _("The selected Live transcription provider is not supported by this runtime yet.")
         )
+    _reserve_live_minutes_or_raise(user)
     api_key = _resolve_provider_api_key(user, provider, model)
     session_config = build_session_config(model, language, prompt)
 
