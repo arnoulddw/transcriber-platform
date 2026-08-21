@@ -393,7 +393,40 @@ def test_call_id_is_read_from_openai_location_header():
     )
 
 
-def test_finalize_session_saves_usage_and_normalizes_auto_language(live_app, monkeypatch):
+def test_finalize_session_bills_only_minutes_beyond_reservation(live_app, monkeypatch):
+    """A 25-minute live session bills only the 15 minutes past the reservation."""
+    user = SimpleNamespace(id=7, enable_auto_title_generation=False)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "over-reservation-live-job",
+            "started_at": 1000.0,
+            "language": "auto",
+            "context_prompt_used": False,
+        },
+    )
+    monkeypatch.setattr(service.time, "time", lambda: 1000.0 + (25 * 60))
+    monkeypatch.setattr(service.transcription_model, "get_transcription_by_id", lambda *_: None)
+    increment_usage = MagicMock()
+    monkeypatch.setattr(service.transcription_model, "create_transcription_job", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "update_transcription_cost", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "finalize_job_success", MagicMock())
+    monkeypatch.setattr(
+        service.transcription_model, "update_title_generation_status", MagicMock()
+    )
+    monkeypatch.setattr(service.role_model, "increment_usage", increment_usage)
+    monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: 0)
+
+    with live_app.app_context():
+        service.finalize_session(user, "token", "Long live transcript.")
+
+    assert increment_usage.call_args.kwargs["live_minutes_processed"] == pytest.approx(15.0)
+
+
+def test_finalize_session_short_bills_zero_extra_live_minutes(live_app, monkeypatch):
+    """Sessions within the reservation bill no additional live minutes."""
     user = SimpleNamespace(id=7, enable_auto_title_generation=False)
     monkeypatch.setattr(
         service,
@@ -429,7 +462,7 @@ def test_finalize_session_saves_usage_and_normalizes_auto_language(live_app, mon
     finalize_job.assert_called_once_with("live-job", "Hello from live mode.", "unknown")
     update_cost.assert_called_once_with("live-job", pytest.approx(0.5))
     increment_usage.assert_called_once_with(
-        7, pytest.approx(0.5), pytest.approx(2.0), live_minutes_processed=pytest.approx(2.0)
+        7, pytest.approx(0.5), pytest.approx(2.0), live_minutes_processed=pytest.approx(0.0)
     )
     disable_title.assert_called_once_with("live-job", "disabled")
 
@@ -856,4 +889,4 @@ def test_finalize_session_records_actual_live_minutes(live_app, monkeypatch):
         service.finalize_session(user, "token", "Hello from live mode.")
 
     assert increment_usage.call_count == 1
-    assert increment_usage.call_args.kwargs.get("live_minutes_processed") == pytest.approx(2.0)
+    assert increment_usage.call_args.kwargs.get("live_minutes_processed") == pytest.approx(0.0)

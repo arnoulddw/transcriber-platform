@@ -22,11 +22,12 @@ from app.models import transcription as transcription_model
 from app.models import transcription_utils
 from app.models import transcription_catalog as transcription_catalog_model
 from app.models import user as user_model
+from app.models import role as role_model
 from app.models.user import User # For type hinting
 from app.services.user_service import MissingApiKeyError
 from app.services.openrouter import resolve_openrouter_model
 from app.services.api_clients.exceptions import TranscriptionApiError
-from app.core.decorators import check_permission, check_usage_limits
+from app.core.decorators import check_permission
 from app.extensions import limiter, build_user_limit_key, csrf
 from app.tasks.transcription_queue import maybe_recover_abandoned_jobs, submit_transcription_job
 from mysql.connector import Error as MySQLError
@@ -375,7 +376,18 @@ def transcribe_audio_public():
         if price is not None:
             cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
 
-        allowed, reason = check_usage_limits(user, cost_to_add=cost_to_add, minutes_to_add=audio_length_minutes)
+        # Reserve quota atomically at submission so concurrent uploads cannot
+        # all pass a racy pre-check and overshoot the role limits.
+        role_obj = getattr(user, 'role', None)
+        if not role_obj:
+            file_service.remove_files([temp_filename])
+            return jsonify({'error': _('You do not have a role assigned.')}), 403
+        allowed, reason = role_model.reserve_usage_if_allowed(
+            user_id,
+            role_obj,
+            cost_to_add=cost_to_add,
+            minutes_to_add=audio_length_minutes,
+        )
         if not allowed:
             logging.warning(f"{job_log_prefix} Usage limit check failed: {reason}")
             file_service.remove_files([temp_filename])
@@ -643,12 +655,25 @@ def transcribe_audio():
         if price is not None:
             cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
 
-        allowed, reason = check_usage_limits(user, cost_to_add=cost_to_add, minutes_to_add=audio_length_minutes)
+        # Reserve quota atomically at submission so concurrent uploads cannot
+        # all pass a racy pre-check and overshoot the role limits. Like
+        # workflows, a job that later fails keeps its reservation: the
+        # provider may already have billed the key.
+        role_obj = user.role
+        if not role_obj:
+            file_service.remove_files([temp_filename])
+            return jsonify({'error': _('You do not have a role assigned.')}), 403
+        allowed, reason = role_model.reserve_usage_if_allowed(
+            user_id,
+            role_obj,
+            cost_to_add=cost_to_add,
+            minutes_to_add=audio_length_minutes,
+        )
         if not allowed:
             logging.warning(f"{job_log_prefix} Usage limit check failed: {reason}")
             file_service.remove_files([temp_filename])
             return jsonify({'error': reason, 'code': 'USAGE_LIMIT_EXCEEDED'}), 403
-        logging.debug(f"{job_log_prefix} Usage limit check passed.")
+        logging.debug(f"{job_log_prefix} Usage reserved transactionally.")
 
         context_prompt_used_flag = False
         if context_prompt:

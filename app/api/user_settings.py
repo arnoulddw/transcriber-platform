@@ -2,13 +2,14 @@
 # Defines the Blueprint for user-specific settings API endpoints (e.g., API keys, readiness, profile).
 
 import logging
+from typing import List
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from flask_babel import gettext as _
 
 # Import forms and services
 from app.forms import ApiKeyForm, UserProfileForm, ChangePasswordForm
-from app.services import user_service, auth_service, admin_management_service 
+from app.services import user_service, auth_service, admin_management_service, usage_service
 from app.services.user_service import (
     KeyNotFoundError, DatabaseUpdateError, UserNotFoundError, ApiKeyManagementError,
     ProfileUpdateError, UsernameTakenError, EmailTakenError,
@@ -17,7 +18,7 @@ from app.services.user_service import (
 from app.services.auth_service import InvalidCredentialsError, AuthServiceError
 from app.services.admin_management_service import AdminServiceError
 from app.models.user import User 
-from app.models import user, user_utils, user_prompt as user_prompt_model
+from app.models import user, user_prompt as user_prompt_model
 from app.models.user_prompt import UserPrompt
 from app.models import transcription as transcription_model 
 from app.core.decorators import check_permission, permission_required
@@ -73,17 +74,23 @@ def get_user_readiness():
                 'allow_speaker_diarization': role.has_permission('allow_speaker_diarization')
             }
             limits = {
-                'max_transcriptions_monthly': role.get_limit('max_transcriptions_monthly'),
-                'max_minutes_monthly': role.get_limit('max_minutes_monthly'),
-                'max_transcriptions_total': role.get_limit('max_transcriptions_total'),
-                'max_minutes_total': role.get_limit('max_minutes_total'),
-                'max_workflows_monthly': role.get_limit('max_workflows_monthly'), 
-                'max_workflows_total': role.get_limit('max_workflows_total') 
+                'limit_daily_cost': role.get_limit('limit_daily_cost'),
+                'limit_weekly_cost': role.get_limit('limit_weekly_cost'),
+                'limit_monthly_cost': role.get_limit('limit_monthly_cost'),
+                'limit_daily_minutes': role.get_limit('limit_daily_minutes'),
+                'limit_weekly_minutes': role.get_limit('limit_weekly_minutes'),
+                'limit_monthly_minutes': role.get_limit('limit_monthly_minutes'),
+                'limit_daily_workflows': role.get_limit('limit_daily_workflows'),
+                'limit_weekly_workflows': role.get_limit('limit_weekly_workflows'),
+                'limit_monthly_workflows': role.get_limit('limit_monthly_workflows'),
+                'limit_daily_live_minutes': role.get_limit('limit_daily_live_minutes'),
+                'limit_weekly_live_minutes': role.get_limit('limit_weekly_live_minutes'),
+                'limit_monthly_live_minutes': role.get_limit('limit_monthly_live_minutes'),
             }
         else:
             logging.warning(f"{log_prefix} User has no role assigned. Permissions/limits will be empty.")
 
-        usage_stats = user_utils.get_user_usage_stats(user_id) 
+        usage_stats = usage_service.get_user_usage(user_id)
 
         readiness_data = {
             'api_keys': key_status,

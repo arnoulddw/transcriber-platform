@@ -361,17 +361,19 @@ async function checkTranscribeButtonState() {
     }
 
     if (!disableReason && window.IS_MULTI_USER) {
-        if (limits.max_transcriptions_total > 0 && usage.total_transcriptions >= limits.max_transcriptions_total) {
-            disableReason = `Total transcription limit (${limits.max_transcriptions_total}) reached.`;
+        // These mirror the server-enforced `limit_*` role quotas reported by
+        // /api/user/readiness (usage comes from usage_service.get_user_usage).
+        if (!disableReason && limits.limit_daily_minutes > 0 && usage.daily.minutes >= limits.limit_daily_minutes) {
+            disableReason = `Daily audio time limit (${window.formatMinutesSimple(limits.limit_daily_minutes)}) reached.`;
         }
-        if (!disableReason && limits.max_minutes_total > 0 && usage.total_minutes >= limits.max_minutes_total) {
-            disableReason = `Total audio time limit (${window.formatMinutesSimple(limits.max_minutes_total)}) reached.`;
+        if (!disableReason && limits.limit_monthly_minutes > 0 && usage.monthly.minutes >= limits.limit_monthly_minutes) {
+            disableReason = `Monthly audio time limit (${window.formatMinutesSimple(limits.limit_monthly_minutes)}) reached.`;
         }
-        if (!disableReason && limits.max_transcriptions_monthly > 0 && usage.monthly_transcriptions >= limits.max_transcriptions_monthly) {
-            disableReason = `Monthly transcription limit (${limits.max_transcriptions_monthly}) reached.`;
+        if (!disableReason && limits.limit_daily_cost > 0 && usage.daily.cost >= limits.limit_daily_cost) {
+            disableReason = `Daily cost limit (${limits.limit_daily_cost}) reached.`;
         }
-        if (!disableReason && limits.max_minutes_monthly > 0 && usage.monthly_minutes >= limits.max_minutes_monthly) {
-            disableReason = `Monthly audio time limit (${window.formatMinutesSimple(limits.max_minutes_monthly)}) reached.`;
+        if (!disableReason && limits.limit_monthly_cost > 0 && usage.monthly.cost >= limits.limit_monthly_cost) {
+            disableReason = `Monthly cost limit (${limits.limit_monthly_cost}) reached.`;
         }
     }
 
