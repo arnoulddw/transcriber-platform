@@ -10,13 +10,13 @@ from app.models.transcription_catalog import (  # noqa: E402
 )
 
 
-def test_canonicalizes_and_sorts_a_mixed_string():
-    assert canonicalize_model_purposes("Live, Transcription") == "live,transcription"
+def test_canonicalizes_and_normalizes_a_mixed_string():
+    assert canonicalize_model_purposes("Live, Transcription") == "transcription,live"
 
 
 def test_accepts_a_list_of_purposes():
     assert canonicalize_model_purposes(["live"]) == "live"
-    assert canonicalize_model_purposes(["live", "transcription"]) == "live,transcription"
+    assert canonicalize_model_purposes(["live", "transcription"]) == "transcription,live"
 
 
 def test_defaults_to_transcription_when_empty():
@@ -31,7 +31,7 @@ def test_drops_unknown_purposes():
 
 
 def test_deduplicates_purposes():
-    assert canonicalize_model_purposes("live,live,transcription") == "live,transcription"
+    assert canonicalize_model_purposes("live,live,transcription") == "transcription,live"
 
 
 def test_valid_purposes_are_the_two_known_kinds():

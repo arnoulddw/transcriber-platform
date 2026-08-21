@@ -169,3 +169,81 @@ def test_legacy_provider_row_still_resolves_without_provider_metadata():
         provider, local_code, row = api_clients._resolve_transcription_model_reference("openrouter")
 
     assert (provider, local_code, row) == ("openrouter", "", legacy_row)
+
+
+def test_registering_live_purpose_accumulates_instead_of_clobbering():
+    cursor = _RecordingCursor()
+    database = _RecordingDatabase()
+
+    with patch.object(transcription_catalog, "get_cursor", return_value=cursor), patch.object(
+        transcription_catalog, "get_db", return_value=database
+    ):
+        transcription_catalog.register_model_from_provider(
+            "openai", "gpt-transcribe", "OpenAI GPT Transcribe",
+            model_purpose="transcription",
+        )
+        transcription_catalog.register_model_from_provider(
+            "openai", "gpt-transcribe", "OpenAI GPT Transcribe",
+            model_purpose="live",
+        )
+
+    assert len(cursor.calls) == 2
+    first_sql, second_sql = (sql for sql, _ in cursor.calls)
+    assert "model_purposes" in first_sql
+    assert "model_purpose " not in second_sql.replace("model_purposes ", "")
+    # The accumulate idiom must merge purposes on duplicate instead of
+    # overwriting them (same contract as user_api_keys.model_purposes).
+    for sql in (first_sql, second_sql):
+        assert "FIND_IN_SET(VALUES(model_purposes), model_purposes)" in sql
+        assert "CONCAT_WS" in sql
+    assert cursor.calls[0][1][-1] == "transcription"
+    assert cursor.calls[1][1][-1] == "live"
+
+
+def test_backfill_registers_one_row_with_the_full_purpose_set():
+    cursor = _RecordingCursor()
+    database = _RecordingDatabase()
+    key_rows = [
+        {
+            "provider_code": "openai",
+            "model_slug": "gpt-transcribe",
+            "model_purposes": "transcription,live",
+        },
+    ]
+
+    def fetchall():
+        return key_rows
+
+    cursor.execute = lambda sql, params=None: None
+    cursor.fetchall = fetchall
+
+    with patch.object(transcription_catalog, "get_cursor", return_value=cursor), patch.object(
+        transcription_catalog, "get_db", return_value=database
+    ):
+        with patch.object(transcription_catalog, "register_model_from_provider") as register:
+            transcription_catalog._sync_models_from_saved_keys()
+
+    register.assert_called_once_with(
+        provider="openai",
+        code="gpt-transcribe",
+        display_name="gpt-transcribe",
+        model_purpose="transcription,live",
+    )
+
+
+def test_registration_rejects_invalid_purpose_sets_but_accepts_canonical_ones():
+    cursor = _RecordingCursor()
+    database = _RecordingDatabase()
+
+    with patch.object(transcription_catalog, "get_cursor", return_value=cursor), patch.object(
+        transcription_catalog, "get_db", return_value=database
+    ):
+        transcription_catalog.register_model_from_provider(
+            "openai", "model-a", model_purpose="bogus"
+        )
+        assert cursor.calls == []
+
+        transcription_catalog.register_model_from_provider(
+            "openai", "model-b", model_purpose="transcription,live"
+        )
+        assert [params[-1] for _, params in cursor.calls] == ["transcription,live"]

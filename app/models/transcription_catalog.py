@@ -25,11 +25,13 @@ DEFAULT_MODEL_PURPOSE = "transcription"
 
 
 def canonicalize_model_purposes(value: Any) -> str:
-    """Return a canonical, sorted comma string for a purpose value or list.
+    """Return a canonical comma string for a purpose value or list.
 
     Accepts ``"Live, Transcription"``, ``["live"]``, ``None``, ... Unknown
     purposes are dropped; an empty result falls back to
     ``DEFAULT_MODEL_PURPOSE`` so legacy single-purpose callers keep working.
+    The canonical order is fixed (``transcription`` first) so every writer
+    stores the same normalized set regardless of merge order.
     """
     if isinstance(value, str):
         raw_items = value.split(",")
@@ -44,7 +46,9 @@ def canonicalize_model_purposes(value: Any) -> str:
     }
     if not purposes:
         purposes = {DEFAULT_MODEL_PURPOSE}
-    return ",".join(sorted(purposes))
+    return ",".join(
+        purpose for purpose in ("transcription", "live") if purpose in purposes
+    )
 
 
 def split_model_purposes(value: Any) -> List[str]:
@@ -971,20 +975,15 @@ def _sync_models_from_saved_keys() -> None:
         purposes = {purpose.strip().lower() for purpose in raw_purposes}
         if not purposes:
             purposes = {"transcription"}
-        if "transcription" in purposes:
-            register_model_from_provider(
-                provider=provider,
-                code=model_slug,
-                display_name=model_slug,
-                model_purpose="transcription",
-            )
-        if "live" in purposes:
-            register_model_from_provider(
-                provider=provider,
-                code=model_slug,
-                display_name=model_slug,
-                model_purpose="live",
-            )
+        # One registration carrying the full purpose set: purposes accumulate
+        # on the catalog row, so a key saved for both file transcription and
+        # live keeps the model listed in both dropdowns after every restart.
+        register_model_from_provider(
+            provider=provider,
+            code=model_slug,
+            display_name=model_slug,
+            model_purpose=canonicalize_model_purposes(purposes),
+        )
 
 
 def _ensure_models_table(cursor) -> None:
@@ -1094,6 +1093,12 @@ def register_model_from_provider(
     Provider metadata is stored in ``transcription_providers_catalog``; this
     function only creates a model row. Saving an API key is one way to invoke
     it, and future admin/configuration/discovery flows can use the same path.
+
+    Purposes accumulate on the ``model_purposes`` set (like
+    ``user_api_keys.model_purposes``): registering the same model for another
+    purpose merges into the existing row instead of overwriting it, so a live
+    key save can never remove the model from transcription dropdowns (or vice
+    versa).
     """
     provider = str(provider or "").strip().lower()
     if provider not in _PROVIDER_METADATA:
@@ -1113,25 +1118,36 @@ def register_model_from_provider(
         logger.warning("[Catalog] Ignoring provider/retired model code '%s'.", code)
         return
 
-    purpose = str(model_purpose or 'transcription').strip().lower()
-    if purpose not in {'transcription', 'live'}:
+    requested_purposes = [
+        item.strip().lower()
+        for item in str(model_purpose or 'transcription').split(",")
+        if item.strip()
+    ]
+    if not requested_purposes or any(
+        item not in VALID_MODEL_PURPOSES for item in requested_purposes
+    ):
         logger.warning("[Catalog] Ignoring model registration with invalid purpose '%s'.", model_purpose)
         return
 
     metadata = _PROVIDER_METADATA[provider]
+    purposes = canonicalize_model_purposes(requested_purposes)
     cursor = get_cursor()
     cursor.execute(
         f"""
         INSERT INTO {MODELS_TABLE} (
             code, provider_code, display_name, permission_key, required_api_key,
-            sort_order, is_active, is_default, model_purpose
+            sort_order, is_active, is_default, model_purposes
         ) VALUES (%s, %s, %s, %s, %s, 0, 1, 0, %s)
         ON DUPLICATE KEY UPDATE
             provider_code = VALUES(provider_code),
             permission_key = VALUES(permission_key),
             required_api_key = VALUES(required_api_key),
             is_active = 1,
-            model_purpose = VALUES(model_purpose)
+            model_purposes = IF(
+                FIND_IN_SET(VALUES(model_purposes), model_purposes),
+                model_purposes,
+                CONCAT_WS(',', NULLIF(model_purposes, ''), VALUES(model_purposes))
+            )
         """,
         (
             code,
@@ -1139,11 +1155,11 @@ def register_model_from_provider(
             _coerce_string(display_name) or code,
             metadata.get("permission_key"),
             metadata.get("required_api_key"),
-            purpose,
+            purposes,
         ),
     )
     get_db().commit()
-    logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purpose)
+    logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purposes)
 
 
 def rename_model(code: str, display_name: str) -> bool:

@@ -38,7 +38,12 @@ def _column_exists(cursor, table_name: str, column_name: str) -> bool:
 
 
 def _canonical_set(raw_values) -> str:
-    """Merge raw purpose values into a canonical sorted comma string."""
+    """Merge raw purpose values into a canonical comma string.
+
+    Fixed order (``transcription`` first) mirrors
+    ``transcription_catalog.canonicalize_model_purposes`` so both conversion
+    paths converge on identical stored values.
+    """
     purposes = set()
     for raw in raw_values:
         if raw is None:
@@ -49,7 +54,9 @@ def _canonical_set(raw_values) -> str:
                 purposes.add(cleaned)
     if not purposes:
         purposes = {"transcription"}
-    return ",".join(sorted(purposes))
+    return ",".join(
+        purpose for purpose in ("transcription", "live") if purpose in purposes
+    )
 
 
 def _merge_legacy_column(cursor) -> None:
