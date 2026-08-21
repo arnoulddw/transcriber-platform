@@ -187,20 +187,20 @@ def test_get_llm_operation_status_access_denied(logged_in_client, mock_llm_depen
     """
     GIVEN a logged-in user
     WHEN they request an operation they do not own
-    THEN it should return a 403 Forbidden.
+    THEN it should return the same 404 as an unknown ID, so the endpoint
+         cannot be used to enumerate which operation IDs exist.
     """
-    # Simulate finding the operation without user_id, but not with it
-    mock_llm_dependencies['llm_operation_model'].get_llm_operation_by_id.side_effect = [
-        None, # Call with user_id fails
-        {'id': 456} # Call without user_id succeeds
-    ]
+    # Scoped lookup returns None for both missing and foreign operations.
+    mock_llm_dependencies['llm_operation_model'].get_llm_operation_by_id.return_value = None
 
     response = logged_in_client.get('/api/llm/operations/456/status')
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     json_data = response.get_json()
     assert 'error' in json_data
-    assert json_data['error'] == "You do not have access to this AI operation."
+    assert json_data['error'] == "We could not find that AI operation."
+    # Only the ownership-scoped lookup is made; no unscoped existence probe.
+    mock_llm_dependencies['llm_operation_model'].get_llm_operation_by_id.assert_called_once_with(456, 1)
 
 def test_get_llm_operation_status_requires_login(client):
     """

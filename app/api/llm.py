@@ -122,18 +122,14 @@ def get_llm_operation_status(operation_id: int):
     logging.debug(f"{log_prefix} Request received.")
 
     try:
-        # Fetch the operation, verifying ownership
+        # Fetch the operation, verifying ownership. A missing or foreign
+        # operation returns the same 404 so the endpoint cannot be used to
+        # enumerate which operation IDs exist.
         operation_data = llm_operation_model.get_llm_operation_by_id(operation_id, user_id)
 
         if not operation_data:
-            # Check if it exists at all to differentiate 404 from 403
-            unowned_op = llm_operation_model.get_llm_operation_by_id(operation_id)
-            if unowned_op:
-                logging.warning(f"{log_prefix} Access denied: Operation exists but is not owned by user.")
-                return jsonify({'error': _('You do not have access to this AI operation.')}), 403
-            else:
-                logging.warning(f"{log_prefix} LLM operation not found.")
-                return jsonify({'error': _('We could not find that AI operation.')}), 404
+            logging.warning(f"{log_prefix} LLM operation not found or not owned by user.")
+            return jsonify({'error': _('We could not find that AI operation.')}), 404
 
         # Prepare response
         response_data = {
