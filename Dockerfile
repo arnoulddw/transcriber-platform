@@ -14,7 +14,7 @@ ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV NODE_VERSION=18
 
 # Install system dependencies:
-# - ffmpeg: Required by pydub
+# - ffmpeg: Required for ffprobe duration inspection and streaming audio segmentation
 # - tini: Minimal init system
 # - default-mysql-client: MySQL CLI
 # - curl: To fetch Node.js setup script
