@@ -1000,7 +1000,7 @@ def _ensure_models_table(cursor) -> None:
             sort_order INT NOT NULL DEFAULT 0,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
-            model_purpose VARCHAR(20) NOT NULL DEFAULT 'transcription',
+            model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY uq_transcription_provider_model (provider_code, code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1022,16 +1022,49 @@ def _ensure_models_table(cursor) -> None:
             f"ALTER TABLE {MODELS_TABLE} ADD INDEX idx_transcription_models_provider (provider_code)"
         )
 
-    # Migration-safe: add model_purpose to existing tables created before the
-    # column existed (models are now key-registered with a transcription/live flag).
+    # Migration-safe: convert the legacy single-valued model_purpose column
+    # into the model_purposes comma set (mirrors user_api_keys.model_purposes
+    # and migrations/V20260822_1__catalog_model_purposes_set.py).
     cursor.execute(
         f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'model_purpose'"
     )
-    if cursor.fetchone() is None:
-        logger.info("[DB:Catalog] Adding 'model_purpose' column to '%s'.", MODELS_TABLE)
+    legacy_purpose_present = cursor.fetchone() is not None
+
+    cursor.execute(
+        f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'model_purposes'"
+    )
+    purposes_present = cursor.fetchone() is not None
+
+    if not purposes_present:
+        logger.info("[DB:Catalog] Adding 'model_purposes' set column to '%s'.", MODELS_TABLE)
         cursor.execute(
-            f"ALTER TABLE {MODELS_TABLE} ADD COLUMN model_purpose VARCHAR(20) NOT NULL DEFAULT 'transcription' AFTER is_default"
+            f"""
+            ALTER TABLE {MODELS_TABLE}
+            ADD COLUMN model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription'
+            AFTER is_default
+            """
         )
+
+    if legacy_purpose_present:
+        # Fold each legacy value into the new set, then drop the old column.
+        cursor.execute(f"SELECT id, model_purpose, model_purposes FROM {MODELS_TABLE}")
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                row_id = row.get("id")
+                merged = canonicalize_model_purposes(
+                    [row.get("model_purpose"), row.get("model_purposes")]
+                )
+            else:
+                row_id = row[0]
+                merged = canonicalize_model_purposes([row[1], row[2]])
+            cursor.execute(
+                f"UPDATE {MODELS_TABLE} SET model_purposes = %s WHERE id = %s",
+                (merged, row_id),
+            )
+        cursor.execute(
+            f"ALTER TABLE {MODELS_TABLE} DROP COLUMN model_purpose"
+        )
+        logger.info("[DB:Catalog] Migrated legacy 'model_purpose' into 'model_purposes'.")
 
 
 def _ensure_languages_table(cursor) -> None:
