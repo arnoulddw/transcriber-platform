@@ -162,14 +162,8 @@ function _updateWorkflowPanel(transcriptionId, operationData) {
         ? `<button class="download-workflow-btn p-1.5 rounded-full text-gray-500 hover:text-primary hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary" title="Download Result"><i class="material-icons text-base">download</i></button>`
         : "";
     let resultHtml = "";
-    if (typeof marked !== "undefined") {
-      try {
-        marked.setOptions({ gfm: true, breaks: false });
-        resultHtml = marked.parse(resultText);
-      } catch (e) {
-        window.logger.error(updateLog, "Error parsing Markdown:", e);
-        resultHtml = `<pre class="whitespace-pre-wrap break-words">${window.escapeHtml(resultText)}</pre>`;
-      }
+    if (typeof window.renderMarkdownSafe === "function") {
+      resultHtml = window.renderMarkdownSafe(resultText);
     } else {
       resultHtml = `<pre class="whitespace-pre-wrap break-words">${window.escapeHtml(resultText)}</pre>`;
     }

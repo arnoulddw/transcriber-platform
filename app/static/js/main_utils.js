@@ -474,4 +474,36 @@ function copyToClipboard(text) {
 window.copyToClipboard = copyToClipboard; // Expose globally
 
 
+/**
+ * Renders markdown to sanitized HTML.
+ *
+ * All markdown rendered from stored content (workflow results, transcripts)
+ * MUST go through this helper: marked output is untrusted (LLM-generated or
+ * user-edited text) and is inserted via innerHTML. DOMPurify strips scripts,
+ * event handlers and javascript: URLs; if DOMPurify failed to load we fail
+ * closed and render the raw text as escaped preformatted text instead.
+ */
+function renderMarkdownSafe(markdownText) {
+  const text = String(markdownText ?? '');
+  const escapeHtmlFn = typeof window.escapeHtml === 'function' ? window.escapeHtml : null;
+  const fallbackHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtmlFn ? escapeHtmlFn(text) : text}</pre>`;
+  if (typeof window.marked === 'undefined' || typeof window.DOMPurify === 'undefined') {
+    mainUtilsLogger.warn("renderMarkdownSafe: marked or DOMPurify unavailable; rendering escaped plain text.");
+    return fallbackHtml;
+  }
+  try {
+    window.marked.setOptions({ gfm: true, breaks: false });
+    return window.DOMPurify.sanitize(window.marked.parse(text));
+  } catch (e) {
+    mainUtilsLogger.error("renderMarkdownSafe: markdown parsing failed; rendering escaped plain text.", e);
+    return fallbackHtml;
+  }
+}
+window.renderMarkdownSafe = renderMarkdownSafe;
+
+// Node test hook (same pattern as progress_timeline.js).
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { renderMarkdownSafe };
+}
+
 mainUtilsLogger.info("Utilities ready.");

@@ -259,9 +259,9 @@ function addReadMoreToWorkflowHTML(resultElement) {
         if (breakPoint === -1 || breakPoint < previewLengthChars / 2) breakPoint = previewLengthChars;
         const truncatedMarkdown = originalMarkdown.substring(0, breakPoint) + '...';
         let fullHtml = '', truncatedHtml = '';
-        if (typeof marked !== "undefined") {
-            try { marked.setOptions({ gfm: true, breaks: false }); fullHtml = marked.parse(originalMarkdown); truncatedHtml = marked.parse(truncatedMarkdown); }
-            catch (e) { window.logger.error(historyLogPrefix, "Error parsing Markdown:", e); fullHtml = `<pre>${window.escapeHtml(originalMarkdown)}</pre>`; truncatedHtml = `<pre>${window.escapeHtml(truncatedMarkdown)}</pre>`; }
+        if (typeof window.renderMarkdownSafe === "function") {
+            fullHtml = window.renderMarkdownSafe(originalMarkdown);
+            truncatedHtml = window.renderMarkdownSafe(truncatedMarkdown);
         } else { fullHtml = `<pre>${window.escapeHtml(originalMarkdown)}</pre>`; truncatedHtml = `<pre>${window.escapeHtml(truncatedMarkdown)}</pre>`; }
         resultElement.innerHTML = truncatedHtml;
         resultElement.dataset.readMoreState = 'truncated';
@@ -278,9 +278,8 @@ function addReadMoreToWorkflowHTML(resultElement) {
         readMoreLink.textContent = window.i18n.readMore || ' Read More'; readMoreLink.dataset.fullHtml = fullHtml; readMoreLink.dataset.truncatedHtml = truncatedHtml;
     } else {
         let fullHtml = '';
-         if (typeof marked !== 'undefined') {
-            try { marked.setOptions({ gfm: true, breaks: false }); fullHtml = marked.parse(originalMarkdown); }
-            catch (e) { window.logger.error(historyLogPrefix, "Error parsing short Markdown:", e); fullHtml = `<pre>${window.escapeHtml(originalMarkdown)}</pre>`; }
+         if (typeof window.renderMarkdownSafe === 'function') {
+            fullHtml = window.renderMarkdownSafe(originalMarkdown);
         } else { fullHtml = `<pre>${window.escapeHtml(originalMarkdown)}</pre>`; }
         resultElement.innerHTML = fullHtml; resultElement.dataset.readMoreState = 'full';
         let existingLink = resultElement.nextElementSibling;

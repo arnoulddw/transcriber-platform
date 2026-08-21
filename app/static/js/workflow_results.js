@@ -168,14 +168,8 @@ function _handleCancelWorkflowEdit(workflowPanel, updatedText = null) {
     if (updatedText !== null) resultTextElement.dataset.fullText = textToDisplay;
 
     let resultHtml = "";
-    if (typeof marked !== "undefined") {
-      try {
-        marked.setOptions({ gfm: true, breaks: false });
-        resultHtml = marked.parse(textToDisplay);
-      } catch (e) {
-        window.logger.error(workflowResultsLogPrefix, "Error parsing Markdown:", e);
-        resultHtml = `<pre class="whitespace-pre-wrap break-words">${window.escapeHtml(textToDisplay)}</pre>`;
-      }
+    if (typeof window.renderMarkdownSafe === "function") {
+      resultHtml = window.renderMarkdownSafe(textToDisplay);
     } else {
       resultHtml = `<pre class="whitespace-pre-wrap break-words">${window.escapeHtml(textToDisplay)}</pre>`;
     }

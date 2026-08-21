@@ -1,5 +1,7 @@
 <!-- app/templates/layout/scripts/base_bootstrap.html -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- marked pinned (no floating tag); DOMPurify sanitizes all rendered markdown. SRI pins the exact CDN bytes. -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a" crossorigin="anonymous"></script>
 <script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         // Global variables available to other JS files
