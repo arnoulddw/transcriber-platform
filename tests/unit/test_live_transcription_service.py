@@ -426,7 +426,7 @@ def test_finalize_session_saves_usage_and_normalizes_auto_language(live_app, mon
     assert result == {"transcription_id": "live-job", "saved": True}
     assert create_job.call_args.args[5] == pytest.approx(2.0)
     assert create_job.call_args.args[6] is True
-    finalize_job.assert_called_once_with("live-job", "Hello from live mode.", "und")
+    finalize_job.assert_called_once_with("live-job", "Hello from live mode.", "unknown")
     update_cost.assert_called_once_with("live-job", pytest.approx(0.5))
     increment_usage.assert_called_once_with(
         7, pytest.approx(0.5), pytest.approx(2.0), live_minutes_processed=pytest.approx(2.0)
@@ -668,6 +668,83 @@ def test_finalize_session_rejects_wrong_owner(live_app, monkeypatch):
 
     with live_app.app_context(), pytest.raises(service.LiveTranscriptionPermissionError):
         service.finalize_session(user, "token", "Text")
+
+
+def test_resolve_saved_language_prefers_detected_language():
+    assert service._resolve_saved_language("auto", "FR") == "fr"
+    assert service._resolve_saved_language("en", "nl") == "nl"
+
+
+def test_resolve_saved_language_ignores_invalid_detected_language():
+    assert service._resolve_saved_language("auto", "  ") == "unknown"
+    assert service._resolve_saved_language("auto", "not a language value!") == "unknown"
+    assert service._resolve_saved_language("auto", None) == "unknown"
+    assert service._resolve_saved_language("auto", "a/b") == "unknown"
+
+
+def test_resolve_saved_language_falls_back_to_requested():
+    assert service._resolve_saved_language("nl", None) == "nl"
+    assert service._resolve_saved_language("nl", "") == "nl"
+
+
+def test_finalize_session_stores_detected_language(live_app, monkeypatch):
+    user = SimpleNamespace(id=7, enable_auto_title_generation=False)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "live-job",
+            "started_at": 1000.0,
+            "language": "auto",
+            "context_prompt_used": False,
+        },
+    )
+    monkeypatch.setattr(service.time, "time", lambda: 1120.0)
+    monkeypatch.setattr(service.transcription_model, "get_transcription_by_id", lambda *_: None)
+    finalize_job = MagicMock()
+    monkeypatch.setattr(service.transcription_model, "create_transcription_job", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "update_transcription_cost", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "finalize_job_success", finalize_job)
+    monkeypatch.setattr(service.transcription_model, "update_title_generation_status", MagicMock())
+    monkeypatch.setattr(service.role_model, "increment_usage", MagicMock())
+    monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: None)
+
+    with live_app.app_context():
+        service.finalize_session(
+            user, "token", "Bonjour", detected_language="fr"
+        )
+
+    finalize_job.assert_called_once_with("live-job", "Bonjour", "fr")
+
+
+def test_finalize_session_stores_unknown_when_no_language_reported(live_app, monkeypatch):
+    user = SimpleNamespace(id=7, enable_auto_title_generation=False)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "live-job",
+            "started_at": 1000.0,
+            "language": "auto",
+            "context_prompt_used": False,
+        },
+    )
+    monkeypatch.setattr(service.time, "time", lambda: 1120.0)
+    monkeypatch.setattr(service.transcription_model, "get_transcription_by_id", lambda *_: None)
+    finalize_job = MagicMock()
+    monkeypatch.setattr(service.transcription_model, "create_transcription_job", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "update_transcription_cost", MagicMock())
+    monkeypatch.setattr(service.transcription_model, "finalize_job_success", finalize_job)
+    monkeypatch.setattr(service.transcription_model, "update_title_generation_status", MagicMock())
+    monkeypatch.setattr(service.role_model, "increment_usage", MagicMock())
+    monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: None)
+
+    with live_app.app_context():
+        service.finalize_session(user, "token", "Hello", detected_language=None)
+
+    finalize_job.assert_called_once_with("live-job", "Hello", "unknown")
 
 
 def test_create_session_reserves_live_minutes_before_openai_call(live_app, monkeypatch):

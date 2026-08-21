@@ -551,7 +551,27 @@ def hangup_session(user, session_token: str) -> Dict[str, bool]:
     return {"stopped": True}
 
 
-def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any]:
+def _resolve_saved_language(requested: Optional[str], detected: Optional[str]) -> str:
+    """Pick the language to persist: API-detected first, then requested, else unknown."""
+    if isinstance(detected, str):
+        candidate = detected.strip().lower()
+        if (
+            candidate
+            and len(candidate) <= 12
+            and not any(char.isspace() or char == "/" for char in candidate)
+        ):
+            return candidate
+    if requested and requested != "auto":
+        return requested
+    return "unknown"
+
+
+def finalize_session(
+    user,
+    session_token: str,
+    transcript: str,
+    detected_language: Optional[str] = None,
+) -> Dict[str, Any]:
     payload = _decode_session_token(session_token)
     if int(payload["user_id"]) != int(user.id):
         raise LiveTranscriptionPermissionError(
@@ -582,7 +602,7 @@ def finalize_session(user, session_token: str, transcript: str) -> Dict[str, Any
         MAX_SESSION_DURATION_MINUTES,
         max(0.0, (time.time() - started_at) / 60.0),
     )
-    language = payload["language"] if payload["language"] != "auto" else "und"
+    language = _resolve_saved_language(payload["language"], detected_language)
     model = session_model
     filename = datetime.now(timezone.utc).strftime(
         "Live transcription %Y-%m-%d %H-%M UTC"

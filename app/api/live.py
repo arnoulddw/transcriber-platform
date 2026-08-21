@@ -100,6 +100,7 @@ def finalize_live_session():
             current_user,
             data.get("session_token"),
             data.get("transcript"),
+            detected_language=data.get("detected_language"),
         )
         result["history_url"] = "/"
         return jsonify(result)
