@@ -53,8 +53,10 @@ class OpenAIClient(BaseLLMClient):
             if base_url:
                 client_kwargs["base_url"] = base_url
             self.client = OpenAI(**client_kwargs)
-            # Allow overriding the default model via application config
-            self.default_model = config.get("WORKFLOW_LLM_MODEL", self.DEFAULT_MODEL)
+            # Provider-native default only: callers pass the operation's model
+            # explicitly, and a config default like WORKFLOW_LLM_MODEL would
+            # send an OpenRouter slug to OpenAI when one is omitted.
+            self.default_model = self.DEFAULT_MODEL
             self.logger.debug("OpenAI client initialized successfully.")
         except OpenAIError as e:
             raise ValueError(f"OpenAI client initialization failed: {e}") from e
