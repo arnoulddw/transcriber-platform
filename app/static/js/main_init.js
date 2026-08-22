@@ -258,8 +258,6 @@ async function checkTranscribeButtonState() {
 
     const apiKeys = readinessData.api_keys || {};
     const permissions = readinessData.permissions || {};
-    const limits = readinessData.limits || {};
-    const usage = readinessData.usage || {};
 
     if (window.IS_MULTI_USER) {
         updateApiDropdownState(apiKeys); 
@@ -361,19 +359,17 @@ async function checkTranscribeButtonState() {
     }
 
     if (!disableReason && window.IS_MULTI_USER) {
-        // These mirror the server-enforced `limit_*` role quotas reported by
-        // /api/user/readiness (usage comes from usage_service.get_user_usage).
-        if (!disableReason && limits.limit_daily_minutes > 0 && usage.daily.minutes >= limits.limit_daily_minutes) {
-            disableReason = `Daily audio time limit (${window.formatMinutesSimple(limits.limit_daily_minutes)}) reached.`;
-        }
-        if (!disableReason && limits.limit_monthly_minutes > 0 && usage.monthly.minutes >= limits.limit_monthly_minutes) {
-            disableReason = `Monthly audio time limit (${window.formatMinutesSimple(limits.limit_monthly_minutes)}) reached.`;
-        }
-        if (!disableReason && limits.limit_daily_cost > 0 && usage.daily.cost >= limits.limit_daily_cost) {
-            disableReason = `Daily cost limit ($${limits.limit_daily_cost.toFixed(2)}) reached.`;
-        }
-        if (!disableReason && limits.limit_monthly_cost > 0 && usage.monthly.cost >= limits.limit_monthly_cost) {
-            disableReason = `Monthly cost limit ($${limits.limit_monthly_cost.toFixed(2)}) reached.`;
+        // The server is authoritative, but keep the upload gate aligned with
+        // the same daily/weekly/monthly cost and minutes dimensions. The
+        // upload duration and final provider cost are not known in the
+        // browser, so this deliberately blocks only already-exhausted quotas.
+        const quotaReason = window.getUsageQuotaExceededReason(
+            readinessData,
+            {},
+            { metrics: ['cost', 'minutes'], blockAtCurrentLimit: true },
+        );
+        if (quotaReason) {
+            disableReason = quotaReason;
         }
     }
 

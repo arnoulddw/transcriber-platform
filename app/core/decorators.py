@@ -95,7 +95,13 @@ def check_permission(user: Optional[User], permission_name: str) -> bool:
         return False
     return user.has_permission(permission_name)
 
-def check_usage_limits(user: Optional[User], cost_to_add: float = 0.0, minutes_to_add: float = 0.0, is_workflow: bool = False) -> Tuple[bool, str]:
+def check_usage_limits(
+    user: Optional[User],
+    cost_to_add: float = 0.0,
+    minutes_to_add: float = 0.0,
+    is_workflow: bool = False,
+    live_minutes_to_add: float = 0.0,
+) -> Tuple[bool, str]:
     """
     Checks if initiating a new job would exceed the user's role-based usage limits.
 
@@ -104,6 +110,7 @@ def check_usage_limits(user: Optional[User], cost_to_add: float = 0.0, minutes_t
         cost_to_add: The estimated cost of the new job.
         minutes_to_add: The estimated duration in minutes of the new job.
         is_workflow: If True, checks workflow count limits.
+        live_minutes_to_add: Reserved live-transcription minutes for the job.
 
     Returns:
         A tuple: (allowed: bool, reason: str).
@@ -134,6 +141,13 @@ def check_usage_limits(user: Optional[User], cost_to_add: float = 0.0, minutes_t
         if role.limit_weekly_minutes > 0 and (usage_stats['weekly']['minutes'] + minutes_to_add) > role.limit_weekly_minutes:
             return False, _("You have reached your fair use limit.")
         if role.limit_monthly_minutes > 0 and (usage_stats['monthly']['minutes'] + minutes_to_add) > role.limit_monthly_minutes:
+            return False, _("You have reached your fair use limit.")
+
+        if role.limit_daily_live_minutes > 0 and (usage_stats['daily']['live_minutes'] + live_minutes_to_add) > role.limit_daily_live_minutes:
+            return False, _("You have reached your fair use limit.")
+        if role.limit_weekly_live_minutes > 0 and (usage_stats['weekly']['live_minutes'] + live_minutes_to_add) > role.limit_weekly_live_minutes:
+            return False, _("You have reached your fair use limit.")
+        if role.limit_monthly_live_minutes > 0 and (usage_stats['monthly']['live_minutes'] + live_minutes_to_add) > role.limit_monthly_live_minutes:
             return False, _("You have reached your fair use limit.")
 
         if is_workflow:

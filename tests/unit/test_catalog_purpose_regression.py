@@ -127,3 +127,22 @@ def test_backfill_no_longer_flips_rows_to_live_on_restart():
 
     register.assert_called_once()
     assert register.call_args.kwargs["model_purpose"] == "transcription,live"
+
+
+def test_backfill_skips_llm_only_saved_keys():
+    """LLM-only keys must not become selectable transcription models."""
+    cursor = _RecordingCursor()
+    cursor.fetchall = lambda: [
+        {
+            "provider_code": "openai",
+            "model_slug": "gpt-4o-mini",
+            "model_purposes": "llm",
+        },
+    ]
+
+    with patch.object(transcription_catalog, "get_cursor", return_value=cursor), patch.object(
+        transcription_catalog, "register_model_from_provider"
+    ) as register:
+        transcription_catalog._sync_models_from_saved_keys()
+
+    register.assert_not_called()

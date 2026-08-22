@@ -10,6 +10,7 @@ from flask_babel import gettext as _
 # Import forms and services
 from app.forms import ApiKeyForm, UserProfileForm, ChangePasswordForm
 from app.services import user_service, auth_service, admin_management_service, usage_service
+from app.services.live_transcription_service import LIVE_MINUTES_RESERVATION
 from app.services.user_service import (
     KeyNotFoundError, DatabaseUpdateError, UserNotFoundError, ApiKeyManagementError,
     ProfileUpdateError, UsernameTakenError, EmailTakenError,
@@ -96,7 +97,10 @@ def get_user_readiness():
             'api_keys': key_status,
             'permissions': permissions,
             'limits': limits,
-            'usage': usage_stats
+            'usage': usage_stats,
+            'reservations': {
+                'live_minutes': LIVE_MINUTES_RESERVATION,
+            },
         }
         logging.debug(f"{log_prefix} Returning readiness data: {readiness_data}")
         logging.debug(f"User readiness data for user {user_id}: {readiness_data}")

@@ -105,6 +105,19 @@ def _merge_purposes_from_user_keys(cursor) -> None:
         slug = str(entry.get("model_slug") or "").strip()
         if not provider or not slug:
             continue
+        raw_key_purposes = entry.get("model_purposes")
+        if raw_key_purposes is None or not str(raw_key_purposes).strip():
+            key_purposes = {"transcription"}
+        else:
+            key_purposes = {
+                purpose.strip().lower()
+                for purpose in str(raw_key_purposes).split(",")
+                if purpose.strip().lower() in VALID_PURPOSES
+            }
+            if not key_purposes:
+                # LLM-only (or otherwise unsupported) keys do not repair or
+                # create transcription catalog purposes.
+                continue
         if provider == "assemblyai" and slug.casefold() == "assemblyai":
             slug = "universal"
         cursor.execute(
@@ -122,7 +135,7 @@ def _merge_purposes_from_user_keys(cursor) -> None:
                 current = match.get("model_purposes")
             else:
                 row_id, current = match[0], match[1]
-            merged = _canonical_set((current, entry.get("model_purposes")))
+            merged = _canonical_set((current, ",".join(key_purposes)))
             if merged != str(current or ""):
                 cursor.execute(
                     f"UPDATE {MODELS_TABLE} SET model_purposes = %s WHERE id = %s",

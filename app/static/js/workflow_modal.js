@@ -334,6 +334,28 @@ async function _handleSubmitWorkflow() {
         return;
     }
 
+    if (
+        window.IS_MULTI_USER
+        && typeof window.fetchReadinessData === 'function'
+        && typeof window.getUsageQuotaExceededReason === 'function'
+    ) {
+        try {
+            const readinessData = await window.fetchReadinessData();
+            const quotaReason = window.getUsageQuotaExceededReason(
+                readinessData,
+                { workflows: 1 },
+            );
+            if (quotaReason) {
+                window.Workflow.showToast(quotaReason, "warning");
+                return;
+            }
+        } catch (error) {
+            window.logger.error(submitLog, "Could not verify workflow usage limits:", error);
+            window.Workflow.showToast("Could not verify usage limits. Please try again.", "error");
+            return;
+        }
+    }
+
     if (!transcriptionId) {
         window.Workflow.showToast("Error: Transcription ID is missing.", "error");
         return;

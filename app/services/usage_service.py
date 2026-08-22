@@ -30,9 +30,9 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
     earliest = min(start_of_week, start_of_month)
 
     usage_stats = {
-        'daily':   {'cost': 0, 'minutes': 0, 'workflows': 0, 'live_minutes': 0},
-        'weekly':  {'cost': 0, 'minutes': 0, 'workflows': 0, 'live_minutes': 0},
-        'monthly': {'cost': 0, 'minutes': 0, 'workflows': 0, 'live_minutes': 0},
+        'daily':   {'cost': 0.0, 'minutes': 0.0, 'workflows': 0, 'live_minutes': 0.0},
+        'weekly':  {'cost': 0.0, 'minutes': 0.0, 'workflows': 0, 'live_minutes': 0.0},
+        'monthly': {'cost': 0.0, 'minutes': 0.0, 'workflows': 0, 'live_minutes': 0.0},
     }
 
     try:
@@ -66,19 +66,19 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
             usage_stats = {
                 'daily': {
                     'cost':      float(row['daily_cost'] or 0),
-                    'minutes':   int(row['daily_minutes'] or 0),
+                    'minutes':   float(row['daily_minutes'] or 0),
                     'workflows': int(row['daily_workflows'] or 0),
                     'live_minutes': float(row['daily_live_minutes'] or 0),
                 },
                 'weekly': {
                     'cost':      float(row['weekly_cost'] or 0),
-                    'minutes':   int(row['weekly_minutes'] or 0),
+                    'minutes':   float(row['weekly_minutes'] or 0),
                     'workflows': int(row['weekly_workflows'] or 0),
                     'live_minutes': float(row['weekly_live_minutes'] or 0),
                 },
                 'monthly': {
                     'cost':      float(row['monthly_cost'] or 0),
-                    'minutes':   int(row['monthly_minutes'] or 0),
+                    'minutes':   float(row['monthly_minutes'] or 0),
                     'workflows': int(row['monthly_workflows'] or 0),
                     'live_minutes': float(row['monthly_live_minutes'] or 0),
                 },

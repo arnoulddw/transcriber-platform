@@ -85,6 +85,41 @@ def test_index_template_has_first_run_empty_state_warning_with_manage_api_keys_l
     assert "Contact your administrator to enable them" in index_template
 
 
+def test_transcribe_button_gate_checks_daily_weekly_monthly_cost_and_minutes_limits():
+    script = Path("app/static/js/main_init.js").read_text(encoding="utf-8")
+    quota_utils = Path("app/static/js/quota_utils.js").read_text(encoding="utf-8")
+    quota_block_start = script.index("if (!disableReason && window.IS_MULTI_USER) {")
+    quota_block_end = script.index("if (!disableReason && !isFileSelected)", quota_block_start)
+    quota_block = script[quota_block_start:quota_block_end]
+
+    assert "getUsageQuotaExceededReason" in quota_block
+    assert "metrics: ['cost', 'minutes']" in quota_block
+    assert "blockAtCurrentLimit: true" in quota_block
+    assert "['daily', 'weekly', 'monthly']" in quota_utils
+    assert "limit_${period}_${metric}" in quota_utils
+    assert "usage[period]" in quota_utils
+
+
+def test_workflow_and_live_browser_gates_use_server_quota_reservations():
+    workflow_script = Path("app/static/js/workflow_modal.js").read_text(encoding="utf-8")
+    live_script = Path("app/static/js/live_transcription.js").read_text(encoding="utf-8")
+    readiness_source = Path("app/api/user_settings.py").read_text(encoding="utf-8")
+
+    assert "getUsageQuotaExceededReason" in workflow_script
+    assert "{ workflows: 1 }" in workflow_script
+    workflow_quota_check = workflow_script.index("const quotaReason =")
+    pre_apply_branch = workflow_script.index("if (isPreApplyMode)")
+    pre_apply_return = workflow_script.index(
+        "closeWorkflowModalDialog();\n        return;",
+        pre_apply_branch,
+    )
+    assert workflow_quota_check > pre_apply_return
+    assert "getUsageQuotaExceededReason" in live_script
+    assert "{ live_minutes: reservation }" in live_script
+    assert "LIVE_MINUTES_RESERVATION" in readiness_source
+    assert "'live_minutes': LIVE_MINUTES_RESERVATION" in readiness_source
+
+
 def test_profile_form_default_model_selects_do_not_reject_stale_defaults():
     forms_source = Path("app/forms.py").read_text(encoding="utf-8")
 

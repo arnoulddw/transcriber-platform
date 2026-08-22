@@ -43,5 +43,26 @@ def test_migration_repairs_a_clobbered_live_row_from_the_key_purpose_set():
     assert "SET model_purposes = %s" in cursor.calls[-1][0]
 
 
+def test_migration_skips_llm_only_saved_keys():
+    """Migration must not treat an LLM key as a transcription key."""
+    cursor = _ScriptedCursor(
+        fetchone_values=[object()],  # user_api_keys table exists
+        fetchall_values=[
+            [
+                {
+                    "provider_code": "openai",
+                    "model_slug": "gpt-4o-mini",
+                    "model_purposes": "llm",
+                }
+            ],
+        ],
+    )
+
+    _merge_purposes_from_user_keys(cursor)
+
+    # SHOW TABLES plus the saved-key query; no catalog-row lookup is needed.
+    assert len(cursor.calls) == 2
+
+
 def test_migration_canonical_set_drops_unknown_values_and_preserves_both_known_ones():
     assert _canonical_set(("live,bogus", "transcription")) == "transcription,live"

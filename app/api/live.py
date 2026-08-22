@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_babel import gettext as _
 from flask_login import current_user, login_required
 
-from app.core.decorators import check_permission, check_usage_limits
+from app.core.decorators import check_permission
 from app.extensions import build_user_limit_key, limiter
 from app.services import live_transcription_service
 from app.services.live_transcription_service import (
@@ -40,9 +40,6 @@ def live_permission_required(view):
 @limiter.limit("10 per minute", key_func=lambda: build_user_limit_key("live-session"))
 def create_live_session():
     data = request.get_json(silent=True) or {}
-    allowed, reason = check_usage_limits(current_user)
-    if not allowed:
-        return jsonify({"error": _("Usage limit exceeded: %(reason)s", reason=reason)}), 403
     try:
         result = live_transcription_service.create_session(
             current_user,

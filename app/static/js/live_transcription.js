@@ -539,6 +539,30 @@
             return data;
         }
 
+        async function ensureLiveQuota() {
+            if (
+                !global.IS_MULTI_USER
+                || typeof global.fetchReadinessData !== 'function'
+                || typeof global.getUsageQuotaExceededReason !== 'function'
+            ) {
+                return;
+            }
+
+            const readinessData = await global.fetchReadinessData();
+            const reservation = Number(readinessData?.reservations?.live_minutes);
+            if (!Number.isFinite(reservation) || reservation < 0) {
+                throw new Error('Could not verify live usage limits. Please try again.');
+            }
+
+            const quotaReason = global.getUsageQuotaExceededReason(
+                readinessData,
+                { live_minutes: reservation },
+            );
+            if (quotaReason) {
+                throw new Error(quotaReason);
+            }
+        }
+
         function stopAudioInput() {
             if (!stream) return;
             stream.getTracks().forEach((track) => {
@@ -566,6 +590,7 @@
             setControlsDisabled(true);
 
             try {
+                await ensureLiveQuota();
                 const selectedDevice = elements.microphone.value;
                 stream = await navigator.mediaDevices.getUserMedia({
                     audio: {

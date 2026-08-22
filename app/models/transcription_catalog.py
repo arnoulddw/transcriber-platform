@@ -969,10 +969,19 @@ def _sync_models_from_saved_keys() -> None:
         model_slug = str(row.get("model_slug") or "").strip()
         if provider not in _PROVIDER_METADATA or not model_slug:
             continue
-        raw_purposes = str(row.get("model_purposes") or "transcription").split(",")
-        purposes = {purpose.strip().lower() for purpose in raw_purposes}
-        if not purposes:
+        raw_model_purposes = row.get("model_purposes")
+        if raw_model_purposes is None or not str(raw_model_purposes).strip():
             purposes = {"transcription"}
+        else:
+            purposes = {
+                purpose.strip().lower()
+                for purpose in str(raw_model_purposes).split(",")
+                if purpose.strip().lower() in VALID_MODEL_PURPOSES
+            }
+            if not purposes:
+                # LLM-only (or otherwise unsupported) keys do not belong in
+                # the transcription catalog.
+                continue
         # One registration carrying the full purpose set: purposes accumulate
         # on the catalog row, so a key saved for both file transcription and
         # live keeps the model listed in both dropdowns after every restart.

@@ -235,6 +235,7 @@
         {# Common scripts loaded after DOMContentLoaded and global vars setup #}
         <script src="{{ url_for('static', filename='js/main_utils.js') }}"></script>
         <script src="{{ url_for('static', filename='js/localization.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/quota_utils.js') }}"></script>
         <script src="{{ url_for('static', filename='js/main_init.js') }}"></script>
         <script src="{{ url_for('static', filename='js/main_actions.js', v=build_timestamp) if build_timestamp else url_for('static', filename='js/main_actions.js') }}"></script>
         <script src="{{ url_for('static', filename='js/progress_timeline.js') }}"></script>
