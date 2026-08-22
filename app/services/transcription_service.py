@@ -11,7 +11,6 @@ import time
 from typing import Callable, Optional, Any, Tuple
 from flask import current_app, Flask
 from datetime import datetime, timezone
-from app.core.utils import format_currency
 
 # Import DB models
 from app.models import transcription as transcription_model
@@ -240,7 +239,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
             transcription_model.update_transcription_cost(job_id, cost_to_add)
             logger.debug(f"Successfully calculated and saved cost: {cost_to_add}")
-            _update_progress(app, job_id, f"Calculated and recorded cost: {format_currency(cost_to_add)}.", user_id=user_id)
+            _update_progress(app, job_id, f"Calculated and recorded cost: ${cost_to_add:.2f}.", user_id=user_id)
             # --- END MODIFIED ---
 
             _update_progress(app, job_id, "PHASE_MARKER:UPLOAD_COMPLETE", user_id=user_id, log_message=False)

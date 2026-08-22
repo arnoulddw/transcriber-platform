@@ -427,7 +427,7 @@ function updatePublicApiKeySection(publicStatus) {
 
 function formatPublicApiCreatedAt(createdAt) {
     try {
-        return new Date(createdAt).toLocaleString();
+        return window.formatDateTime(createdAt);
     } catch (e) {
         return createdAt;
     }

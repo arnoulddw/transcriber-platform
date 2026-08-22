@@ -370,10 +370,10 @@ async function checkTranscribeButtonState() {
             disableReason = `Monthly audio time limit (${window.formatMinutesSimple(limits.limit_monthly_minutes)}) reached.`;
         }
         if (!disableReason && limits.limit_daily_cost > 0 && usage.daily.cost >= limits.limit_daily_cost) {
-            disableReason = `Daily cost limit (${limits.limit_daily_cost}) reached.`;
+            disableReason = `Daily cost limit ($${limits.limit_daily_cost.toFixed(2)}) reached.`;
         }
         if (!disableReason && limits.limit_monthly_cost > 0 && usage.monthly.cost >= limits.limit_monthly_cost) {
-            disableReason = `Monthly cost limit (${limits.limit_monthly_cost}) reached.`;
+            disableReason = `Monthly cost limit ($${limits.limit_monthly_cost.toFixed(2)}) reached.`;
         }
     }
 

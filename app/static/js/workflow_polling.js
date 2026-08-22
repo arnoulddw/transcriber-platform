@@ -180,7 +180,7 @@ function _updateWorkflowPanel(transcriptionId, operationData) {
               </div>
           </div>
           <div class="workflow-meta text-xs text-gray-500 mb-2 leading-snug">
-            Ran: ${window.formatDateTime(ranAt, "%d/%m/%Y %I:%M %p").replace(",", "") || "-"} |
+            Ran: ${window.formatDateTime(ranAt).replace(",", "") || "-"} |
             ${
               displayPromptTitle
                 ? `Workflow Label: <span class="prompt-label-pill inline-block px-2 py-0.5 rounded-full text-xs font-medium ml-1 align-middle overflow-hidden text-ellipsis whitespace-nowrap max-w-[60%]" data-background-color="${window.escapeHtml(displayPromptColor)}">${window.escapeHtml(displayPromptTitle)}</span>`
@@ -240,7 +240,7 @@ function _updateWorkflowPanel(transcriptionId, operationData) {
               </div>
           </div>
           <div class="workflow-meta text-xs text-gray-500 mb-2 leading-snug">
-            Attempted: ${window.formatDateTime(ranAt, "%d/%m/%Y %I:%M %p").replace(",", "") || "-"} |
+            Attempted: ${window.formatDateTime(ranAt).replace(",", "") || "-"} |
             ${
               displayPromptTitle
                 ? `Workflow Label: <span class="prompt-label-pill inline-block px-2 py-0.5 rounded-full text-xs font-medium ml-1 align-middle overflow-hidden text-ellipsis whitespace-nowrap max-w-[60%]" data-background-color="${window.escapeHtml(displayPromptColor)}">${window.escapeHtml(displayPromptTitle)}</span>`
