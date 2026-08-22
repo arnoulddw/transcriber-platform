@@ -301,6 +301,34 @@ def delete_api_key(
         return False
 
 
+def get_api_key_record_by_id(
+    user_id: int,
+    key_id: int,
+) -> Optional[Dict[str, Any]]:
+    """Return one owned key row (provider/model/purposes) before deletion."""
+    cursor = get_cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT id, provider_code, model_slug, model_purposes
+            FROM user_api_keys
+            WHERE id = %s AND user_id = %s
+            LIMIT 1
+            """,
+            (key_id, user_id),
+        )
+        return cursor.fetchone()
+    except MySQLError as err:
+        logging.error(
+            "[DB:UserApiKey] Error retrieving key %s for user %s: %s",
+            key_id,
+            user_id,
+            err,
+            exc_info=True,
+        )
+        return None
+
+
 def delete_api_key_by_id(user_id: int, key_id: int) -> bool:
     """Delete exactly one stored key owned by the user."""
     cursor = get_cursor()

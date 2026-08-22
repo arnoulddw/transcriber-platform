@@ -239,6 +239,13 @@ def save_user_api_key(
                         display_name=normalized_model_name,
                     )
                 else:
+                    if model_purpose == 'live':
+                        # Registration only ever accumulates purposes, so make
+                        # the row match the surviving key rows first (idempotent;
+                        # narrows rows left stale by earlier delete/re-add flows).
+                        transcription_catalog_model.reconcile_model_purposes(
+                            service, normalized_model_name
+                        )
                     transcription_catalog_model.register_model_from_provider(
                         provider=service,
                         code=normalized_model_name,
@@ -502,6 +509,22 @@ def delete_user_api_key(
         if not removed:
             logger.warning(f"API key for service '{service}' not found or could not be removed.")
             raise KeyNotFoundError(f"API key for service '{service}' not found.")
+        if model_slug:
+            # The deleted key may have been the last one granting a purpose;
+            # shrink the catalog row so the model leaves unused dropdowns.
+            try:
+                from app.models import transcription_catalog as transcription_catalog_model
+                transcription_catalog_model.reconcile_model_purposes(
+                    service, model_slug
+                )
+            except Exception as reconcile_err:
+                logger.error(
+                    "Failed to reconcile catalog purposes for %s:%s after key deletion: %s",
+                    service,
+                    model_slug,
+                    reconcile_err,
+                    exc_info=True,
+                )
         logger.debug(f"Successfully removed API key for service '{service}'.")
 
     except (UserNotFoundError, KeyNotFoundError, DatabaseUpdateError, ValueError) as specific_error:
@@ -516,11 +539,30 @@ def delete_user_api_key(
 
 def delete_user_api_key_by_id(user_id: int, key_id: int) -> None:
     """Delete one provider/model key without widening a provider-wide delete."""
+    logger = get_logger(__name__, user_id=user_id, component="UserService")
     user = user_model.get_user_by_id(user_id)
     if not user:
         raise UserNotFoundError(f"User with ID {user_id} not found.")
-    if not user_api_key_model.delete_api_key_by_id(user_id, key_id):
-        raise KeyNotFoundError("API key not found.")
+    key_record = user_api_key_model.get_api_key_record_by_id(user_id, key_id)
+    if user_api_key_model.delete_api_key_by_id(user_id, key_id):
+        if key_record and str(key_record.get("model_slug") or "").strip():
+            # The deleted key may have been the last one granting a purpose;
+            # shrink the catalog row so the model leaves unused dropdowns.
+            try:
+                from app.models import transcription_catalog as transcription_catalog_model
+                transcription_catalog_model.reconcile_model_purposes(
+                    str(key_record.get("provider_code") or ""),
+                    str(key_record.get("model_slug") or ""),
+                )
+            except Exception as reconcile_err:
+                logger.error(
+                    "Failed to reconcile catalog purposes after deleting key %s: %s",
+                    key_id,
+                    reconcile_err,
+                    exc_info=True,
+                )
+        return
+    raise KeyNotFoundError("API key not found.")
 
 def _collect_key_status_entries(
     status: Dict[str, Any],

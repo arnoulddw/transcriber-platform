@@ -169,6 +169,7 @@ def init_db_command() -> None:
         _seed_providers_from_config()
         _normalize_legacy_model_rows()
         _sync_models_from_saved_keys()
+        _heal_stale_purpose_sets()
         seed_from_config()
     except Exception as seed_err:
         logger.error(f"{log_prefix} Failed to seed catalog tables: {seed_err}", exc_info=True)
@@ -1079,6 +1080,39 @@ def _ensure_languages_table(cursor) -> None:
     )
 
 
+def _heal_stale_purpose_sets() -> None:
+    """Startup pass: shrink catalog purpose sets that outlived their keys.
+
+    ``register_model_from_provider`` accumulates purposes, so a key that lost
+    a purpose while the app was running leaves the catalog row behind until
+    the next restart. This recomputes every registered model row from the
+    surviving key rows, which also repairs rows left over from incidents
+    before per-save reconciliation existed.
+    """
+    cursor = get_cursor()
+    try:
+        cursor.execute(
+            f"""
+            SELECT provider_code, code
+            FROM {MODELS_TABLE}
+            WHERE is_active = TRUE
+              AND LOWER(code) NOT IN ('openai', 'assemblyai', 'openrouter', 'whisper',
+                                      'gpt-4o-transcribe-diarize')
+            """
+        )
+        rows = cursor.fetchall() or []
+    except MySQLError as err:
+        logger.warning("[Catalog] Purpose healing skipped: %s", err, exc_info=True)
+        return
+
+    for row in rows:
+        provider = str(row.get("provider_code") or "").strip().lower() if isinstance(row, dict) else ""
+        code = str(row.get("code") or "").strip() if isinstance(row, dict) else ""
+        if not provider or not code:
+            continue
+        reconcile_model_purposes(provider, code)
+
+
 def register_model_from_provider(
     provider: str,
     code: str,
@@ -1167,6 +1201,99 @@ def register_model_from_provider(
     )
     get_db().commit()
     logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purposes)
+
+
+def _update_model_purposes(provider: str, code: str, purposes: str) -> None:
+    """Overwrite one catalog row's purpose set (reconciliation path only).
+
+    Unlike ``register_model_from_provider`` this is a plain assignment: it is
+    only called with a set recomputed from the surviving key rows.
+    """
+    cursor = get_cursor()
+    cursor.execute(
+        f"""
+        UPDATE {MODELS_TABLE}
+        SET model_purposes = %s
+        WHERE provider_code = %s AND code = %s
+        """,
+        (purposes, provider, code),
+    )
+    get_db().commit()
+
+
+def reconcile_model_purposes(provider: str, code: str) -> None:
+    """Recompute a model's catalog purpose set from the saved keys.
+
+    ``register_model_from_provider`` only ever accumulates purposes so one
+    key save can never clobber another purpose. The flip side is that a key
+    losing a purpose (deleted, or re-saved for one purpose only) must shrink
+    the catalog row actively, or the model lingers in the live dropdown
+    forever. This recomputes the set from every remaining key row for the
+    identity; with no keys left it falls back to the transcription default.
+    """
+    provider = str(provider or "").strip().lower()
+    code = str(code or "").strip()
+    if provider not in _PROVIDER_METADATA or not code:
+        return
+    if provider == "assemblyai" and code.casefold() == "assemblyai":
+        # Legacy provider-wide AssemblyAI identity is stored as universal.
+        # Normalized before the provider/retired-code guard, mirroring
+        # register_model_from_provider.
+        code = "universal"
+    if code.casefold() in PROVIDER_ONLY_MODEL_CODES or code.casefold() in DEPRECATED_MODEL_CODES:
+        return
+
+    purposes: set[str] = set()
+    try:
+        cursor = get_cursor()
+        cursor.execute(
+            """
+            SELECT DISTINCT model_purposes
+            FROM user_api_keys
+            WHERE provider_code = %s
+              AND model_slug = %s
+              AND model_purposes IS NOT NULL
+              AND TRIM(model_purposes) <> ''
+            """,
+            (provider, code),
+        )
+        for row in cursor.fetchall() or []:
+            raw = row.get("model_purposes") if isinstance(row, dict) else row[0]
+            for item in str(raw or "").split(","):
+                purpose = item.strip().lower()
+                if purpose in VALID_MODEL_PURPOSES:
+                    purposes.add(purpose)
+    except MySQLError as err:
+        logger.warning(
+            "[Catalog] Could not reconcile purposes for %s:%s: %s",
+            provider,
+            code,
+            err,
+            exc_info=True,
+        )
+        return
+
+    if not purposes:
+        purposes = {DEFAULT_MODEL_PURPOSE}
+
+    canonical = canonicalize_model_purposes(purposes)
+    try:
+        _update_model_purposes(provider, code, canonical)
+        logger.info(
+            "[Catalog] Reconciled model '%s' (provider '%s') to purposes '%s'.",
+            code,
+            provider,
+            canonical,
+        )
+    except MySQLError as err:
+        get_db().rollback()
+        logger.warning(
+            "[Catalog] Could not store reconciled purposes for %s:%s: %s",
+            provider,
+            code,
+            err,
+            exc_info=True,
+        )
 
 
 def rename_model(code: str, display_name: str) -> bool:
