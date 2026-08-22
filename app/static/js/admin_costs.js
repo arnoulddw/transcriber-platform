@@ -67,7 +67,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
-
-function parseLocaleNumber(stringNumber) {
-    return parseFloat(String(stringNumber).replace(',', '.'));
-}
