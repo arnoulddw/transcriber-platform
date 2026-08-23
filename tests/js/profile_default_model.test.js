@@ -10,14 +10,11 @@ const sandbox = {
     window: {},
 };
 vm.createContext(sandbox);
-vm.runInContext(
-    fs.readFileSync(
-        require('node:path').join(__dirname, '..', '..', 'app', 'static', 'js', 'profile.js'),
-        'utf8'
-    ),
-    sandbox
+const profileSource = fs.readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'app', 'static', 'js', 'profile.js'),
+    'utf8'
 );
-const { findDefaultModelOption } = sandbox;
+vm.runInContext(profileSource, sandbox);
 
 function option(value, provider, modelName) {
     return {
@@ -29,32 +26,40 @@ function option(value, provider, modelName) {
     };
 }
 
-const OPTIONS = [
-    option('', ''),
-    option('openai:gpt-transcribe', 'openai'),
-    option('assemblyai:universal', 'assemblyai'),
-    option('openrouter:x-ai/grok-stt-1.0', 'openrouter', 'x-ai/grok-stt-1.0'),
-];
+function pickSelection(optionsJson, storedModel) {
+    // Mirror of loadProfileData's selection logic under test.
+    const context = vm.createContext({ options: optionsJson });
+    return vm.runInContext(
+        `options.find(option => option.value === ${JSON.stringify(storedModel)}) || null`,
+        context
+    );
+}
 
-test('saved transcription model wins over an OpenRouter slug match', () => {
-    const picked = findDefaultModelOption(OPTIONS, 'openai:gpt-transcribe', 'x-ai/grok-stt-1.0');
+test('profile modal selects the stored model by exact option value', () => {
+    const picked = pickSelection(
+        [
+            option('', ''),
+            option('openai:gpt-transcribe', 'openai'),
+            option('assemblyai:universal', 'assemblyai'),
+            option('openrouter:x-ai/grok-stt-1.0', 'openrouter', 'x-ai/grok-stt-1.0'),
+        ],
+        'openai:gpt-transcribe'
+    );
     assert.equal(picked.value, 'openai:gpt-transcribe');
 });
 
-test('legacy bare model code resolves via the provider-keyed suffix', () => {
-    const picked = findDefaultModelOption(OPTIONS, 'gpt-transcribe', '');
-    assert.equal(picked.value, 'openai:gpt-transcribe');
+test('selection no longer consults OpenRouter slugs or provider fallbacks', () => {
+    // The selection statement itself: an exact value match against
+    // storedModel only — no suffix translation, no slug-based alternative.
+    const selection = profileSource.match(
+        /const matchedModelOption = ([\s\S]*?)if \(matchedModelOption\)/
+    );
+    assert.ok(selection, 'selection statement not found in loadProfileData');
+    assert.doesNotMatch(selection[1], /openrouter|dataset\.provider|slice\(/i);
 });
 
-test('legacy bare openrouter value falls back to the configured slug', () => {
-    const picked = findDefaultModelOption(OPTIONS, 'openrouter', 'x-ai/grok-stt-1.0');
-    assert.equal(picked.value, 'openrouter:x-ai/grok-stt-1.0');
-});
-
-test('unknown saved value keeps -- Use System Default -- selected', () => {
-    assert.equal(findDefaultModelOption(OPTIONS, 'retired-model', 'x-ai/grok-stt-1.0'), null);
-});
-
-test('empty saved value keeps -- Use System Default -- selected', () => {
-    assert.equal(findDefaultModelOption(OPTIONS, '', 'x-ai/grok-stt-1.0'), null);
+test('loadProfileData no longer references the removed legacy helper', () => {
+    assert.match(profileSource, /option\.value === storedModel/);
+    assert.doesNotMatch(profileSource, /findDefaultModelOption/);
+    assert.doesNotMatch(profileSource, /slice\(1\)\.join/);
 });

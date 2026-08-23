@@ -93,24 +93,6 @@ function closeProfileModalDialog() {
     window.logger.info(profileLogPrefix, "Profile modal closed.");
 }
 
-function findDefaultModelOption(options, storedModel, effectiveOpenrouterModel) {
-    // The saved transcription model wins over any OpenRouter slug match.
-    // Legacy bare codes resolve via their provider-keyed suffix; the legacy
-    // bare 'openrouter' value resolves via the configured slug. Anything
-    // else (including empty) keeps '-- Use System Default --' selected.
-    if (!storedModel) return null;
-    const storedMatch = options.find(
-        option => option.value === storedModel
-            || option.value.split(':').slice(1).join(':') === storedModel
-    );
-    if (storedMatch) return storedMatch;
-    if (storedModel !== 'openrouter') return null;
-    return options.find(
-        option => option.dataset.provider === 'openrouter'
-            && (option.dataset.modelName || option.dataset.openrouterModel) === effectiveOpenrouterModel
-    ) || null;
-}
-
 function updateProfileOpenrouterField() {
     const modelSelect = document.getElementById('profileDefaultModel');
     const field = document.getElementById('profileOpenrouterModelField');
@@ -351,8 +333,8 @@ async function loadProfileData() {
         langSelect.value = data.default_content_language || '';
         const storedModel = data.default_transcription_model || '';
         const effectiveOpenrouterModel = data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL || '';
-        const matchedModelOption = findDefaultModelOption(
-            Array.from(modelSelect.options), storedModel, effectiveOpenrouterModel
+        const matchedModelOption = Array.from(modelSelect.options).find(
+            option => option.value === storedModel
         );
         if (matchedModelOption) matchedModelOption.selected = true;
         else modelSelect.value = '';
