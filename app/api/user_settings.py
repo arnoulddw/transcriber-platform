@@ -320,6 +320,69 @@ def delete_api_key(service):
 
 # --- User Profile Endpoints ---
 
+@user_settings_bp.route('/model-catalog', methods=['GET'])
+@login_required
+def get_model_catalog():
+    """
+    API endpoint returning the model catalogs for dropdown consumers, rebuilt
+    from the caller's current key status. Lets pages opened before a key was
+    saved (Manage API Keys) refresh their window globals without a reload.
+    Mirrors inject_global_vars so a fresh page render cannot disagree with it.
+    """
+    user_obj: User = current_user
+    log_prefix = f"[API:UserModelCatalog:{user_obj.id}:GET]"
+    try:
+        is_multi = current_app.config['DEPLOYMENT_MODE'] == 'multi'
+        initial_key_status = {}
+        if is_multi:
+            initial_key_status = user_service.get_effective_key_status(user_obj)
+        else:
+            initial_key_status = {
+                'openai': bool(current_app.config.get('OPENAI_API_KEY')),
+                'assemblyai': bool(current_app.config.get('ASSEMBLYAI_API_KEY')),
+                'gemini': bool(current_app.config.get('GEMINI_API_KEY')),
+                'openrouter': bool(current_app.config.get('OPENROUTER_API_KEY'))
+            }
+
+        from app.models import transcription_catalog as transcription_catalog_model
+        from app.models import llm_catalog as llm_catalog_model
+
+        catalog_models = transcription_catalog_model.get_active_models()
+        effective_openrouter_model = (
+            user_service.resolve_effective_openrouter_model(user_obj, initial_key_status)
+            if is_multi else None
+        )
+        available_transcription_models = transcription_catalog_model.build_model_options(
+            catalog_models,
+            initial_key_status,
+            effective_openrouter_model,
+        )
+
+        live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
+
+        llm_model_catalog = llm_catalog_model.get_active_models()
+        effective_key_status = dict(initial_key_status)
+        for service in ('openai', 'assemblyai', 'gemini', 'openrouter'):
+            effective_key_status[service] = bool(
+                effective_key_status.get(service)
+                or current_app.config.get(f'{service.upper()}_API_KEY')
+            )
+        llm_model_catalog = llm_catalog_model.filter_models_by_api_key_status(
+            llm_model_catalog,
+            effective_key_status,
+            allow_provider_wide=not is_multi,
+        )
+
+        return jsonify({
+            'transcription': available_transcription_models,
+            'live': live_transcription_models,
+            'llm': llm_model_catalog,
+        }), 200
+    except Exception as e:
+        logging.error(f"{log_prefix} Unexpected error building model catalog: {e}", exc_info=True)
+        return jsonify({'error': _('An unexpected error occurred while loading the model catalog.')}), 500
+
+
 @user_settings_bp.route('/profile', methods=['GET'])
 @login_required
 def get_profile():

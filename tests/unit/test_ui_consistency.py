@@ -688,3 +688,15 @@ def test_providers_are_fixed_and_models_are_never_provider_labels(monkeypatch):
         meta["display_name"]
         for meta in transcription_catalog._PROVIDER_METADATA.values()
     } == {"AssemblyAI", "OpenAI", "OpenRouter"}
+
+
+def test_key_save_and_delete_refresh_the_model_catalog_globals():
+    script = Path("app/static/js/user_settings.js").read_text(encoding="utf-8")
+
+    assert "fetch('/api/user/model-catalog'" in script
+    assert "window.TRANSCRIPTION_MODELS = data.transcription" in script
+    assert "window.LIVE_TRANSCRIPTION_MODELS = data.live" in script
+    assert "window.LLM_MODEL_CATALOG = data.llm" in script
+    # Both mutating flows must refresh the globals, chained after the
+    # key-status refetch.
+    assert script.count("return fetchApiKeyStatus()\n            .then(() => refreshModelCatalogGlobals());") == 2
