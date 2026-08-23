@@ -53,7 +53,6 @@
                                 <option value="{{ option_key }}" data-provider="{{ model.provider_code or '' }}"{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if is_current %} selected{% endif %}>{{ model.display_name }}</option>
                             {% endfor %}
                         </select>
-                        <input type="hidden" name="default_openrouter_model" id="roleDefaultOpenrouterModel" value="{{ form.default_openrouter_model.data or '' }}">
                         {% if form.default_transcription_model.errors %}
                             <p class="form-error">{{ form.default_transcription_model.errors[0] }}</p>
                         {% endif %}

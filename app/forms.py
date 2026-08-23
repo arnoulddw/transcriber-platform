@@ -26,20 +26,6 @@ except ImportError:
     get_role_by_name = None
 
 
-def _selected_transcription_provider(model_code):
-    """Resolve the provider for a selected model without guessing from labels."""
-    code = str(model_code or '').strip()
-    if not code:
-        return None
-    try:
-        model = transcription_catalog_model.get_model_by_code(code) or {}
-    except Exception:
-        model = {}
-    provider = model.get('provider_code') or model.get('required_api_key')
-    if provider:
-        return str(provider).strip().lower()
-    return 'openrouter' if '/' in code else None
-
 # --- RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm remain unchanged ---
 class RegistrationForm(FlaskForm):
     username = StringField(
@@ -259,10 +245,6 @@ class UserProfileForm(FlaskForm):
         choices=[],
         validate_choice=False,
     )
-    default_openrouter_model = StringField(
-        _('Default OpenRouter Model'),
-        validators=[Length(max=120)],
-    )
     # --- NEW: Add UI language field ---
     language = SelectField(_('Interface Language'), validators=[])
     # --- END NEW ---
@@ -308,16 +290,8 @@ class UserProfileForm(FlaskForm):
             except Exception as key_err:
                 logging.warning(f"[FORMS] Failed to load key status for profile form: {key_err}", exc_info=True)
         try:
-            effective_openrouter_model = (
-                user_service.resolve_effective_openrouter_model(current_user, key_status)
-                if current_user.is_authenticated else None
-            )
-        except Exception as openrouter_err:
-            logging.warning(f"[FORMS] Failed to resolve OpenRouter model for profile form: {openrouter_err}", exc_info=True)
-            effective_openrouter_model = None
-        try:
             available_models = transcription_catalog_model.build_model_options(
-                catalog_models, key_status, effective_openrouter_model
+                catalog_models, key_status
             )
         except Exception as expand_err:
             logging.warning(f"[FORMS] Failed to expand transcription models for profile form: {expand_err}", exc_info=True)
@@ -434,21 +408,6 @@ class UserProfileForm(FlaskForm):
                 import logging
                 logging.error("[FORMS] Cannot validate email uniqueness because get_user_by_email failed to import.")
 
-    def validate_default_openrouter_model(self, field):
-        if _selected_transcription_provider(self.default_transcription_model.data) != 'openrouter':
-            field.data = None
-            return
-
-        value = (field.data or '').strip()
-        if not value:
-            field.data = None
-            return
-
-        try:
-            field.data = normalize_openrouter_model(value)
-        except ValueError as err:
-            raise ValidationError(str(err)) from err
-
 
 class ChangePasswordForm(FlaskForm):
     current_password = PasswordField(
@@ -490,10 +449,6 @@ class AdminRoleForm(FlaskForm):
         validators=[],
         choices=[],
         validate_choice=False
-    )
-    default_openrouter_model = StringField(
-        _('Default OpenRouter Model'),
-        validators=[Length(max=120)],
     )
     default_title_generation_model = SelectField(
         _('Default Auxiliary LLM Model'),
@@ -685,21 +640,6 @@ class AdminRoleForm(FlaskForm):
         else:
             import logging
             logging.error("[FORMS] Cannot validate role name uniqueness because get_role_by_name failed to import.")
-
-    def validate_default_openrouter_model(self, field):
-        if _selected_transcription_provider(self.default_transcription_model.data) != 'openrouter':
-            field.data = None
-            return
-
-        value = (field.data or '').strip()
-        if not value:
-            field.data = None
-            return
-
-        try:
-            field.data = normalize_openrouter_model(value)
-        except ValueError as err:
-            raise ValidationError(str(err)) from err
 
 
 class AdminTemplateWorkflowForm(FlaskForm):

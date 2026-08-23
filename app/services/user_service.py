@@ -258,13 +258,6 @@ def save_user_api_key(
             preference_value = f"{service}:{local_model}"
             preference_field = 'default_live_transcription_model'
             preference_kwargs = {'default_live_transcription_model': preference_value}
-        elif service == 'openrouter' and normalized_model_name:
-            if model_purpose == 'transcription':
-                preference_field = 'default_openrouter_model'
-                preference_kwargs = {'default_openrouter_model': normalized_model_name}
-            elif model_purpose == 'llm':
-                preference_field = 'default_openrouter_llm_model'
-                preference_kwargs = {'default_openrouter_llm_model': normalized_model_name}
 
         if preference_kwargs:
             preference_updated = user_model.update_user_preferences(
@@ -595,16 +588,7 @@ def _collect_key_status_entries(
         if not purposes:
             purposes = ['transcription']
         if not model_name:
-            if provider == 'openrouter':
-                legacy_names = [
-                    getattr(user, 'default_openrouter_model', None),
-                    getattr(user, 'default_openrouter_llm_model', None),
-                ] if user is not None else []
-                model_names = [str(name).strip() for name in legacy_names if str(name or '').strip()]
-                if not model_names:
-                    model_names = [provider_labels[provider]]
-            else:
-                model_names = [provider_labels[provider]]
+            model_names = [provider_labels[provider]]
         else:
             model_names = [model_name]
 
@@ -849,59 +833,6 @@ def get_effective_key_status(user: Optional[Any]) -> Dict[str, Any]:
         get_user_api_key_status(user_id),
     )
 
-def resolve_effective_openrouter_model(
-    user: Any,
-    key_status: Optional[Dict[str, Any]] = None,
-) -> Optional[str]:
-    """Return the model slug that should label OpenRouter in the UI.
-
-    A saved user or role preference takes precedence only when that exact slug
-    is configured. Otherwise fall back to a configured OpenRouter slug so the
-    selector never points at a model with no usable key.
-    """
-    if not user:
-        return None
-
-    if key_status is None:
-        key_status = get_effective_key_status(user)
-
-    configured_slugs: List[str] = []
-    provider_keys = key_status.get('provider_keys') or {}
-    for entry in provider_keys.get('openrouter', []) or []:
-        if (
-            not isinstance(entry, dict)
-            or entry.get('provider_wide')
-            or not _entry_has_purpose(entry, 'transcription')
-        ):
-            continue
-        slug = str(entry.get('model_slug') or entry.get('model_name') or '').strip()
-        if slug and slug not in configured_slugs:
-            configured_slugs.append(slug)
-
-    # The compatibility alias has no purpose metadata. Use it only when the
-    # structured provider bucket is unavailable, where legacy entries are
-    # treated as normal transcription keys.
-    if not provider_keys.get('openrouter'):
-        for entry in key_status.get('openrouter_keys', []) or []:
-            if not isinstance(entry, dict):
-                continue
-            model_slug = str(entry.get('model_slug') or '').strip()
-            if model_slug and model_slug.lower() != 'openrouter' and model_slug not in configured_slugs:
-                configured_slugs.append(model_slug)
-
-    for candidate in (
-        getattr(user, 'default_openrouter_model', None),
-        getattr(getattr(user, 'role', None), 'default_openrouter_model', None),
-    ):
-        normalized = str(candidate or '').strip()
-        if normalized and normalized in configured_slugs:
-            return normalized
-
-    if configured_slugs:
-        return configured_slugs[0]
-    return None
-
-
 def get_public_api_key_status(user_id: int) -> Dict[str, Optional[str]]:
     """
     Returns metadata about the user's public API key used for authenticated API access.
@@ -1063,7 +994,7 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                Expected keys: 'username', 'email', 'first_name', 'last_name',
                               'default_content_language', 'default_transcription_model',
                               'default_title_generation_model', 'default_workflow_model',
-                              'default_openrouter_model', 'default_live_transcription_model',
+                              'default_live_transcription_model',
                               'enable_auto_title_generation', 'language'.
     """
     logger = get_logger(__name__, user_id=user_id, component="UserService")
@@ -1082,7 +1013,6 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     default_title_generation_model = data.get('default_title_generation_model')
     default_workflow_model = data.get('default_workflow_model')
     default_live_transcription_model = data.get('default_live_transcription_model')
-    default_openrouter_model_raw = data.get('default_openrouter_model')
     language = data.get('language')
     enable_auto_title_raw = data.get('enable_auto_title_generation')
     if isinstance(enable_auto_title_raw, bool):
@@ -1136,19 +1066,10 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         ):
             raise ProfileUpdateError("The selected Live transcription model is not available.")
     language = None if language == "" else language
-    selected_provider = (selected_model or {}).get('provider_code')
-    if default_model and not selected_provider:
-        provider_hint, _ = transcription_catalog_model.split_model_reference(default_model)
-        selected_provider = provider_hint or ('openrouter' if '/' in default_model else None)
-    if selected_provider == 'openrouter':
-        raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
-        default_openrouter_model = normalize_openrouter_model(raw_openrouter_model) if raw_openrouter_model else None
-    else:
-        default_openrouter_model = None
     logger.debug(
         f"Processed preferences - Lang: {default_language}, Model: {default_model}, "
         f"AuxiliaryModel: {default_title_generation_model}, WorkflowModel: {default_workflow_model}, "
-        f"OpenRouterModel: {default_openrouter_model}, AutoTitle: {enable_auto_title}, UI Lang: {language}"
+        f"AutoTitle: {enable_auto_title}, UI Lang: {language}"
     )
 
 
@@ -1188,7 +1109,6 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         prefs_changed = (
             default_language != current_user_obj.default_content_language or
             default_model != current_user_obj.default_transcription_model or
-            default_openrouter_model != getattr(current_user_obj, 'default_openrouter_model', None) or
             enable_auto_title != current_user_obj.enable_auto_title_generation or
             language != current_user_obj.language or
             (
@@ -1236,7 +1156,6 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                 default_model,
                 enable_auto_title,
                 language,
-                default_openrouter_model,
                 **preference_kwargs,
             ):
                 prefs_update_performed = True

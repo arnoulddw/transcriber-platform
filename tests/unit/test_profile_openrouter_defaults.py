@@ -106,22 +106,17 @@ def form_context():
                     return_value=OPENROUTER_KEY_STATUS,
                 )
             )
-            stack.enter_context(
-                patch(
-                    "app.forms.user_service.resolve_effective_openrouter_model",
-                    return_value="openai/gpt-transcribe",
-                )
-            )
             yield
 
 
-def _form_data(form_type, transcription_model="openai/gpt-transcribe", slug=" openai/gpt-transcribe "):
+def _form_data(form_type, transcription_model="openai/gpt-transcribe"):
     data = {
         "name": "test-role",
         "description": "A test role",
         "default_transcription_model": transcription_model,
-        "default_openrouter_model": slug,
     }
+    # Only the user profile form still carries the (legacy, optional)
+    # OpenRouter slug preference; the admin role form no longer has it.
     if form_type is UserProfileForm:
         data.update(
             {
@@ -134,45 +129,19 @@ def _form_data(form_type, transcription_model="openai/gpt-transcribe", slug=" op
     return data
 
 
-@pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
-def test_forms_normalize_valid_openrouter_slug(form_context, form_type):
-    form = form_type(data=_form_data(form_type))
-
-    assert form.validate() is True
-    assert form.default_openrouter_model.data == "openai/gpt-transcribe"
-
-
-@pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
-def test_forms_reject_invalid_openrouter_slug(form_context, form_type):
-    form = form_type(data=_form_data(form_type, slug="not-a-slug"))
-
-    assert form.validate() is False
-    assert "default_openrouter_model" in form.errors
-
-
-@pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
-def test_forms_clear_slug_when_default_model_is_not_openrouter(form_context, form_type):
-    form = form_type(data=_form_data(form_type, transcription_model="gpt-4o-transcribe"))
-
-    assert form.validate() is True
-    assert form.default_openrouter_model.data is None
-
-
-def test_user_row_mapping_includes_default_openrouter_model():
+def test_user_row_maps_provider_neutral_preferences():
     user = _map_row_to_user(
         {
             "id": 7,
             "username": "testuser",
             "email": "test@example.com",
             "created_at": "2026-08-16T00:00:00",
-            "default_openrouter_model": "openai/gpt-transcribe",
             "default_title_generation_model": "gemma-4-26b-a4b-it",
             "default_workflow_model": "google/gemini-3.7-flash",
         }
     )
 
     assert user is not None
-    assert user.default_openrouter_model == "openai/gpt-transcribe"
     assert user.default_title_generation_model == "gemma-4-26b-a4b-it"
     assert user.default_workflow_model == "google/gemini-3.7-flash"
 
@@ -207,8 +176,6 @@ def test_profile_form_exposes_permitted_llm_model_choices(form_context):
     ), patch(
         "app.forms.user_service.get_effective_key_status",
         return_value=OPENROUTER_KEY_STATUS,
-    ), patch(
-        "app.forms.user_service.resolve_effective_openrouter_model", return_value=None
     ):
         form = UserProfileForm(data=_form_data(UserProfileForm))
 
@@ -300,7 +267,7 @@ class _Connection:
         self.rollback = Mock()
 
 
-def test_repository_persists_and_clears_default_openrouter_model():
+def test_repository_persists_and_clears_live_model_preference():
     cursor = _Cursor()
     connection = _Connection()
 
@@ -308,12 +275,16 @@ def test_repository_persists_and_clears_default_openrouter_model():
         "app.models.user.repository.get_db", return_value=connection
     ):
         assert update_user_preferences(
-            7, None, None, None, None, "openai/gpt-transcribe"
+            7, None, None, None, None,
+            default_live_transcription_model="openai:gpt-live-transcribe",
         ) is True
-        assert update_user_preferences(7, None, None, None, None, None) is True
+        assert update_user_preferences(
+            7, None, None, None, None,
+            default_live_transcription_model=None,
+        ) is True
 
-    assert "default_openrouter_model = %s" in cursor.calls[0][0]
-    assert cursor.calls[0][1] == ("openai/gpt-transcribe", 7)
+    assert "default_live_transcription_model = %s" in cursor.calls[0][0]
+    assert cursor.calls[0][1] == ("openai:gpt-live-transcribe", 7)
     assert cursor.calls[1][1] == (None, 7)
 
 
@@ -326,7 +297,7 @@ def test_repository_old_call_shape_does_not_clear_new_preference():
     ):
         assert update_user_preferences(7, None, None, True, None) is True
 
-    assert "default_openrouter_model = %s" not in cursor.calls[0][0]
+    assert "default_live_transcription_model = %s" not in cursor.calls[0][0]
 
 
 def test_repository_persists_new_llm_model_preferences():
@@ -367,8 +338,12 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
 
     assert "assemblyai,openai,openrouter" in config
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
-    assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
-    assert "data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL" in profile_script
+    # No OpenRouter slug preference survives anywhere: not the window global,
+    # not a modal field, and the home-page hidden input no longer carries a
+    # server-rendered default.
+    assert "DEFAULT_OPENROUTER_MODEL" not in bootstrap_template
+    assert "DEFAULT_OPENROUTER_MODEL" not in profile_script
+    assert "default_openrouter_model" not in profile_script
     assert "model_slug" in profile_script
     assert "initial_key_status.get('openrouter_keys', [])" not in index_template
     assert "model.model_slug" in index_template
@@ -512,80 +487,9 @@ def test_live_model_catalog_deduplicates_configured_and_user_models(form_context
     assert [model["code"] for model in live_models] == ["gpt-live-transcribe", "vendor/live"]
 
 
-def test_context_resolves_openrouter_label_after_loading_key_status():
-    app_source = open("app/__init__.py", encoding="utf-8").read()
-    key_status_call = "initial_key_status = user_service.get_effective_key_status(user)"
-    effective_model_call = "user_service.resolve_effective_openrouter_model(user, initial_key_status)"
-
-    assert app_source.index(key_status_call) < app_source.index(effective_model_call)
-
-
-def test_resolve_effective_openrouter_model_uses_saved_key_slug():
-    user = SimpleNamespace(
-        id=7,
-        default_openrouter_model=None,
-        role=SimpleNamespace(default_openrouter_model=None),
-    )
-
-    with patch.object(
-        user_service,
-        "get_effective_key_status",
-        return_value={"openrouter_keys": [{"model_slug": "x-ai/grok-stt-1.0"}]},
-    ):
-        assert user_service.resolve_effective_openrouter_model(user) == "x-ai/grok-stt-1.0"
-
-
-def test_resolve_effective_openrouter_model_prefers_user_and_role_defaults():
-    role = SimpleNamespace(default_openrouter_model="role/model")
-    user = SimpleNamespace(id=7, default_openrouter_model=None, role=role)
-    assert user_service.resolve_effective_openrouter_model(
-        user, {"openrouter_keys": [{"model_slug": "role/model"}, {"model_slug": "key/model"}]}
-    ) == "role/model"
-
-    user.default_openrouter_model = "user/model"
-    assert user_service.resolve_effective_openrouter_model(
-        user, {"openrouter_keys": [{"model_slug": "user/model"}, {"model_slug": "key/model"}]}
-    ) == "user/model"
-
-
-def test_resolve_effective_openrouter_model_drops_stale_saved_defaults():
-    role = SimpleNamespace(default_openrouter_model="role/stale")
-    user = SimpleNamespace(id=7, default_openrouter_model="user/stale", role=role)
-
-    assert user_service.resolve_effective_openrouter_model(
-        user, {"openrouter_keys": [{"model_slug": "configured/model"}]}
-    ) == "configured/model"
-
-    assert user_service.resolve_effective_openrouter_model(
-        user, {"openrouter_keys": []}
-    ) is None
-
-
-def test_resolve_effective_openrouter_model_ignores_non_transcription_keys():
-    user = SimpleNamespace(
-        id=7,
-        default_openrouter_model="llm/model",
-        role=SimpleNamespace(default_openrouter_model=None),
-    )
-
-    assert user_service.resolve_effective_openrouter_model(
-        user,
-        {
-            "provider_keys": {
-                "openrouter": [
-                    {"model_name": "llm/model", "model_purposes": ["llm"]},
-                    {"model_name": "live/model", "model_purposes": ["live"]},
-                ],
-            },
-            "openrouter_keys": [
-                {"model_slug": "llm/model"},
-                {"model_slug": "live/model"},
-            ],
-        },
-    ) is None
-
-
-def test_service_normalizes_and_passes_openrouter_default():
+def test_service_save_never_touches_openrouter_preferences():
+    """No profile submission path can write an OpenRouter slug preference
+    any more: the columns are dropped and every caller is provider-neutral."""
     current_user = SimpleNamespace(
         username="testuser",
         email="test@example.com",
@@ -593,7 +497,8 @@ def test_service_normalizes_and_passes_openrouter_default():
         last_name=None,
         default_content_language="auto",
         default_transcription_model="openai/gpt-transcribe",
-        default_openrouter_model="old/model",
+        default_title_generation_model=None,
+        default_workflow_model=None,
         enable_auto_title_generation=False,
         language="en",
     )
@@ -610,51 +515,19 @@ def test_service_normalizes_and_passes_openrouter_default():
                 "first_name": None,
                 "last_name": None,
                 "default_content_language": "auto",
-                "default_transcription_model": "openai/gpt-transcribe",
+                # A real change so the save reaches the preferences update.
+                "default_transcription_model": "openai:gpt-transcribe",
+                # Even if a stale client still sends these, they are ignored.
                 "default_openrouter_model": " openai/gpt-transcribe ",
+                "default_openrouter_llm_model": " google/gemini-3.7-flash ",
                 "enable_auto_title_generation": False,
                 "language": "en",
             },
         )
 
-    update_preferences.assert_called_once_with(
-        7, "auto", "openai/gpt-transcribe", False, "en", "openai/gpt-transcribe"
-    )
-
-
-def test_service_clears_stale_openrouter_default_for_non_openrouter_model():
-    current_user = SimpleNamespace(
-        username="testuser",
-        email="test@example.com",
-        first_name=None,
-        last_name=None,
-        default_content_language="auto",
-        default_transcription_model="gpt-4o-transcribe",
-        default_openrouter_model="old/model",
-        enable_auto_title_generation=False,
-        language="en",
-    )
-    update_preferences = Mock(return_value=True)
-
-    with patch.object(user_service.user_model, "get_user_by_id", return_value=current_user), patch.object(
-        user_service.user_model, "update_user_preferences", update_preferences
-    ):
-        user_service.update_profile(
-            7,
-            {
-                "username": "testuser",
-                "email": "test@example.com",
-                "first_name": None,
-                "last_name": None,
-                "default_content_language": "auto",
-                "default_transcription_model": "gpt-4o-transcribe",
-                "default_openrouter_model": "stale/model",
-                "enable_auto_title_generation": False,
-                "language": "en",
-            },
-        )
-
-    update_preferences.assert_called_once_with(7, "auto", "gpt-4o-transcribe", False, "en", None)
+    called_kwargs = update_preferences.call_args.kwargs
+    assert "default_openrouter_model" not in called_kwargs
+    assert "default_openrouter_llm_model" not in called_kwargs
 
 
 def test_service_passes_new_llm_model_preferences():
@@ -667,7 +540,6 @@ def test_service_passes_new_llm_model_preferences():
         default_transcription_model="gpt-4o-transcribe",
         default_title_generation_model=None,
         default_workflow_model=None,
-        default_openrouter_model=None,
         enable_auto_title_generation=False,
         language="en",
     )
@@ -687,7 +559,6 @@ def test_service_passes_new_llm_model_preferences():
                 "default_transcription_model": "gpt-4o-transcribe",
                 "default_title_generation_model": " gemma-4-26b-a4b-it ",
                 "default_workflow_model": " google/gemini-3.7-flash ",
-                "default_openrouter_model": None,
                 "enable_auto_title_generation": False,
                 "language": "en",
             },
@@ -699,7 +570,6 @@ def test_service_passes_new_llm_model_preferences():
         "gpt-4o-transcribe",
         False,
         "en",
-        None,
         default_title_generation_model="gemma-4-26b-a4b-it",
         default_workflow_model="google/gemini-3.7-flash",
     )
@@ -742,11 +612,9 @@ def test_admin_role_form_exposes_each_openrouter_slug_as_option(form_context):
         data={
             "name": "test-role",
             "default_transcription_model": "openrouter:qwen/qwen3-asr-1.7b",
-            "default_openrouter_model": "x-ai/grok-stt-1.0",
         }
     )
     assert submit.validate() is True
-    assert submit.default_openrouter_model.data == "x-ai/grok-stt-1.0"
 
 
 def test_admin_role_form_does_not_keep_current_openrouter_slug_without_a_key(form_context):
@@ -762,9 +630,8 @@ def test_admin_role_form_does_not_keep_current_openrouter_slug_without_a_key(for
             obj=SimpleNamespace(
                 name="legacy-role",
                 default_transcription_model="openrouter",
-                default_openrouter_model="legacy/slug-1",
             )
         )
 
     or_options = [m for m in form.transcription_model_options if m.get("code") == "openrouter"]
-    assert "legacy/slug-1" not in [m.get("model_name") for m in or_options]
+    assert or_options == []

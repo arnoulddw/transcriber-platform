@@ -348,14 +348,9 @@ def get_model_catalog():
         from app.models import llm_catalog as llm_catalog_model
 
         catalog_models = transcription_catalog_model.get_active_models()
-        effective_openrouter_model = (
-            user_service.resolve_effective_openrouter_model(user_obj, initial_key_status)
-            if is_multi else None
-        )
         available_transcription_models = transcription_catalog_model.build_model_options(
             catalog_models,
             initial_key_status,
-            effective_openrouter_model,
         )
 
         live_transcription_models = transcription_catalog_model.get_live_models(initial_key_status)
@@ -400,8 +395,6 @@ def get_profile():
             'default_transcription_model': user_obj.default_transcription_model,
             'default_title_generation_model': getattr(user_obj, 'default_title_generation_model', None),
             'default_workflow_model': getattr(user_obj, 'default_workflow_model', None),
-            'default_openrouter_model': user_obj.default_openrouter_model,
-            'default_openrouter_llm_model': user_obj.default_openrouter_llm_model,
             'default_live_transcription_model': getattr(user_obj, 'default_live_transcription_model', None),
             'oauth_provider': user_obj.oauth_provider,
             'enable_auto_title_generation': user_obj.enable_auto_title_generation,
