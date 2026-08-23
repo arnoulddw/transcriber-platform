@@ -103,15 +103,6 @@ def _hash_public_api_key(raw_key: str) -> str:
         raise ValueError("SECRET_KEY is required to generate public API keys.")
     return hmac.new(secret.encode('utf-8'), raw_key.encode('utf-8'), hashlib.sha256).hexdigest()
 
-def _validate_gemini_api_key_format(api_key: str) -> bool:
-    """
-    Validates the basic format of a Google Gemini API key.
-    Checks only for the "AIzaSy" prefix.
-    """
-    if api_key and api_key.startswith("AIzaSy"):
-        return True
-    return False
-
 def _normalize_model_name(service: str, model_name: Optional[str], *, required: bool = False) -> Optional[str]:
     """Normalize a provider-local model name while preserving legacy blanks."""
     value = str(model_name or '').strip()
@@ -204,10 +195,6 @@ def save_user_api_key(
                     "Enter a complete API key or use the suggested saved key."
                 )
             api_key = existing_key
-
-        if service == 'gemini' and not _validate_gemini_api_key_format(api_key):
-            logger.warning("Invalid Google Gemini API key format provided.")
-            raise ValueError("Invalid Google Gemini API key format. Key should start with 'AIzaSy'.")
 
         security_svc: SecurityService = get_security_service()
         encrypted_key = security_svc.encrypt_data(api_key)
