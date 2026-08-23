@@ -363,7 +363,7 @@ def test_expand_models_skips_generic_openrouter_when_no_slug_is_known():
         {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
     ]
 
-    expanded = transcription_catalog.expand_models_for_ui(models, {"openai": True}, None)
+    expanded = transcription_catalog.expand_models_for_ui(models, {"openai": True})
 
     assert expanded == []
     assert all(model["code"] != "openrouter" for model in expanded)
@@ -447,7 +447,7 @@ def test_expand_models_returns_empty_when_no_provider_key_exists():
         {"code": "openrouter", "display_name": "OpenRouter", "permission_key": None, "required_api_key": "openrouter"},
     ]
 
-    expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
+    expanded = transcription_catalog.expand_models_for_ui(models, {})
 
     assert expanded == []
 
@@ -460,7 +460,7 @@ def test_models_without_required_api_keys_remain_available():
         {"code": "whisper", "display_name": "OpenAI Whisper", "permission_key": None, "required_api_key": "openai"},
     ]
 
-    expanded = transcription_catalog.expand_models_for_ui(models, {}, None)
+    expanded = transcription_catalog.expand_models_for_ui(models, {})
 
     assert [model["code"] for model in expanded] == ["local-model"]
 

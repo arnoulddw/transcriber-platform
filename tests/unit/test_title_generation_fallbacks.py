@@ -69,7 +69,6 @@ def test_fallback_attempts_use_separate_operation_records():
 
     user = SimpleNamespace(
         role=SimpleNamespace(default_title_generation_model=None),
-        default_openrouter_llm_model=None,
         enable_auto_title_generation=True,
         is_authenticated=True,
         has_permission=lambda _perm: True,

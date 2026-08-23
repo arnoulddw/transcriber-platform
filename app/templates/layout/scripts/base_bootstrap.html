@@ -9,7 +9,6 @@
         window.IS_MULTI_USER = JSON.parse('{{ is_multi_user|default(false)|tojson|safe }}');
         window.USER_PERMISSIONS = JSON.parse('{{ user_permissions|tojson|safe }}');
         window.API_KEY_STATUS = JSON.parse('{{ initial_key_status|default({})|tojson|safe }}');
-        window.DEFAULT_OPENROUTER_MODEL = {{ (effective_openrouter_model or '')|tojson|safe }};
         try {
             window.TRANSCRIPTION_MODELS = JSON.parse('{{ TRANSCRIPTION_MODEL_CATALOG|default([])|tojson|safe }}');
         } catch (e) { window.TRANSCRIPTION_MODELS = []; console.error("Error parsing transcription model catalog:", e); }

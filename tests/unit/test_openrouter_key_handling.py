@@ -240,8 +240,6 @@ def test_status_exposes_openrouter_slugs_and_only_key_suffixes():
     app = _app()
     user = SimpleNamespace(
         role=SimpleNamespace(allow_public_api_access=False),
-        default_openrouter_model=None,
-        default_openrouter_llm_model=None,
     )
     records = [
         {

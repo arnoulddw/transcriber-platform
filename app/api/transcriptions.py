@@ -90,14 +90,12 @@ def _resolve_catalog_model_parameters(
     api_choice: str,
     model_lookup: Dict[str, Dict[str, Any]],
     submitted_model: Optional[str] = None,
-    stored_openrouter_model: Optional[str] = None,
 ) -> Tuple[str, Optional[str]]:
     """Resolve provider and provider-local model from one catalog selection.
 
     Selectable values are model codes, never provider labels. The provider is
-    read from the catalog relationship. The user-level OpenRouter default is
-    kept only for compatibility with older requests that submitted
-    ``openrouter`` as the provider-shaped value.
+    read from the catalog relationship. A bare ``openrouter`` submission is
+    only valid when the request carries an explicit model name.
     """
     model = model_lookup.get(api_choice) or transcription_catalog_model.get_model_by_code(api_choice) or {}
     provider = str(
@@ -111,7 +109,6 @@ def _resolve_catalog_model_parameters(
             model_name = resolve_openrouter_model(
                 api_choice,
                 submitted_model,
-                stored_openrouter_model,
             )
         else:
             model_name = str(
@@ -307,7 +304,6 @@ def transcribe_audio_public():
             api_choice,
             model_lookup,
             submitted_model,
-            getattr(user, "default_openrouter_model", None),
         )
     except ValueError as model_err:
         logging.warning(f"{log_prefix} Invalid transcription model: {model_err}")
@@ -642,7 +638,6 @@ def transcribe_audio():
             api_choice,
             model_lookup,
             submitted_model,
-            getattr(user, "default_openrouter_model", None),
         )
 
         pricing_key = api_model if provider_code == "openrouter" else api_choice

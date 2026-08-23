@@ -13,7 +13,7 @@ from app.models import user_api_key as user_api_key_model
 from .model import User, _map_row_to_user
 
 logger = logging.getLogger(__name__)
-_DEFAULT_OPENROUTER_MODEL_UNSET = object()
+_PREFERENCE_UNSET = object()
 _DEFAULT_LIVE_MODEL_UNSET = object()
 
 try:
@@ -624,11 +624,9 @@ def update_user_preferences(
     default_model: Optional[str],
     enable_auto_title_generation: Optional[bool] = None,
     language: Optional[str] = None,
-    default_openrouter_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
-    default_openrouter_llm_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
     default_live_transcription_model: Optional[str] = _DEFAULT_LIVE_MODEL_UNSET,  # type: ignore[assignment]
-    default_title_generation_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
-    default_workflow_model: Optional[str] = _DEFAULT_OPENROUTER_MODEL_UNSET,  # type: ignore[assignment]
+    default_title_generation_model: Optional[str] = _PREFERENCE_UNSET,  # type: ignore[assignment]
+    default_workflow_model: Optional[str] = _PREFERENCE_UNSET,  # type: ignore[assignment]
 ) -> bool:
     """
     Updates the user's language, transcription model, LLM model preferences,
@@ -654,23 +652,15 @@ def update_user_preferences(
         set_clauses.append("language = %s")
         params.append(language if language else None)
 
-    if default_openrouter_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
-        set_clauses.append("default_openrouter_model = %s")
-        params.append(default_openrouter_model if default_openrouter_model else None)
-
-    if default_openrouter_llm_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
-        set_clauses.append("default_openrouter_llm_model = %s")
-        params.append(default_openrouter_llm_model if default_openrouter_llm_model else None)
-
     if default_live_transcription_model is not _DEFAULT_LIVE_MODEL_UNSET:
         set_clauses.append("default_live_transcription_model = %s")
         params.append(default_live_transcription_model if default_live_transcription_model else None)
 
-    if default_title_generation_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
+    if default_title_generation_model is not _PREFERENCE_UNSET:
         set_clauses.append("default_title_generation_model = %s")
         params.append(default_title_generation_model if default_title_generation_model else None)
 
-    if default_workflow_model is not _DEFAULT_OPENROUTER_MODEL_UNSET:
+    if default_workflow_model is not _PREFERENCE_UNSET:
         set_clauses.append("default_workflow_model = %s")
         params.append(default_workflow_model if default_workflow_model else None)
 

@@ -277,18 +277,22 @@ def _normalize_current_references(cursor) -> None:
             WHERE LOWER(COALESCE(default_transcription_model, '')) IN ('assemblyai', 'universal')
             """
         )
-        cursor.execute(
-            f"""
-            UPDATE {table_name}
-            SET default_transcription_model = CASE
-                WHEN LOWER(default_openrouter_model) LIKE 'openrouter:%'
-                THEN default_openrouter_model
-                ELSE CONCAT('openrouter:', default_openrouter_model)
-            END
-            WHERE LOWER(COALESCE(default_transcription_model, '')) = 'openrouter'
-              AND NULLIF(TRIM(COALESCE(default_openrouter_model, '')), '') IS NOT NULL
-            """
-        )
+        # The slug preference columns were dropped by
+        # V20260822_3; only fold the legacy 'openrouter' value when the
+        # column is still present (pre-drop databases).
+        if _column_exists(cursor, table_name, "default_openrouter_model"):
+            cursor.execute(
+                f"""
+                UPDATE {table_name}
+                SET default_transcription_model = CASE
+                    WHEN LOWER(default_openrouter_model) LIKE 'openrouter:%'
+                    THEN default_openrouter_model
+                    ELSE CONCAT('openrouter:', default_openrouter_model)
+                END
+                WHERE LOWER(COALESCE(default_transcription_model, '')) = 'openrouter'
+                  AND NULLIF(TRIM(COALESCE(default_openrouter_model, '')), '') IS NOT NULL
+                """
+            )
         cursor.execute(
             f"""
             UPDATE {table_name} AS target

@@ -72,8 +72,6 @@ def init_db_command() -> None:
                 default_transcription_model VARCHAR(255),
                 default_title_generation_model VARCHAR(100) DEFAULT NULL,
                 default_workflow_model VARCHAR(100) DEFAULT NULL,
-                default_openrouter_model VARCHAR(120) DEFAULT NULL,
-                default_openrouter_llm_model VARCHAR(120) DEFAULT NULL,
                 default_live_transcription_model VARCHAR(255) DEFAULT NULL,
                 enable_auto_title_generation BOOLEAN NOT NULL DEFAULT FALSE,
                 public_api_key_hash VARCHAR(128),
@@ -144,26 +142,12 @@ def init_db_command() -> None:
             logger.info(f"{log_prefix} Adding 'default_workflow_model' column to 'users' table.")
             cursor.execute("ALTER TABLE users ADD COLUMN default_workflow_model VARCHAR(100) DEFAULT NULL AFTER default_title_generation_model")
 
-        cursor.execute("SHOW COLUMNS FROM users LIKE 'default_openrouter_model'")
-        default_openrouter_model_exists = cursor.fetchone()
-        cursor.fetchall()
-        if not default_openrouter_model_exists:
-            logger.info(f"{log_prefix} Adding 'default_openrouter_model' column to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD COLUMN default_openrouter_model VARCHAR(120) DEFAULT NULL AFTER default_workflow_model")
-
-        cursor.execute("SHOW COLUMNS FROM users LIKE 'default_openrouter_llm_model'")
-        default_openrouter_llm_model_exists = cursor.fetchone()
-        cursor.fetchall()
-        if not default_openrouter_llm_model_exists:
-            logger.info(f"{log_prefix} Adding 'default_openrouter_llm_model' column to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD COLUMN default_openrouter_llm_model VARCHAR(120) DEFAULT NULL AFTER default_openrouter_model")
-
         cursor.execute("SHOW COLUMNS FROM users LIKE 'default_live_transcription_model'")
         default_live_model_exists = cursor.fetchone()
         cursor.fetchall()
         if not default_live_model_exists:
             logger.info(f"{log_prefix} Adding 'default_live_transcription_model' column to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD COLUMN default_live_transcription_model VARCHAR(255) DEFAULT NULL AFTER default_openrouter_llm_model")
+            cursor.execute("ALTER TABLE users ADD COLUMN default_live_transcription_model VARCHAR(255) DEFAULT NULL AFTER default_workflow_model")
         else:
             live_model_type = default_live_model_exists.get('Type', '') if isinstance(default_live_model_exists, dict) else (default_live_model_exists[1] if len(default_live_model_exists) > 1 else '')
             if '255' not in str(live_model_type):

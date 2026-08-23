@@ -437,7 +437,6 @@ def _model_provider(model: Dict[str, Optional[str]]) -> str:
 def expand_models_for_ui(
     models: List[Dict[str, Optional[str]]],
     key_status: Optional[Dict[str, Any]] = None,
-    fallback_openrouter_model: Optional[str] = None,
 ) -> List[Dict[str, Optional[str]]]:
     """Return one selectable entry per catalog model or configured OpenRouter slug.
 
@@ -510,7 +509,6 @@ def expand_models_for_ui(
 def build_model_options(
     catalog_models: List[Dict[str, Optional[str]]],
     key_status: Optional[Dict[str, Any]] = None,
-    fallback_openrouter_model: Optional[str] = None,
 ) -> List[Dict[str, Optional[str]]]:
     """Return the canonical de-duplicated transcription model option list.
 
@@ -520,7 +518,7 @@ def build_model_options(
     costs page) must source their options from here so the lists cannot drift
     apart.
     """
-    expanded = expand_models_for_ui(catalog_models, key_status, fallback_openrouter_model)
+    expanded = expand_models_for_ui(catalog_models, key_status)
 
     # Sort only after provider expansion and deduplication. The display name is
     # the user-visible contract; catalog sort_order must not override A–Z.

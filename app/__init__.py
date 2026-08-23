@@ -535,14 +535,9 @@ def create_app(config_class=Config) -> Flask:
                 allow_provider_wide=not is_multi,
             )
 
-        effective_openrouter_model = (
-            user_service.resolve_effective_openrouter_model(user, initial_key_status)
-            if user else None
-        )
         available_transcription_models = transcription_catalog_model.build_model_options(
             catalog_models,
             initial_key_status,
-            effective_openrouter_model,
         )
 
         display_name = user.first_name if user and user.first_name else user.username if user else None
@@ -581,7 +576,6 @@ def create_app(config_class=Config) -> Flask:
             display_name=display_name,
             now=datetime.now(timezone.utc),
             initial_key_status=initial_key_status,
-            effective_openrouter_model=effective_openrouter_model,
             transcription_models=available_transcription_models,
             user_permissions=user_permissions,
             google_client_id=app.config.get('GOOGLE_CLIENT_ID'),

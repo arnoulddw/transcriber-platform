@@ -47,7 +47,7 @@ def register_builder_patches(stack: ExitStack, key_status):
     stack.enter_context(patch.multiple(
         transcription_catalog,
         get_active_models=lambda: fixtures.transcription_rows,
-        build_model_options=lambda models, status, fallback: fixtures.transcription_options,
+        build_model_options=lambda models, status: fixtures.transcription_options,
         get_live_models=lambda status: fixtures.live_models,
     ))
     stack.enter_context(patch.multiple(
@@ -58,7 +58,6 @@ def register_builder_patches(stack: ExitStack, key_status):
     stack.enter_context(patch.multiple(
         user_service,
         get_effective_key_status=lambda user: key_status,
-        resolve_effective_openrouter_model=lambda user, status: "vendor/resolved",
     ))
     return fixtures
 
@@ -107,7 +106,6 @@ def test_multi_user_passes_effective_key_status_to_every_builder(catalog_app):
     assert response.status_code == 200
     build_options_spy.assert_called_once()
     assert build_options_spy.call_args.args[1] is key_status
-    assert build_options_spy.call_args.args[2] == "vendor/resolved"
     live_spy.assert_called_once_with(key_status)
 
     assert filter_spy.call_args.kwargs["allow_provider_wide"] is False
@@ -136,7 +134,7 @@ def test_single_user_skips_per_user_key_status_and_allows_provider_wide(catalog_
                 side_effect=lambda models, status, *, allow_provider_wide: [],
             ) as filter_spy, patch.object(
                 transcription_catalog, "build_model_options",
-                side_effect=lambda models, status, fallback: [],
+                side_effect=lambda models, status: [],
             ) as build_options_spy:
                 response = catalog_app.test_client().get("/api/user/model-catalog")
 

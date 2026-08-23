@@ -18,17 +18,13 @@ def test_rejects_invalid_slugs(raw):
 
 
 def test_resolve_non_openrouter_returns_none_with_submitted_slug():
-    assert resolve_openrouter_model("whisper", "openai/gpt-transcribe", "google/gemini-3.7-flash") is None
+    assert resolve_openrouter_model("whisper", "openai/gpt-transcribe") is None
 
 
-def test_resolve_openrouter_prefers_submitted_slug():
-    assert resolve_openrouter_model("openrouter", "openai/gpt-transcribe", "google/gemini-3.7-flash") == "openai/gpt-transcribe"
-
-
-def test_resolve_openrouter_uses_stored_default_when_submitted_is_empty():
-    assert resolve_openrouter_model("openrouter", "", "google/gemini-3.7-flash") == "google/gemini-3.7-flash"
+def test_resolve_openrouter_returns_submitted_slug():
+    assert resolve_openrouter_model("openrouter", "openai/gpt-transcribe") == "openai/gpt-transcribe"
 
 
 def test_resolve_openrouter_requires_a_valid_slug():
     with pytest.raises(ValueError, match="OpenRouter model is required\\."):
-        resolve_openrouter_model("openrouter", None, None)
+        resolve_openrouter_model("openrouter", None)
