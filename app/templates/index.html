@@ -48,7 +48,7 @@
                             {% set required_perm = model.permission_key %}
                             {% set option_key = model.model_key or model.code %}
                             {% if option_key not in seen_transcription_models.keys and (not required_perm or user_permissions.get(required_perm)) %}
-                                <option value="{{ option_key }}" data-provider="{{ model.provider_code or model.required_api_key or '' }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if option_key == effective_default_api %}selected{% endif %}{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if model.model_slug %} data-openrouter-model="{{ model.model_slug }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
+                                <option value="{{ option_key }}" data-provider="{{ model.provider_code or model.required_api_key or '' }}" data-description="{{ model_descriptions.get(model.code, _('General-purpose transcription model.')) }}" {% if option_key == effective_default_api %}selected{% endif %}{% if model.model_name %} data-model-name="{{ model.model_name }}"{% endif %}{% if model.required_api_key %} data-key-required="{{ model.required_api_key }}"{% endif %}>{{ model.display_name }}</option>
                                 {% set seen_transcription_models.keys = seen_transcription_models.keys + [option_key] %}
                             {% endif %}
                         {% endfor %}

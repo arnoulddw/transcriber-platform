@@ -324,7 +324,7 @@ async function checkTranscribeButtonState() {
     }
 
     if (!disableReason) {
-        const selectedModelName = selectedApiOption?.dataset.modelName || selectedApiOption?.dataset.openrouterModel || '';
+        const selectedModelName = selectedApiOption?.dataset.modelName || '';
         if (selectedProvider === 'openrouter' && !selectedModelName.includes('/')) {
             disableReason = "Select an OpenRouter transcription model.";
         }

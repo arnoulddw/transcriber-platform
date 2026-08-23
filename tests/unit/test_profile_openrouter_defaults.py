@@ -344,9 +344,11 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "DEFAULT_OPENROUTER_MODEL" not in bootstrap_template
     assert "DEFAULT_OPENROUTER_MODEL" not in profile_script
     assert "default_openrouter_model" not in profile_script
-    assert "model_slug" in profile_script
     assert "initial_key_status.get('openrouter_keys', [])" not in index_template
-    assert "model.model_slug" in index_template
+    # The per-provider data-openrouter-model attribute is gone too: every
+    # option's slug already lives in the uniform data-model-name attribute.
+    assert "model.model_slug" not in index_template
+    assert "data-openrouter-model" not in index_template
     # The home-page hidden slug input is gone too: every option is a concrete
     # model key, so the form never submits a provider-shaped bare 'openrouter'.
     assert "openrouterModelInput" not in index_template

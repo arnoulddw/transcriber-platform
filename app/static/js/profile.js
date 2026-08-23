@@ -264,7 +264,6 @@ async function loadProfileData() {
         const opt = new Option(model.display_name || model.code, modelKey);
         if (model.provider_code) opt.dataset.provider = model.provider_code;
         if (model.model_name) opt.dataset.modelName = model.model_name;
-        if (model.model_slug) opt.dataset.openrouterModel = model.model_slug;
         const requiredKey = model.required_api_key;
         if (requiredKey && !apiKeyStatus[requiredKey]) {
             opt.disabled = true;
