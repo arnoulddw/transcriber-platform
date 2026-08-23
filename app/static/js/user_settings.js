@@ -674,6 +674,31 @@ function fetchApiKeyStatus() {
 }
 
 /**
+ * Refreshes the page-level model catalog globals so dropdowns built from
+ * them (User Settings modal) include models saved or deleted through this
+ * modal without a full page reload. Best-effort: a failure only logs, the
+ * key-status UI above is already up to date at that point.
+ */
+function refreshModelCatalogGlobals() {
+    return fetch('/api/user/model-catalog', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'X-CSRFToken': window.csrfToken }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        if ('transcription' in data) window.TRANSCRIPTION_MODELS = data.transcription;
+        if ('live' in data) window.LIVE_TRANSCRIPTION_MODELS = data.live;
+        if ('llm' in data) window.LLM_MODEL_CATALOG = data.llm;
+    })
+    .catch(error => {
+        window.logger.warn(userSettingsLogPrefix, "Could not refresh model catalog:", error);
+    });
+}
+
+/**
  * Handles the submission of the API key form (Save Key button).
  * Sends the data to the backend API.
  * @param {Event} event - The form submission event.
@@ -754,7 +779,8 @@ function handleApiKeySave(event) {
         const transcriptionPurpose = document.querySelector('input[name="model_purpose"][value="transcription"]');
         if (transcriptionPurpose) transcriptionPurpose.checked = true;
         updateModelSettings(serviceSelect.value);
-        return fetchApiKeyStatus();
+        return fetchApiKeyStatus()
+            .then(() => refreshModelCatalogGlobals());
     })
     .then(() => {
         if (typeof window.invalidateReadinessCache === 'function') {
@@ -844,7 +870,8 @@ function handleApiKeyDelete(button) {
         window.logger.info(logPrefix, `API Key delete response:`, data);
         window.showNotification(data.message || `API Key for ${serviceDisplayName} deleted.`, 'success', 4000, false);
 
-        return fetchApiKeyStatus();
+        return fetchApiKeyStatus()
+            .then(() => refreshModelCatalogGlobals());
     })
     .then(() => {
         if (typeof window.invalidateReadinessCache === 'function') {
@@ -886,4 +913,9 @@ function handleApiKeyDelete(button) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// Node test hook (same pattern as main_utils.js).
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { refreshModelCatalogGlobals };
 }
