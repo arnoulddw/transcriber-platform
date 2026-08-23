@@ -153,7 +153,6 @@ class Role:
     default_transcription_model: Optional[str]
     default_title_generation_model: Optional[str]
     default_workflow_model: Optional[str]
-    default_openrouter_model: Optional[str]
     default_live_transcription_model: Optional[str]
     # Transcription API Permissions (provider-level; legacy model fields remain for migration compatibility)
     use_api_openai: bool
@@ -203,7 +202,6 @@ class Role:
         self.default_transcription_model = kwargs.get('default_transcription_model') or None
         self.default_title_generation_model = kwargs.get('default_title_generation_model') or None
         self.default_workflow_model = kwargs.get('default_workflow_model') or None
-        self.default_openrouter_model = kwargs.get('default_openrouter_model') or None
         self.default_live_transcription_model = kwargs.get('default_live_transcription_model') or None
         # Legacy rows may not contain provider-level fields. Derive those
         # values only when the new columns are absent; once present they are
@@ -305,8 +303,6 @@ def _map_row_to_role(row: Dict[str, Any]) -> Optional[Role]:
             row['default_title_generation_model'] = None
         if 'default_workflow_model' not in row:
             row['default_workflow_model'] = None
-        if 'default_openrouter_model' not in row:
-            row['default_openrouter_model'] = None
         if 'default_live_transcription_model' not in row:
             row['default_live_transcription_model'] = None
         if 'allow_auto_title_generation' not in row:
@@ -333,7 +329,6 @@ def init_roles_table() -> None:
                 default_transcription_model VARCHAR(255) DEFAULT NULL,
                 default_title_generation_model VARCHAR(100) DEFAULT NULL,
                 default_workflow_model VARCHAR(100) DEFAULT NULL,
-                default_openrouter_model VARCHAR(120) DEFAULT NULL,
                 default_live_transcription_model VARCHAR(255) DEFAULT NULL,
                 use_api_openai BOOLEAN NOT NULL DEFAULT FALSE,
                 use_api_assemblyai BOOLEAN NOT NULL DEFAULT FALSE,
@@ -412,10 +407,8 @@ def init_roles_table() -> None:
                        "VARCHAR(100) DEFAULT NULL", after="default_transcription_model", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "default_workflow_model",
                        "VARCHAR(100) DEFAULT NULL", after="default_title_generation_model", log_prefix=log_prefix)
-        _ensure_column(cursor, "roles", None, "default_openrouter_model",
-                       "VARCHAR(120) DEFAULT NULL", after="default_workflow_model", log_prefix=log_prefix)
         _ensure_column(cursor, "roles", None, "default_live_transcription_model",
-                       "VARCHAR(255) DEFAULT NULL", after="default_openrouter_model", log_prefix=log_prefix)
+                       "VARCHAR(255) DEFAULT NULL", after="default_workflow_model", log_prefix=log_prefix)
         cursor.execute("SHOW COLUMNS FROM roles LIKE 'default_live_transcription_model'")
         live_model_column = cursor.fetchone()
         cursor.fetchall()
@@ -427,7 +420,7 @@ def init_roles_table() -> None:
         openai_permission_exists = _column_exists(cursor, "roles", "use_api_openai")
         _ensure_column(
             cursor, "roles", None, "use_api_openai",
-            "BOOLEAN NOT NULL DEFAULT FALSE", after="default_openrouter_model", log_prefix=log_prefix
+            "BOOLEAN NOT NULL DEFAULT FALSE", after="default_workflow_model", log_prefix=log_prefix
         )
         if not openai_permission_exists:
             cursor.execute(
@@ -530,7 +523,7 @@ def create_role(name: str, description: Optional[str] = None, permissions: Optio
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
-        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model', 'default_live_transcription_model',
+        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_live_transcription_model',
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',
@@ -788,7 +781,7 @@ def update_role(role_id: int, role_data: Dict[str, Any]) -> bool:
         'access_admin_panel', 'allow_large_files', 'allow_context_prompt',
         'allow_api_key_management', 'allow_public_api_access', 'allow_download_transcript',
         'allow_workflows', 'manage_workflow_templates', 'allow_auto_title_generation', 'allow_speaker_diarization',
-        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_openrouter_model', 'default_live_transcription_model',
+        'default_transcription_model', 'default_title_generation_model', 'default_workflow_model', 'default_live_transcription_model',
         'limit_daily_cost', 'limit_weekly_cost', 'limit_monthly_cost',
         'limit_daily_minutes', 'limit_weekly_minutes', 'limit_monthly_minutes',
         'limit_daily_workflows', 'limit_weekly_workflows', 'limit_monthly_workflows',

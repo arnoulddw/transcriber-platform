@@ -893,10 +893,7 @@ def resolve_effective_openrouter_model(
             if model_slug and model_slug.lower() != 'openrouter' and model_slug not in configured_slugs:
                 configured_slugs.append(model_slug)
 
-    for candidate in (
-        getattr(user, 'default_openrouter_model', None),
-        getattr(getattr(user, 'role', None), 'default_openrouter_model', None),
-    ):
+    for candidate in (getattr(user, 'default_openrouter_model', None),):
         normalized = str(candidate or '').strip()
         if normalized and normalized in configured_slugs:
             return normalized

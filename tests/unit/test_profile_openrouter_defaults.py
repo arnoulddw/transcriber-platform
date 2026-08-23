@@ -120,8 +120,9 @@ def _form_data(form_type, transcription_model="openai/gpt-transcribe", slug=" op
         "name": "test-role",
         "description": "A test role",
         "default_transcription_model": transcription_model,
-        "default_openrouter_model": slug,
     }
+    # Only the user profile form still carries the (legacy, optional)
+    # OpenRouter slug preference; the admin role form no longer has it.
     if form_type is UserProfileForm:
         data.update(
             {
@@ -129,30 +130,28 @@ def _form_data(form_type, transcription_model="openai/gpt-transcribe", slug=" op
                 "email": "test@example.com",
                 "default_content_language": "auto",
                 "language": "en",
+                "default_openrouter_model": slug,
             }
         )
     return data
 
 
-@pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
-def test_forms_normalize_valid_openrouter_slug(form_context, form_type):
-    form = form_type(data=_form_data(form_type))
+def test_user_profile_form_normalizes_valid_openrouter_slug(form_context):
+    form = UserProfileForm(data=_form_data(UserProfileForm))
 
     assert form.validate() is True
     assert form.default_openrouter_model.data == "openai/gpt-transcribe"
 
 
-@pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
-def test_forms_reject_invalid_openrouter_slug(form_context, form_type):
-    form = form_type(data=_form_data(form_type, slug="not-a-slug"))
+def test_user_profile_form_rejects_invalid_openrouter_slug(form_context):
+    form = UserProfileForm(data=_form_data(UserProfileForm, slug="not-a-slug"))
 
     assert form.validate() is False
     assert "default_openrouter_model" in form.errors
 
 
-@pytest.mark.parametrize("form_type", [UserProfileForm, AdminRoleForm])
-def test_forms_clear_slug_when_default_model_is_not_openrouter(form_context, form_type):
-    form = form_type(data=_form_data(form_type, transcription_model="gpt-4o-transcribe"))
+def test_user_profile_form_clears_slug_when_default_model_is_not_openrouter(form_context):
+    form = UserProfileForm(data=_form_data(UserProfileForm, transcription_model="gpt-4o-transcribe"))
 
     assert form.validate() is True
     assert form.default_openrouter_model.data is None
@@ -786,11 +785,9 @@ def test_admin_role_form_exposes_each_openrouter_slug_as_option(form_context):
         data={
             "name": "test-role",
             "default_transcription_model": "openrouter:qwen/qwen3-asr-1.7b",
-            "default_openrouter_model": "x-ai/grok-stt-1.0",
         }
     )
     assert submit.validate() is True
-    assert submit.default_openrouter_model.data == "x-ai/grok-stt-1.0"
 
 
 def test_admin_role_form_does_not_keep_current_openrouter_slug_without_a_key(form_context):
@@ -806,9 +803,8 @@ def test_admin_role_form_does_not_keep_current_openrouter_slug_without_a_key(for
             obj=SimpleNamespace(
                 name="legacy-role",
                 default_transcription_model="openrouter",
-                default_openrouter_model="legacy/slug-1",
             )
         )
 
     or_options = [m for m in form.transcription_model_options if m.get("code") == "openrouter"]
-    assert "legacy/slug-1" not in [m.get("model_name") for m in or_options]
+    assert or_options == []

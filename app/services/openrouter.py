@@ -19,8 +19,7 @@ def resolve_openrouter_model(
     api_choice: str,
     submitted: Optional[str],
     stored_default: Optional[str],
-    role_default: Optional[str] = None,
 ) -> Optional[str]:
     if api_choice != "openrouter":
         return None
-    return normalize_openrouter_model(submitted or stored_default or role_default)
+    return normalize_openrouter_model(submitted or stored_default)

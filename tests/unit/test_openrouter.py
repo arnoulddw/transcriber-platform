@@ -29,21 +29,6 @@ def test_resolve_openrouter_uses_stored_default_when_submitted_is_empty():
     assert resolve_openrouter_model("openrouter", "", "google/gemini-3.7-flash") == "google/gemini-3.7-flash"
 
 
-def test_resolve_openrouter_uses_role_default_when_user_default_is_empty():
-    assert resolve_openrouter_model(
-        "openrouter", "", None, "openai/gpt-transcribe"
-    ) == "openai/gpt-transcribe"
-
-
-def test_resolve_openrouter_prefers_user_default_over_role_default():
-    assert resolve_openrouter_model(
-        "openrouter",
-        None,
-        "openai/whisper-1",
-        "google/gemini-2.5-flash",
-    ) == "openai/whisper-1"
-
-
-def test_resolve_openrouter_requires_all_defaults_to_be_valid():
+def test_resolve_openrouter_requires_a_valid_slug():
     with pytest.raises(ValueError, match="OpenRouter model is required\\."):
-        resolve_openrouter_model("openrouter", None, None, None)
+        resolve_openrouter_model("openrouter", None, None)

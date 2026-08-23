@@ -491,10 +491,6 @@ class AdminRoleForm(FlaskForm):
         choices=[],
         validate_choice=False
     )
-    default_openrouter_model = StringField(
-        _('Default OpenRouter Model'),
-        validators=[Length(max=120)],
-    )
     default_title_generation_model = SelectField(
         _('Default Auxiliary LLM Model'),
         validators=[],
@@ -685,21 +681,6 @@ class AdminRoleForm(FlaskForm):
         else:
             import logging
             logging.error("[FORMS] Cannot validate role name uniqueness because get_role_by_name failed to import.")
-
-    def validate_default_openrouter_model(self, field):
-        if _selected_transcription_provider(self.default_transcription_model.data) != 'openrouter':
-            field.data = None
-            return
-
-        value = (field.data or '').strip()
-        if not value:
-            field.data = None
-            return
-
-        try:
-            field.data = normalize_openrouter_model(value)
-        except ValueError as err:
-            raise ValidationError(str(err)) from err
 
 
 class AdminTemplateWorkflowForm(FlaskForm):

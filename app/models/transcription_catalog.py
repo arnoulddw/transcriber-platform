@@ -859,18 +859,6 @@ def _normalize_persisted_model_references(cursor) -> None:
             )
             cursor.execute(
                 f"""
-                UPDATE {table_name}
-                SET default_transcription_model = CASE
-                    WHEN LOWER(default_openrouter_model) LIKE 'openrouter:%'
-                    THEN default_openrouter_model
-                    ELSE CONCAT('openrouter:', default_openrouter_model)
-                END
-                WHERE LOWER(COALESCE(default_transcription_model, '')) = 'openrouter'
-                  AND NULLIF(TRIM(COALESCE(default_openrouter_model, '')), '') IS NOT NULL
-                """
-            )
-            cursor.execute(
-                f"""
                 UPDATE {table_name} AS target
                 INNER JOIN {MODELS_TABLE} AS model
                     ON model.code = target.default_transcription_model
