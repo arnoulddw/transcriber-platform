@@ -562,8 +562,11 @@ function renderProviderKeyRows(service, keys) {
         const label = document.createElement('span');
         label.className = 'text-sm text-text-strong';
         label.textContent = providerLabels[service] || service;
+        // Reserve the same trailing space as configured rows (their status
+        // margin plus delete-button width) so 'Not Configured' aligns
+        // with 'Configured'.
         const status = document.createElement('span');
-        status.className = 'text-sm text-orange-500';
+        status.className = 'text-sm text-orange-500 pr-10';
         status.textContent = 'Not Configured';
         row.append(label, status);
         container.appendChild(row);
@@ -668,55 +671,6 @@ function fetchApiKeyStatus() {
         }
         throw error;
     });
-}
-
-
-/**
- * Updates the display (text, color, actions) for a single API key's status in the modal.
- * @param {HTMLElement} statusElement - The span element for status text (e.g., #openaiKeyStatus).
- * @param {HTMLElement} actionsElement - The span element for action buttons (e.g., #openaiKeyActions).
- * @param {boolean|null} isSet - Whether the key is configured (true/false) or status is unknown (null).
- * @param {string} serviceName - The name of the service ('openai', 'assemblyai', 'gemini').
- * @param {string|null} [overrideText=null] - Optional text to display instead of default status (e.g., 'Checking...', 'Error').
- */
-function updateStatusElement(statusElement, actionsElement, isSet, serviceName, overrideText = null) {
-    if (!statusElement || !actionsElement) {
-        window.logger.warn(userSettingsLogPrefix, `Attempted to update non-existent status elements for service: ${serviceName}`);
-        return;
-    }
-
-    actionsElement.innerHTML = ''; // Clear previous buttons
-
-    let statusText = '';
-    let statusTextColorClass = 'text-gray-500'; // Default Tailwind color
-
-    if (overrideText) {
-        statusText = overrideText;
-        if (overrideText.toLowerCase() === 'error') {
-            statusTextColorClass = 'text-red-600';
-        } else if (overrideText.toLowerCase() === 'checking...') {
-            statusTextColorClass = 'text-gray-500 italic';
-        }
-    } else if (isSet === true) {
-        statusText = 'Configured';
-        statusTextColorClass = 'text-green-600';
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.className = 'delete-key-btn p-1.5 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500';
-        deleteBtn.dataset.service = serviceName;
-        deleteBtn.setAttribute('aria-label', `Delete ${serviceName} key`);
-        deleteBtn.innerHTML = '<i class="material-icons text-base">delete</i>'; // Using text-base for smaller icon
-        actionsElement.appendChild(deleteBtn);
-    } else if (isSet === false) {
-        statusText = 'Not Configured';
-        statusTextColorClass = 'text-orange-500';
-    } else {
-         statusText = 'Unknown';
-         statusTextColorClass = 'text-gray-500';
-    }
-
-    statusElement.textContent = statusText;
-    statusElement.className = `text-sm mr-3 ${statusTextColorClass}`; // Apply Tailwind classes
 }
 
 /**
