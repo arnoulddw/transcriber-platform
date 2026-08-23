@@ -26,20 +26,6 @@ except ImportError:
     get_role_by_name = None
 
 
-def _selected_transcription_provider(model_code):
-    """Resolve the provider for a selected model without guessing from labels."""
-    code = str(model_code or '').strip()
-    if not code:
-        return None
-    try:
-        model = transcription_catalog_model.get_model_by_code(code) or {}
-    except Exception:
-        model = {}
-    provider = model.get('provider_code') or model.get('required_api_key')
-    if provider:
-        return str(provider).strip().lower()
-    return 'openrouter' if '/' in code else None
-
 # --- RegistrationForm, LoginForm, ForgotPasswordForm, ResetPasswordForm remain unchanged ---
 class RegistrationForm(FlaskForm):
     username = StringField(
