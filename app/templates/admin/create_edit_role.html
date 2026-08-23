@@ -244,23 +244,4 @@
 
 {% block scripts %}
     {{ super() }}
-    <script nonce="{{ csp_nonce }}">
-    (function () {
-        'use strict';
-        // Each OpenRouter transcription model is a separate option; keep the
-        // hidden slug field in sync with the selected option so the role's
-        // default OpenRouter model round-trips through the form.
-        const select = document.getElementById('{{ form.default_transcription_model.id }}');
-        const slugInput = document.getElementById('roleDefaultOpenrouterModel');
-        if (!select || !slugInput) return;
-        function syncOpenRouterSlug() {
-            const option = select.selectedOptions && select.selectedOptions[0];
-            slugInput.value = option && option.dataset.provider === 'openrouter'
-                ? (option.dataset.modelName || '')
-                : '';
-        }
-        select.addEventListener('change', syncOpenRouterSlug);
-        syncOpenRouterSlug();
-    })();
-    </script>
 {% endblock %}
