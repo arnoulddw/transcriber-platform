@@ -347,9 +347,11 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "model_slug" in profile_script
     assert "initial_key_status.get('openrouter_keys', [])" not in index_template
     assert "model.model_slug" in index_template
+    # The home-page hidden slug input is gone too: every option is a concrete
+    # model key, so the form never submits a provider-shaped bare 'openrouter'.
+    assert "openrouterModelInput" not in index_template
     assert "TRANSCRIPTION_MODEL_CATALOG=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
     assert "transcription_models=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
-    assert 'type="hidden" id="openrouterModelInput"' in index_template
 
 
 def test_live_openrouter_configuration_is_documented_and_detected():
@@ -362,7 +364,7 @@ def test_live_openrouter_configuration_is_documented_and_detected():
     assert "replace('/', '_')" in config_source
     assert "LIVE_TRANSCRIPTION_PROVIDER_OPENAI_GPT_TRANSCRIBE=openrouter" in env_example
     assert '"transport": "openrouter-sse"' in live_service
-    assert "updateSelectedOpenRouterModel" in main_init
+    assert "updateSelectedOpenRouterModel" not in main_init
     assert "openrouterModelField" not in main_init
     assert "const apiKeyStatus = window.API_KEY_STATUS || {};" in profile_script
     assert "opt.disabled = true;" in profile_script

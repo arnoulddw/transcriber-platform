@@ -198,12 +198,6 @@ async function fetchReadinessData() {
 }
 window.fetchReadinessData = fetchReadinessData;
 
-function updateSelectedOpenRouterModel(selectedOption) {
-    const input = document.getElementById('openrouterModelInput');
-    if (!input) return;
-    input.value = selectedOption?.dataset.modelName || selectedOption?.dataset.openrouterModel || '';
-}
-
 async function checkTranscribeButtonState() {
     const apiSelect = document.getElementById('apiSelect');
     const fileInput = document.getElementById('audioFile');
@@ -268,7 +262,6 @@ async function checkTranscribeButtonState() {
     const selectedProvider = selectedApiOption?.dataset.provider || selectedApiValue;
     const apiKeyRequired = selectedApiOption ? selectedApiOption.dataset.keyRequired : null;
     const isFileSelected = fileInput.files.length > 0;
-    updateSelectedOpenRouterModel(selectedApiOption);
     updateSpeakerDiarizationVisibility(selectedProvider, permissions);
 
     if (toggleContextPromptBtn) {
@@ -587,10 +580,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (apiSelect) {
         updateModelDescription(apiSelect);
-        updateSelectedOpenRouterModel(apiSelect.selectedOptions[0]);
         apiSelect.addEventListener('change', function() {
             updateModelDescription(apiSelect);
-            updateSelectedOpenRouterModel(apiSelect.selectedOptions[0]);
             checkTranscribeButtonState();
         });
     }
