@@ -93,24 +93,6 @@ function closeProfileModalDialog() {
     window.logger.info(profileLogPrefix, "Profile modal closed.");
 }
 
-function updateProfileOpenrouterField() {
-    const modelSelect = document.getElementById('profileDefaultModel');
-    const field = document.getElementById('profileOpenrouterModelField');
-    const input = document.getElementById('profileDefaultOpenrouterModel');
-    if (!modelSelect || !field || !input) return;
-
-    const selectedOption = modelSelect.selectedOptions[0];
-    const enabled = selectedOption?.dataset.provider === 'openrouter';
-    field.classList.toggle('hidden', !enabled);
-    input.disabled = !enabled;
-    if (enabled) {
-        const selectedModel = selectedOption?.dataset.modelName
-            || selectedOption?.dataset.openrouterModel
-            || selectedOption?.value;
-        if (selectedModel) input.value = selectedModel;
-    }
-}
-
 function populateProfileLlmModelSelect(select) {
     if (!select) return;
     while (select.options.length > 0) select.remove(0);
@@ -200,12 +182,6 @@ document.addEventListener('DOMContentLoaded', function() {
         window.logger.warn(profileLogPrefix, "User settings form element (#profileForm) not found.");
     }
 
-    const profileDefaultModel = document.getElementById('profileDefaultModel');
-    if (profileDefaultModel) {
-        profileDefaultModel.addEventListener('change', updateProfileOpenrouterField);
-        updateProfileOpenrouterField();
-    }
-
     const changePasswordToggleBtn = document.getElementById('changePasswordToggleBtn');
     const changePasswordSection = document.getElementById('changePasswordSection');
     const passwordToggleIconDisplay = document.getElementById('passwordToggleIconDisplay');
@@ -239,11 +215,10 @@ async function loadProfileData() {
     const workflowModelSelect = document.getElementById('profileDefaultWorkflowModel');
     const auxiliaryModelSelect = document.getElementById('profileDefaultAuxiliaryModel');
     const liveModelSelect = document.getElementById('profileDefaultLiveModel');
-    const openrouterModelInput = document.getElementById('profileDefaultOpenrouterModel');
     const autoTitleCheckbox = document.getElementById('enable_auto_title_generation');
     const uiLangSelect = document.getElementById('profileLanguage');
 
-    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !workflowModelSelect || !auxiliaryModelSelect || !liveModelSelect || !openrouterModelInput || !autoTitleCheckbox || !uiLangSelect) {
+    if (!usernameInput || !emailInput || !firstNameInput || !lastNameInput || !langSelect || !modelSelect || !workflowModelSelect || !auxiliaryModelSelect || !liveModelSelect || !autoTitleCheckbox || !uiLangSelect) {
         window.logger.error(profileLogPrefix, "One or more profile form elements not found.");
         window.showNotification('Error loading profile form.', 'error', 4000, false);
         return;
@@ -258,8 +233,6 @@ async function loadProfileData() {
     workflowModelSelect.value = '';
     auxiliaryModelSelect.value = '';
     liveModelSelect.value = '';
-    openrouterModelInput.value = '';
-    updateProfileOpenrouterField();
     uiLangSelect.value = '';
     autoTitleCheckbox.checked = false;
     clearProfileErrors();
@@ -332,7 +305,6 @@ async function loadProfileData() {
         lastNameInput.value = data.last_name || '';
         langSelect.value = data.default_content_language || '';
         const storedModel = data.default_transcription_model || '';
-        const effectiveOpenrouterModel = data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL || '';
         const matchedModelOption = Array.from(modelSelect.options).find(
             option => option.value === storedModel
         );
@@ -341,9 +313,6 @@ async function loadProfileData() {
         workflowModelSelect.value = data.default_workflow_model || '';
         auxiliaryModelSelect.value = data.default_title_generation_model || '';
         liveModelSelect.value = data.default_live_transcription_model || '';
-        const selectedOpenrouterOption = modelSelect.selectedOptions[0];
-        openrouterModelInput.value = selectedOpenrouterOption?.dataset.modelName || selectedOpenrouterOption?.dataset.openrouterModel || effectiveOpenrouterModel;
-        updateProfileOpenrouterField();
         uiLangSelect.value = data.language || window.CURRENT_UI_LANGUAGE || 'en';
         autoTitleCheckbox.checked = data.enable_auto_title_generation === true;
 
@@ -502,7 +471,6 @@ function displayProfileErrors(errors) {
     for (const field in errors) {
         const errorMsg = Array.isArray(errors[field]) ? errors[field][0] : errors[field];
         const fieldMappings = {
-            default_openrouter_model: ['profileDefaultOpenrouterModelError', 'profileDefaultOpenrouterModel'],
             default_workflow_model: ['profileDefaultWorkflowModelError', 'profileDefaultWorkflowModel'],
             default_title_generation_model: ['profileDefaultAuxiliaryModelError', 'profileDefaultAuxiliaryModel'],
         };

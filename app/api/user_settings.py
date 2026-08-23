@@ -441,6 +441,9 @@ def update_profile():
                 'default_title_generation_model',
                 'default_workflow_model',
                 'default_live_transcription_model',
+                # The User Settings modal no longer submits this preference;
+                # omitted values must not clear what is stored for the user.
+                'default_openrouter_model',
             ):
                 if preference_field not in (form_data or {}):
                     validated_profile_data.pop(preference_field, None)

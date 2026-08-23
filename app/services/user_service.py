@@ -27,6 +27,10 @@ from app.services.openrouter import normalize_openrouter_model
 # Import security service for encryption/decryption
 from .security_service import get_security_service, SecurityService
 
+# Sentinel for "this profile submission did not include the OpenRouter slug
+# preference"; distinct from None, which means "clear the stored value".
+_OPENROUTER_MODEL_UNSET = object()
+
 # Import MySQL error class for potential specific checks if needed
 from mysql.connector import Error as MySQLError
 
@@ -1140,15 +1144,22 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
     if default_model and not selected_provider:
         provider_hint, _ = transcription_catalog_model.split_model_reference(default_model)
         selected_provider = provider_hint or ('openrouter' if '/' in default_model else None)
-    if selected_provider == 'openrouter':
-        raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
-        default_openrouter_model = normalize_openrouter_model(raw_openrouter_model) if raw_openrouter_model else None
-    else:
-        default_openrouter_model = None
+    # The User Settings modal no longer submits an OpenRouter slug. Only a
+    # caller that explicitly sends the field may change (or clear) it; an
+    # omitted value preserves what is stored for the user.
+    openrouter_model_present = 'default_openrouter_model' in data
+    default_openrouter_model = _OPENROUTER_MODEL_UNSET
+    if openrouter_model_present:
+        if selected_provider == 'openrouter':
+            raw_openrouter_model = str(default_openrouter_model_raw or '').strip()
+            default_openrouter_model = normalize_openrouter_model(raw_openrouter_model) if raw_openrouter_model else None
+        else:
+            default_openrouter_model = None
     logger.debug(
         f"Processed preferences - Lang: {default_language}, Model: {default_model}, "
         f"AuxiliaryModel: {default_title_generation_model}, WorkflowModel: {default_workflow_model}, "
-        f"OpenRouterModel: {default_openrouter_model}, AutoTitle: {enable_auto_title}, UI Lang: {language}"
+        f"OpenRouterModel: {'(not submitted)' if not openrouter_model_present else default_openrouter_model}, "
+        f"AutoTitle: {enable_auto_title}, UI Lang: {language}"
     )
 
 
@@ -1188,7 +1199,10 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
         prefs_changed = (
             default_language != current_user_obj.default_content_language or
             default_model != current_user_obj.default_transcription_model or
-            default_openrouter_model != getattr(current_user_obj, 'default_openrouter_model', None) or
+            (
+                openrouter_model_present
+                and default_openrouter_model != getattr(current_user_obj, 'default_openrouter_model', None)
+            ) or
             enable_auto_title != current_user_obj.enable_auto_title_generation or
             language != current_user_obj.language or
             (
@@ -1230,13 +1244,14 @@ def update_profile(user_id: int, data: Dict[str, Any]) -> None:
                 preference_kwargs['default_workflow_model'] = default_workflow_model
             if live_model_present:
                 preference_kwargs['default_live_transcription_model'] = default_live_transcription_model
+            if openrouter_model_present:
+                preference_kwargs['default_openrouter_model'] = default_openrouter_model
             if user_model.update_user_preferences(
                 user_id,
                 default_language,
                 default_model,
                 enable_auto_title,
                 language,
-                default_openrouter_model,
                 **preference_kwargs,
             ):
                 prefs_update_performed = True

@@ -368,7 +368,10 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "assemblyai,openai,openrouter" in config
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
     assert "window.DEFAULT_OPENROUTER_MODEL" in bootstrap_template
-    assert "data.default_openrouter_model || window.DEFAULT_OPENROUTER_MODEL" in profile_script
+    # The User Settings modal no longer submits or displays an OpenRouter
+    # slug preference; the home-page selector keeps its hidden slug input.
+    assert "DEFAULT_OPENROUTER_MODEL" not in profile_script
+    assert "default_openrouter_model" not in profile_script
     assert "model_slug" in profile_script
     assert "initial_key_status.get('openrouter_keys', [])" not in index_template
     assert "model.model_slug" in index_template
@@ -618,7 +621,8 @@ def test_service_normalizes_and_passes_openrouter_default():
         )
 
     update_preferences.assert_called_once_with(
-        7, "auto", "openai/gpt-transcribe", False, "en", "openai/gpt-transcribe"
+        7, "auto", "openai/gpt-transcribe", False, "en",
+        default_openrouter_model="openai/gpt-transcribe"
     )
 
 
@@ -654,7 +658,47 @@ def test_service_clears_stale_openrouter_default_for_non_openrouter_model():
             },
         )
 
-    update_preferences.assert_called_once_with(7, "auto", "gpt-4o-transcribe", False, "en", None)
+    update_preferences.assert_called_once_with(
+        7, "auto", "gpt-4o-transcribe", False, "en", default_openrouter_model=None
+    )
+
+
+def test_service_omitted_openrouter_model_preserves_stored_value():
+    """The modal no longer sends default_openrouter_model; a save must not
+    clear a slug that was stored earlier."""
+    current_user = SimpleNamespace(
+        username="testuser",
+        email="test@example.com",
+        first_name=None,
+        last_name=None,
+        default_content_language="auto",
+        default_transcription_model="gpt-4o-transcribe",
+        default_openrouter_model="kept/model",
+        enable_auto_title_generation=False,
+        language="en",
+    )
+    update_preferences = Mock(return_value=True)
+
+    with patch.object(user_service.user_model, "get_user_by_id", return_value=current_user), patch.object(
+        user_service.user_model, "update_user_preferences", update_preferences
+    ):
+        user_service.update_profile(
+            7,
+            {
+                "username": "testuser",
+                "email": "test@example.com",
+                "first_name": None,
+                "last_name": None,
+                "default_content_language": "auto",
+                # A real change so the save reaches the preferences update.
+                "default_transcription_model": "openai:gpt-transcribe",
+                "enable_auto_title_generation": False,
+                "language": "en",
+            },
+        )
+
+    called_kwargs = update_preferences.call_args.kwargs
+    assert "default_openrouter_model" not in called_kwargs
 
 
 def test_service_passes_new_llm_model_preferences():
@@ -699,7 +743,7 @@ def test_service_passes_new_llm_model_preferences():
         "gpt-4o-transcribe",
         False,
         "en",
-        None,
+        default_openrouter_model=None,
         default_title_generation_model="gemma-4-26b-a4b-it",
         default_workflow_model="google/gemini-3.7-flash",
     )
