@@ -78,7 +78,7 @@ function addTranscriptionToHistory(transcription, canDownload, canRunWorkflow, p
     }
 
 
-    const apiName = formatApiLabel(transcription.api_used, transcription.api_model);
+    const apiName = formatApiLabel(transcription.api_used);
     const detectedLanguage = typeof transcription.detected_language === 'string'
         ? transcription.detected_language.trim()
         : '';

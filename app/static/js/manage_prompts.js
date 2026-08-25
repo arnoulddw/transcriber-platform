@@ -270,11 +270,11 @@ function populateColorPicker(containerId, hiddenInputId) {
 
     pastelColors.forEach(color => {
         const option = document.createElement('div');
-        // Tailwind classes for styling the color swatch
-        option.className = 'flex-shrink-0 w-6 h-6 rounded-full cursor-pointer border-2 border-transparent transition-all duration-200 ease-in-out';
-        if (color === "#ffffff") { // Special border for white swatch to make it visible
-            option.classList.add('border-gray-300');
-        }
+        // Tailwind classes for styling the color swatch.
+        // Base border is always visible: a border-transparent base loses the
+        // cascade against .border-*color* rules in the compiled CSS (they come
+        // earlier), which made the white swatch invisible on the card.
+        option.className = 'flex-shrink-0 w-6 h-6 rounded-full cursor-pointer border-2 border-gray-300 transition-all duration-200 ease-in-out';
         option.dataset.color = color;
         option.style.backgroundColor = color;
         option.setAttribute('title', colorNameMap[color] || color); // Tooltip with color name
@@ -285,13 +285,9 @@ function populateColorPicker(containerId, hiddenInputId) {
             // Update visual selection state for all swatches
             container.querySelectorAll('div[data-color]').forEach(el => {
                 el.classList.remove('ring-2', 'ring-offset-1', 'ring-primary', 'border-gray-700');
-                if (el.dataset.color === "#ffffff") {
-                    el.classList.add('border-gray-300'); // Reset white swatch border
-                }
             });
             this.classList.add('ring-2', 'ring-offset-1', 'ring-primary');
-            if (this.dataset.color === "#ffffff") { // Special selected border for white
-                this.classList.remove('border-gray-300');
+            if (selectedColor === "#ffffff") { // Darker border keeps white visible inside its own ring
                 this.classList.add('border-gray-700');
             }
         });
@@ -304,7 +300,6 @@ function populateColorPicker(containerId, hiddenInputId) {
     if (initialOption) {
         initialOption.classList.add('ring-2', 'ring-offset-1', 'ring-primary');
         if (initialColor === "#ffffff") {
-            initialOption.classList.remove('border-gray-300');
             initialOption.classList.add('border-gray-700');
         }
     } else { // Fallback if initialColor in hidden input is invalid
@@ -388,6 +383,8 @@ function addPromptToList(prompt, prepend = false) {
     listItem.dataset.promptId = prompt.id;
     const bgColor = prompt.color || '#ffffff';
     listItem.dataset.promptColor = bgColor;
+    // Prompt text lives here now: its gray display box was removed from the card.
+    listItem.dataset.promptText = prompt.prompt_text || '';
 
     const textColor = getTextColorForBackground(bgColor);
 
@@ -422,7 +419,6 @@ function addPromptToList(prompt, prepend = false) {
                 </div>
                 ${templateIconHtml}
             </div>
-            <div class="prompt-text-display mt-1 text-sm text-gray-800 bg-gray-50 p-2 rounded-md max-h-24 overflow-y-auto whitespace-pre-wrap break-words">${escapeHtml(prompt.prompt_text.trim())}</div>
         </div>
         ${actionButtonsHtml}
     `;
@@ -487,10 +483,11 @@ async function handleAddPrompt(event) {
         if (colorOptionsContainer) {
             colorOptionsContainer.querySelectorAll('div[data-color]').forEach(el => {
                 el.classList.remove('ring-2', 'ring-offset-1', 'ring-primary', 'border-gray-700');
-                if (el.dataset.color === "#ffffff") {
-                     el.classList.add('border-gray-300', 'ring-2', 'ring-offset-1', 'ring-primary', 'border-gray-700');
-                }
             });
+            const defaultWhiteOption = colorOptionsContainer.querySelector('div[data-color="#ffffff"]');
+            if (defaultWhiteOption) {
+                defaultWhiteOption.classList.add('ring-2', 'ring-offset-1', 'ring-primary', 'border-gray-700');
+            }
             colorInput.value = '#ffffff';
         }
     } catch (error) {
@@ -517,7 +514,7 @@ function openEditPromptModal(promptId) {
 
     const titlePill = promptItem.querySelector('.prompt-label-pill');
     const title = titlePill ? titlePill.textContent.trim() : 'Unknown Title';
-    const text = promptItem.querySelector('.prompt-text-display').textContent.trim();
+    const text = (promptItem.dataset.promptText || '').trim();
     const color = promptItem.dataset.promptColor || '#ffffff';
 
     const idInput = document.getElementById('editPromptId');
@@ -538,13 +535,11 @@ function openEditPromptModal(promptId) {
 
     colorOptionsContainer.querySelectorAll('div[data-color]').forEach(el => {
         el.classList.remove('ring-2', 'ring-offset-1', 'ring-primary', 'border-gray-700');
-        if (el.dataset.color === "#ffffff") el.classList.add('border-gray-300');
     });
     const selectedOption = colorOptionsContainer.querySelector(`div[data-color="${color}"]`);
     if (selectedOption) {
         selectedOption.classList.add('ring-2', 'ring-offset-1', 'ring-primary');
         if (color === "#ffffff") {
-            selectedOption.classList.remove('border-gray-300');
             selectedOption.classList.add('border-gray-700');
         }
     } else {

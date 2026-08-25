@@ -94,10 +94,10 @@
 
             templatePastelColors.forEach(color => {
                 const option = document.createElement('div');
-                option.className = 'w-6 h-6 rounded-full cursor-pointer border-2 border-transparent transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-primary';
-                if (color === "#ffffff") {
-                    option.classList.add('border-border-default');
-                }
+                // Base border is always visible: a border-transparent base loses
+                // the cascade against .border-*color* rules in the compiled CSS
+                // (they come earlier), which made the white swatch invisible.
+                option.className = 'w-6 h-6 rounded-full cursor-pointer border-2 border-border-default transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-primary';
                 option.dataset.color = color;
                 option.style.backgroundColor = color;
                 option.setAttribute('title', templateColorNameMap[color] || color);
@@ -137,15 +137,11 @@
             colorContainer.querySelectorAll('div[data-color]').forEach(el => {
                 el.classList.remove('ring-2', 'ring-offset-1', 'ring-primary', 'border-gray-700');
                 el.setAttribute('aria-checked', 'false');
-                if (el.dataset.color === "#ffffff") {
-                    el.classList.add('border-border-default');
-                }
             });
 
             selectedOption.classList.add('ring-2', 'ring-offset-1', 'ring-primary');
             selectedOption.setAttribute('aria-checked', 'true');
-            if (selectedColor === "#ffffff") {
-                selectedOption.classList.remove('border-border-default');
+            if (selectedColor === "#ffffff") { // Darker border keeps white visible inside its own ring
                 selectedOption.classList.add('border-gray-700');
             }
         }

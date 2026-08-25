@@ -226,7 +226,7 @@
                                                 {% endif %}
                                                 {% set duration_minutes = transcription.audio_length_minutes %}
                                                 {% set formatted_duration = (duration_minutes | round(method='ceil') | int ~ ' min') if duration_minutes is not none else 'N/A' %}
-                                                {% if transcription.api_model %}{{ api_name }} · {{ transcription.api_model }}{% else %}{{ api_name }}{% endif %}{% if language_available %} | {{ lang_name | e }}{% endif %} | {{ formatted_duration | e }} | <time datetime="{{ transcription.created_at | datetime_tz }}">{{ transcription.created_at | datetime_tz }}</time>
+                                                {{ api_name }}{% if language_available %} | {{ lang_name | e }}{% endif %} | {{ formatted_duration | e }} | <time datetime="{{ transcription.created_at | datetime_tz }}">{{ transcription.created_at | datetime_tz }}</time>
                                                 {% if transcription.status == 'error' %}<span class="text-red-600"> {{ _('(Failed)') }}</span>{% endif %}
                                             </p>
                                         </div>
