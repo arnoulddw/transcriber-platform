@@ -28,6 +28,7 @@ def live_permission_required(view):
             check_permission(current_user, "use_api_openai")
             or check_permission(current_user, "use_api_openai_live_transcribe")
             or check_permission(current_user, "use_api_openrouter")
+            or check_permission(current_user, "use_api_google_gemini")
         ):
             return jsonify({"error": _("You do not have access to Live transcription.")}), 403
         return view(*args, **kwargs)
