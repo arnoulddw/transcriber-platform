@@ -324,10 +324,8 @@
             noSpeech: root.dataset.i18nNoSpeech,
             copyError: root.dataset.i18nCopyError,
             requestFailed: root.dataset.i18nRequestFailed,
-            geminiReconnecting: root.dataset.i18nGeminiReconnecting
-                || 'Connection dropped - resuming transcription…',
-            geminiDisconnected: root.dataset.i18nGeminiDisconnected
-                || 'Live transcription disconnected - transcript saved.',
+            geminiReconnecting: root.dataset.i18nGeminiReconnecting,
+            geminiDisconnected: root.dataset.i18nGeminiDisconnected,
         };
 
         const reducer = new LiveTranscriptReducer();
@@ -692,6 +690,7 @@
                 const refreshed = await postJson('/api/live/session/refresh', {
                     session_token: sessionToken,
                 });
+                if (stopping || !geminiState || !sessionToken) return;
                 connectGeminiSocket(refreshed.ws_url, refreshed.ephemeral_token);
             } catch (error) {
                 setError(error.message || labels.geminiDisconnected);
@@ -701,6 +700,12 @@
 
         function connectGeminiSocket(wsUrl, ephemeralToken) {
             const socket = new WebSocket(`${wsUrl}?key=${encodeURIComponent(ephemeralToken)}`);
+            if (stopping || !geminiState) {
+                try {
+                    socket.close();
+                } catch (_) {}
+                return;
+            }
             geminiState.ws = socket;
             socket.onopen = () => {
                 geminiState.consecutiveFailures = 0;
