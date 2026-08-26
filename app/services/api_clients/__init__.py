@@ -15,6 +15,7 @@ from .llm.base_llm_client import BaseLLMClient
 # Import Specific Client Implementations
 from .transcription.assemblyai import AssemblyAITranscriptionAPI
 from .transcription.openai_model_client import OpenAIModelTranscriptionClient
+from .transcription.gemini import GeminiTranscriptionClient
 from .transcription.openrouter import OpenRouterTranscriptionClient
 from .llm.gemini_client import GeminiClient
 from .llm.openai_client import OpenAIClient
@@ -50,7 +51,12 @@ def _resolve_transcription_model_reference(model_reference: str):
     try:
         from app.models import transcription_catalog as catalog_model
         provider_hint, reference_local_code = catalog_model.split_model_reference(reference)
-        row = catalog_model.get_model_by_code(reference)
+        try:
+            row = catalog_model.get_model_by_code(reference)
+        except Exception:
+            # No DB context (e.g. unit tests): the pure string split above
+            # still resolves known provider prefixes.
+            row = None
         if row:
             provider = str(
                 row.get("provider_code")
@@ -122,6 +128,8 @@ def get_transcription_client(provider_name: str, api_key: str, config: Dict[str,
             return OpenAIModelTranscriptionClient(local_model_code or provider_name, api_key, config)
         if provider == "assemblyai":
             return AssemblyAITranscriptionAPI(api_key, config, model_code=local_model_code or "universal")
+        if provider == "gemini":
+            return GeminiTranscriptionClient(api_key, config, model_code=local_model_code or "gemini-3.5-transcribe")
         if provider == "openrouter":
             return OpenRouterTranscriptionClient(api_key, config, model_code=local_model_code or "")
         logging.error(f"[API Factory] Unsupported transcription provider requested: {provider_name}")
