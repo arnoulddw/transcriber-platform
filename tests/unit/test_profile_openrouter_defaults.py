@@ -7,6 +7,7 @@ import pytest
 from flask import Flask
 
 from app.forms import AdminRoleForm, UserProfileForm
+from app.config import Config
 from app.models import llm_catalog
 from app.models import transcription_catalog
 from app.models.user.model import _map_row_to_user
@@ -337,7 +338,15 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     main_init = open("app/static/js/main_init.js", encoding="utf-8").read()
 
     assert "assemblyai,openai,gemini,openrouter" in config
-    assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
+    # The compose default must mirror Config.TRANSCRIPTION_PROVIDERS exactly.
+    assert (
+        "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-"
+        + ",".join(Config.TRANSCRIPTION_PROVIDERS)
+        + "}"
+    ) in compose
+    assert f"TRANSCRIPTION_PROVIDERS={','.join(Config.TRANSCRIPTION_PROVIDERS)}" in open(
+        ".env.example", encoding="utf-8"
+    ).read()
     # No OpenRouter slug preference survives anywhere: not the window global,
     # not a modal field, and the home-page hidden input no longer carries a
     # server-rendered default.
