@@ -11,7 +11,31 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.forms import ApiKeyForm
 from app.services import user_service
+
+
+def _form_app():
+    from flask import Flask
+
+    app = Flask(__name__)
+    app.config.update(SECRET_KEY="test-secret", WTF_CSRF_ENABLED=False)
+    return app
+
+
+def _validate_form(service, model_name, model_purpose="transcription"):
+    with _form_app().test_request_context("/"):
+        form = ApiKeyForm(
+            meta={"csrf": False},
+            data={
+                "service": service,
+                "api_key": "arbitrary-key-shape",
+                "model_name": model_name,
+                "model_purpose": model_purpose,
+            },
+        )
+        valid = form.validate()
+    return valid, form.errors.get("model_name")
 
 
 def _save_key(provider, api_key, model_name):
@@ -90,3 +114,40 @@ def test_empty_gemini_key_is_still_rejected():
     # format consideration could apply.
     with pytest.raises(ValueError, match="cannot be empty"):
         _save_key("gemini", "   ", "gemini-3.0-flash")
+
+
+@pytest.mark.parametrize("model_purpose", ["transcription", "live"])
+def test_gemini_requires_model_name_for_transcription_and_live(model_purpose):
+    valid, errors = _validate_form("gemini", "", model_purpose)
+
+    assert valid is False
+    assert errors == ["Google model name is required."]
+
+
+def test_gemini_allows_empty_model_name_for_llm_purpose():
+    valid, errors = _validate_form("gemini", "", "llm")
+
+    assert valid is True
+    assert errors is None
+
+
+@pytest.mark.parametrize(
+    ("model_name", "expect_valid"),
+    [
+        ("gemini-3.5-transcribe", True),
+        ("has space", False),
+        ("contains/slash", False),
+    ],
+)
+def test_gemini_model_name_shape_rules(model_name, expect_valid):
+    valid, _ = _validate_form("gemini", model_name, "transcription")
+
+    assert valid is expect_valid
+
+
+@pytest.mark.parametrize("service", ["openai", "assemblyai"])
+def test_other_providers_still_allow_empty_model_name(service):
+    valid, errors = _validate_form(service, "", "transcription")
+
+    assert valid is True
+    assert errors is None
