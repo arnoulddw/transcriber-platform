@@ -81,3 +81,27 @@ class TestConfig:
     MAIL_DEFAULT_SENDER = 'test@example.com'
     GOOGLE_CLIENT_ID = None
     SERVER_NAME = 'localhost'
+
+
+def test_gemini_provider_registered():
+    """The base app Config registers 'gemini' as a transcription provider."""
+    from app.config import Config
+
+    assert 'gemini' in Config.TRANSCRIPTION_PROVIDERS
+
+
+def test_default_transcription_provider_validates_against_list():
+    """Default provider 'openai' stays valid against the provider list."""
+    from app.config import Config
+
+    assert Config.DEFAULT_TRANSCRIPTION_PROVIDER == 'openai'
+    assert Config.DEFAULT_TRANSCRIPTION_PROVIDER in Config.TRANSCRIPTION_PROVIDERS
+
+
+def test_gemini_api_limit_registered():
+    """The gemini transcribe model has duration and size limit entries."""
+    from app.config import Config
+
+    limits = Config.API_LIMITS['gemini-3.5-transcribe']
+    assert limits['duration_s'] == 3300
+    assert 'size_mb' in limits

@@ -82,7 +82,7 @@ class Config:
     # providers (models are registered when API keys are saved).
     TRANSCRIPTION_PROVIDERS = os.environ.get(
         'TRANSCRIPTION_PROVIDERS',
-        "assemblyai,openai,openrouter",
+        "assemblyai,openai,gemini,openrouter",
     ).split(',')
     LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
     # Default providers
@@ -255,6 +255,15 @@ class Config:
         'openrouter': {
             'duration_s': None,
             'size_mb': 25,
+            'rate_limit_rpm': None,
+        },
+        'gemini-3.5-transcribe': {
+            # Unary transcription requests accept up to 1 hour of audio; split
+            # earlier so borderline files chunk automatically. The stricter
+            # 30-minute rule only applies when word timestamps/diarization are
+            # requested, which this client never does.
+            'duration_s': 3300,
+            'size_mb': None,
             'rate_limit_rpm': None,
         }
     }
