@@ -336,7 +336,7 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     profile_script = open("app/static/js/profile.js", encoding="utf-8").read()
     main_init = open("app/static/js/main_init.js", encoding="utf-8").read()
 
-    assert "assemblyai,openai,openrouter" in config
+    assert "assemblyai,openai,gemini,openrouter" in config
     assert "TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-" in compose
     # No OpenRouter slug preference survives anywhere: not the window global,
     # not a modal field, and the home-page hidden input no longer carries a
