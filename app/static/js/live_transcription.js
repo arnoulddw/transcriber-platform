@@ -183,6 +183,15 @@
         return Math.max(0, MAX_SESSION_DURATION_MS - (now - startedAt));
     }
 
+    // Live-model <option> values are provider-qualified keys ('gemini:gemini-3.5-transcribe-live'),
+    // but Google expects the bare provider-local model id in `models/<id>`.
+    function providerLocalModelCode(value) {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) return '';
+        const colonIndex = trimmed.indexOf(':');
+        return colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
+    }
+
     function resolveLiveTransport(optionLike) {
         const provider = optionLike && optionLike.dataset
             ? String(optionLike.dataset.provider || '')
@@ -255,6 +264,7 @@
             downsampleTo16k,
             encodePcm16,
             encodePcm16Wav,
+            providerLocalModelCode,
             remainingSessionMilliseconds,
             resolveLiveTransport,
             shouldAttemptReconnect,
@@ -724,7 +734,7 @@
                 resumeHandle: null,
                 finalSeq: 0,
                 consecutiveFailures: 0,
-                model: elements.model ? elements.model.value : '',
+                model: elements.model ? providerLocalModelCode(elements.model.value) : '',
                 language: elements.language.value,
                 vocabulary: deriveGeminiVocabulary(
                     elements.contextPrompt ? elements.contextPrompt.value.trim() : ''

@@ -12,6 +12,7 @@ const {
     downsampleTo16k,
     encodePcm16,
     encodePcm16Wav,
+    providerLocalModelCode,
     remainingSessionMilliseconds,
     resolveLiveTransport,
     shouldAttemptReconnect,
@@ -197,6 +198,28 @@ test('resolves the OpenRouter and WebRTC transports as before', () => {
 test('resolves a missing model option defensively to the WebRTC default', () => {
     assert.equal(resolveLiveTransport(null), 'openai-webrtc');
     assert.equal(resolveLiveTransport(undefined), 'openai-webrtc');
+});
+
+test('strips the provider prefix from provider-qualified model keys', () => {
+    assert.equal(
+        providerLocalModelCode('gemini:gemini-3.5-transcribe-live'),
+        'gemini-3.5-transcribe-live',
+    );
+});
+
+test('strips only up to the first colon of a provider-qualified key', () => {
+    assert.equal(providerLocalModelCode('openrouter:openai/whisper-large-v3'), 'openai/whisper-large-v3');
+});
+
+test('leaves bare model codes unchanged', () => {
+    assert.equal(providerLocalModelCode('gpt-live-transcribe'), 'gpt-live-transcribe');
+    assert.equal(providerLocalModelCode(' gemini-2.5-flash '), 'gemini-2.5-flash');
+});
+
+test('handles empty and missing model values defensively', () => {
+    assert.equal(providerLocalModelCode(''), '');
+    assert.equal(providerLocalModelCode(null), '');
+    assert.equal(providerLocalModelCode(undefined), '');
 });
 
 test('encodes raw PCM16 little-endian samples without a WAV header', () => {
