@@ -79,3 +79,17 @@ def test_register_model_unknown_purpose_is_ignored():
             model_purpose="bogus",
         )
     cursor.execute.assert_not_called()
+
+
+def test_register_model_bare_gemini_code_is_ignored():
+    """The bare 'gemini' provider label never registers as a selectable model."""
+    cursor = unittest.mock.MagicMock()
+    with unittest.mock.patch.object(catalog, "get_cursor", return_value=cursor), \
+            unittest.mock.patch.object(catalog, "get_db"):
+        catalog.register_model_from_provider(
+            provider="gemini",
+            code="gemini",
+            display_name="Google",
+        )
+    cursor.execute.assert_not_called()
+    assert "gemini-3.5-transcribe" not in catalog.PROVIDER_ONLY_MODEL_CODES
