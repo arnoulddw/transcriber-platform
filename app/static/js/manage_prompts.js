@@ -419,6 +419,7 @@ function addPromptToList(prompt, prepend = false) {
                 </div>
                 ${templateIconHtml}
             </div>
+            <div class="prompt-text-display mt-1 text-sm text-gray-800 whitespace-pre-wrap break-words">${escapeHtml(prompt.prompt_text.trim())}</div>
         </div>
         ${actionButtonsHtml}
     `;

@@ -198,10 +198,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (changePasswordForm) {
         changePasswordForm.addEventListener('submit', handlePasswordChange);
     }
-
-    setupPasswordToggleProfile('currentPassword', 'toggleCurrentPassword');
-    setupPasswordToggleProfile('newPassword', 'toggleNewPassword');
-    setupPasswordToggleProfile('confirmNewPassword', 'toggleConfirmNewPassword');
 });
 
 async function loadProfileData() {
@@ -529,24 +525,6 @@ function clearPasswordErrors() {
         input.classList.remove('border-red-500', 'focus:border-red-500', 'focus:ring-red-500');
         input.classList.add('border-gray-300', 'focus:border-primary', 'focus:ring-primary');
     });
-}
-
-function setupPasswordToggleProfile(inputId, toggleIconId) {
-    const passwordInput = document.getElementById(inputId);
-    const toggleIcon = document.getElementById(toggleIconId);
-
-    if (passwordInput && toggleIcon) {
-        toggleIcon.addEventListener('click', function() {
-            const currentType = passwordInput.getAttribute('type');
-            const newType = currentType === 'password' ? 'text' : 'password';
-            passwordInput.setAttribute('type', newType);
-            this.textContent = newType === 'password' ? 'visibility' : 'visibility_off';
-        });
-        window.logger.debug(profileLogPrefix, `Password toggle initialized for input #${inputId}`);
-    } else {
-        if (!passwordInput) window.logger.debug(profileLogPrefix, `Password input element #${inputId} not found.`);
-        if (!toggleIcon) window.logger.debug(profileLogPrefix, `Password toggle icon #${toggleIconId} not found.`);
-    }
 }
 
 function escapeHtmlProfile(str) {
