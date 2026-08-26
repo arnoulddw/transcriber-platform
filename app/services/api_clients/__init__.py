@@ -32,6 +32,7 @@ _LEGACY_PROVIDER_FALLBACK: Dict[str, str] = {
     "whisper": "openai",
     "gpt-4o-transcribe": "openai",
     "gpt-transcribe": "openai",
+    "gemini-3.5-transcribe": "gemini",
     "openrouter": "openrouter",
 }
 

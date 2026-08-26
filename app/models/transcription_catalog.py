@@ -73,6 +73,12 @@ _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "required_api_key": "openrouter",
         "client_kind": "openrouter",
     },
+    "gemini": {
+        "display_name": "Google",
+        "permission_key": "use_api_google_gemini",
+        "required_api_key": "gemini",
+        "client_kind": "gemini",
+    },
 }
 
 # Provider labels and retired identifiers are never selectable models. The
