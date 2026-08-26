@@ -3,6 +3,8 @@
 
     const MAX_SESSION_DURATION_MS = 120 * 60 * 1000;
     const OPENROUTER_CHUNK_SECONDS = 3;
+    const GEMINI_RECONNECT_FAILURE_LIMIT = 3;
+    const AUDIO_STREAM_END_FRAME = { realtimeInput: { audioStreamEnd: true } };
 
     function encodePcm16Wav(samples, sampleRate) {
         const buffer = new ArrayBuffer(44 + samples.length * 2);
@@ -28,6 +30,16 @@
         samples.forEach((sample, index) => {
             const clipped = Math.max(-1, Math.min(1, sample));
             view.setInt16(44 + index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+        });
+        return buffer;
+    }
+
+    function encodePcm16(samples) {
+        const buffer = new ArrayBuffer(samples.length * 2);
+        const view = new DataView(buffer);
+        samples.forEach((sample, index) => {
+            const clipped = Math.max(-1, Math.min(1, sample));
+            view.setInt16(index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
         });
         return buffer;
     }
@@ -94,6 +106,14 @@
             this.order = [];
             this.turns.clear();
             this.detectedLanguage = null;
+        }
+
+        replace(itemId, text) {
+            if (!this.turns.has(itemId)) {
+                this.order.push(itemId);
+                this.turns.set(itemId, { text: '', complete: false });
+            }
+            this.turns.get(itemId).text = text;
         }
     }
 
@@ -163,15 +183,81 @@
         return Math.max(0, MAX_SESSION_DURATION_MS - (now - startedAt));
     }
 
+    function resolveLiveTransport(optionLike) {
+        const provider = optionLike && optionLike.dataset
+            ? String(optionLike.dataset.provider || '')
+            : '';
+        const value = optionLike ? String(optionLike.value || '') : '';
+        if (provider === 'gemini') return 'gemini-wss';
+        if (value.startsWith('gemini-')) return 'gemini-wss';
+        if (value.includes('/') || provider === 'openrouter') return 'openrouter-sse';
+        return 'openai-webrtc';
+    }
+
+    function downsampleTo16k(samples, sourceSampleRate) {
+        if (sourceSampleRate === 16000) return samples;
+        const outputLength = Math.ceil(samples.length * 16000 / sourceSampleRate);
+        const output = new Float32Array(outputLength);
+        const ratio = sourceSampleRate / 16000;
+        for (let index = 0; index < outputLength; index += 1) {
+            const position = index * ratio;
+            const lower = Math.floor(position);
+            const upper = Math.min(lower + 1, samples.length - 1);
+            output[index] = samples[lower] + (position - lower) * (samples[upper] - samples[lower]);
+        }
+        return output;
+    }
+
+    function buildGeminiSetupFrame(modelCode, languageCode, vocabulary, resumeHandle) {
+        const inputAudioTranscription = {
+            languageCodes: languageCode === 'auto' ? [] : [languageCode],
+        };
+        if (vocabulary && vocabulary.length) {
+            inputAudioTranscription.customVocabulary = vocabulary;
+        }
+        return {
+            setup: {
+                model: `models/${modelCode}`,
+                generationConfig: { responseModalities: ['TEXT'] },
+                inputAudioTranscription,
+                sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
+            },
+        };
+    }
+
+    function buildGeminiRealtimeAudioFrame(base64Chunk) {
+        return {
+            realtimeInput: {
+                audio: {
+                    data: base64Chunk,
+                    mimeType: 'audio/pcm;rate=16000',
+                },
+            },
+        };
+    }
+
+    function shouldAttemptReconnect(elapsedMilliseconds, consecutiveFailures) {
+        return elapsedMilliseconds >= 0
+            && elapsedMilliseconds < MAX_SESSION_DURATION_MS
+            && consecutiveFailures < GEMINI_RECONNECT_FAILURE_LIMIT;
+    }
+
     global.LiveTranscriptReducer = LiveTranscriptReducer;
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             MAX_SESSION_DURATION_MS,
             OPENROUTER_CHUNK_SECONDS,
+            AUDIO_STREAM_END_FRAME,
             LiveTranscriptReducer,
-            encodePcm16Wav,
+            buildGeminiRealtimeAudioFrame,
+            buildGeminiSetupFrame,
             createCompleteOffer,
+            downsampleTo16k,
+            encodePcm16,
+            encodePcm16Wav,
             remainingSessionMilliseconds,
+            resolveLiveTransport,
+            shouldAttemptReconnect,
             waitForDataChannelOpen,
         };
     }
