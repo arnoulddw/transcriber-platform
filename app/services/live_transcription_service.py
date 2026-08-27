@@ -332,8 +332,10 @@ def create_session(
         api_key = _resolve_provider_api_key(user, provider, model)
         constraints = build_live_connect_constraints(model, language, prompt)
         now = datetime.now(timezone.utc)
+        gemini_client = None
         try:
-            token_obj = _gemini_client(api_key).auth_tokens.create(
+            gemini_client = _gemini_client(api_key)
+            token_obj = gemini_client.auth_tokens.create(
                 config={
                     "uses": 1,
                     "expire_time": now + timedelta(minutes=30),
@@ -346,6 +348,9 @@ def create_session(
             raise LiveTranscriptionUpstreamError(
                 _("Could not connect to the live transcription service.")
             ) from exc
+        finally:
+            if gemini_client is not None:
+                gemini_client.close()
         transcription_id = str(uuid.uuid4())
         token = _serializer().dumps(
             {
@@ -671,8 +676,10 @@ def refresh_session_token(user, session_token: str) -> Dict[str, str]:
         payload["model"], payload["language"], payload.get("context_prompt", "")
     )
     now = datetime.now(timezone.utc)
+    gemini_client = None
     try:
-        token_obj = _gemini_client(api_key).auth_tokens.create(
+        gemini_client = _gemini_client(api_key)
+        token_obj = gemini_client.auth_tokens.create(
             config={
                 "uses": 1,
                 "expire_time": now + timedelta(minutes=30),
@@ -685,6 +692,9 @@ def refresh_session_token(user, session_token: str) -> Dict[str, str]:
         raise LiveTranscriptionUpstreamError(
             _("Could not connect to the live transcription service.")
         ) from exc
+    finally:
+        if gemini_client is not None:
+            gemini_client.close()
     return {"ephemeral_token": token_obj.name, "ws_url": GEMINI_WS_URL}
 
 
