@@ -1,6 +1,7 @@
 import contextlib
 from unittest.mock import patch
 
+from app.models import transcription_catalog
 from app.services import pricing_service
 from app.services.pricing_service import get_price
 
@@ -89,3 +90,27 @@ def test_non_transcription_ambiguous_fallback_returns_none():
             stack.enter_context(p)
         # Two different prices for the same identity: never guess.
         assert get_price("workflow", "gemma") is None
+
+
+def test_gemini_identity_flows_through_build_model_options():
+    """A saved gemini key yields an admin-costs option keyed 'gemini:<code>'
+    via the same catalog-driven path as every other provider (no DB needed:
+    build_model_options consumes plain dicts like build_pricing_options does)."""
+    gemini_row = {
+        "code": "gemini-3.5-transcribe",
+        "display_name": "Gemini 3.5 Transcribe",
+        "provider_code": "gemini",
+        "required_api_key": "gemini",
+        "permission_key": "use_api_google_gemini",
+        "model_purposes": ["transcription"],
+    }
+    key_status = {
+        "provider_keys": {
+            "gemini": [{"model_name": "gemini-3.5-transcribe", "model_purposes": ["transcription"]}],
+        },
+    }
+
+    options = transcription_catalog.build_model_options([gemini_row], key_status)
+
+    assert [entry["model_key"] for entry in options] == ["gemini:gemini-3.5-transcribe"]
+    assert options[0]["display_name"] == "Gemini 3.5 Transcribe"
