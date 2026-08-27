@@ -453,4 +453,21 @@ def update_llm_operation_cost(operation_id: int, cost: float) -> bool:
         pass
     return success
 
- # Add other necessary functions later (e.g., get_operations_by_user, get_operations_by_transcription)
+
+def get_latest_workflow_operation_for_transcription(transcription_id: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Gets the latest workflow LLM operation record for a given transcription."""
+    sql = "SELECT * FROM llm_operations WHERE transcription_id = %s AND operation_type = 'workflow'"
+    params: List[Any] = [transcription_id]
+    if user_id is not None:
+        sql += " AND user_id = %s"
+        params.append(user_id)
+    sql += " ORDER BY completed_at DESC, created_at DESC LIMIT 1"
+    cursor = get_cursor()
+    try:
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone()
+        cursor.fetchall()
+        return _map_row_to_llm_operation_dict(row)
+    except MySQLError as err:
+        logging.error(f"[DB:LLMOperation] Error fetching latest workflow for transcription {transcription_id}: {err}", exc_info=True)
+        return None

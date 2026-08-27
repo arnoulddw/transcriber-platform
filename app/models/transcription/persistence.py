@@ -27,35 +27,30 @@ def create_transcription_job(job_id: str, user_id: int, filename: str, api_used:
     Raises MySQLError on failure.
     """
     logger = get_logger(__name__, job_id=job_id, user_id=user_id, component="DB:Job")
-    # --- MODIFIED: Added pending_workflow_origin_prompt_id to INSERT and logging ---
     sql = '''
         INSERT INTO transcriptions (
             id, user_id, filename, generated_title, title_generation_status,
             file_size_mb, audio_length_minutes, api_used, api_model,
             created_at, status, progress_log, error_message, context_prompt_used, downloaded,
             is_hidden_from_user, hidden_date, hidden_reason,
-            llm_operation_id, llm_operation_status, llm_operation_result, llm_operation_error, llm_operation_ran_at,
             pending_workflow_prompt_text, pending_workflow_prompt_title, pending_workflow_prompt_color,
             pending_workflow_origin_prompt_id, public_api_invocation, cost
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         '''
-    # --- END MODIFIED ---
     initial_log_entry = f"Job created at {datetime.now(timezone.utc).replace(microsecond=0).isoformat()}."
     initial_log_json = json.dumps([initial_log_entry])
 
     cursor = get_cursor()
     try:
-        # --- MODIFIED: Added pending_workflow_origin_prompt_id to execute parameters ---
         cursor.execute(sql, (
             job_id, user_id, filename, None, 'pending',
             file_size_mb, audio_length_minutes, api_used, api_model,
             datetime.now(timezone.utc), 'pending', initial_log_json, None,
             context_prompt_used, False,
             False, None, None,
-            None, None, None, None, None, # Workflow fields
-            pending_workflow_prompt_text, pending_workflow_prompt_title, pending_workflow_prompt_color, # Existing pending workflow fields
-            pending_workflow_origin_prompt_id, # New field
+            pending_workflow_prompt_text, pending_workflow_prompt_title, pending_workflow_prompt_color,
+            pending_workflow_origin_prompt_id,
             public_api_invocation,
             None # cost
         ))

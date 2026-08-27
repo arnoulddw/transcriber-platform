@@ -643,7 +643,7 @@ def increment_usage(user_id: int, cost: float, minutes_processed: float, live_mi
     Increments usage stats for a user after a transcription.
     """
     now = datetime.now(timezone.utc)
-    date_ts = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    usage_date = now.date()
     log_prefix = f"[DB:Usage:User:{user_id}]"
 
     cursor = get_cursor()
@@ -656,7 +656,7 @@ def increment_usage(user_id: int, cost: float, minutes_processed: float, live_mi
             minutes = minutes + VALUES(minutes),
             live_minutes = live_minutes + VALUES(live_minutes)
         """
-        cursor.execute(sql, (user_id, date_ts, cost, minutes_processed, live_minutes_processed))
+        cursor.execute(sql, (user_id, usage_date, cost, minutes_processed, live_minutes_processed))
         get_db().commit()
         logging.debug(f"{log_prefix} Successfully incremented usage stats.")
     except MySQLError as e:
@@ -674,18 +674,28 @@ def reserve_usage_if_allowed(
     workflows_to_add: int = 0,
     live_minutes_to_add: float = 0.0,
 ) -> Tuple[bool, str]:
-    """Atomically check role quotas and reserve usage under a per-user row lock."""
+    """Atomically check role quotas and reserve usage under a per-user usage lock."""
     now = datetime.now(timezone.utc)
-    day_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    day_start = now.date()
     week_start = day_start - timedelta(days=day_start.weekday())
-    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    month_start = day_start.replace(day=1)
     connection = get_db()
     cursor = connection.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
-        if not cursor.fetchone():
-            connection.rollback()
-            return False, "User not found."
+        # Ensure row exists for today and lock the user's daily usage record rather than locking the root users table
+        cursor.execute(
+            """
+            INSERT INTO user_usage (user_id, date, cost, minutes, workflows, live_minutes)
+            VALUES (%s, %s, 0, 0, 0, 0)
+            ON DUPLICATE KEY UPDATE id=id
+            """,
+            (user_id, day_start),
+        )
+        cursor.execute(
+            "SELECT id FROM user_usage WHERE user_id = %s AND date = %s FOR UPDATE",
+            (user_id, day_start),
+        )
+        cursor.fetchone()
 
         cursor.execute(
             """

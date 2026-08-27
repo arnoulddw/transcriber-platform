@@ -333,24 +333,6 @@ def process_workflow_background(
         except Exception as db_update_err:
              logger.error(f"CRITICAL: Failed to update final LLM operation status in DB: {db_update_err}", exc_info=True)
 
-        try:
-            now_utc_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-            cursor = get_cursor()
-            sql = """
-                  UPDATE transcriptions
-                  SET llm_operation_id = %s,
-                      llm_operation_status = %s,
-                      llm_operation_result = %s,
-                      llm_operation_error = %s,
-                      llm_operation_ran_at = %s
-                  WHERE id = %s
-                  """
-            cursor.execute(sql, (operation_id, final_status, result_text, error_message, now_utc_iso, transcription_id))
-            get_db().commit()
-            logger.debug(f"Updated transcription {transcription_id} with LLM operation ID {operation_id} and status '{final_status}'.")
-        except Exception as update_err:
-            logger.error(f"Failed to update transcription record with LLM operation ID: {update_err}", exc_info=True)
-
         logger.debug("Background workflow process finished.")
 
 
@@ -390,26 +372,6 @@ def edit_workflow_result(user_id: int, operation_id: int, new_result: str) -> No
             if not success:
                 logger.error(f"Update failed: LLM Operation record {operation_id} not found or not owned during update.")
                 raise OperationNotFoundError("Failed to update workflow result (record not found or permission issue).")
-
-            # Keep the denormalized copy on the transcription row in sync —
-            # some surfaces read it directly and would otherwise show stale
-            # pre-edit text.
-            try:
-                cursor = get_cursor()
-                cursor.execute(
-                    """
-                    UPDATE transcriptions t
-                    JOIN llm_operations lo ON lo.id = t.llm_operation_id
-                    SET t.llm_operation_result = %s
-                    WHERE lo.id = %s AND lo.user_id = %s AND lo.operation_type = 'workflow'
-                    """,
-                    (new_result, operation_id, user_id),
-                )
-                get_db().commit()
-                logger.debug("Mirrored edited workflow result to transcription record.")
-            except MySQLError as mirror_err:
-                logger.error(f"Failed to mirror edited result to transcription record: {mirror_err}", exc_info=True)
-                raise WorkflowError("Workflow result updated but could not be synced to the transcription record.") from mirror_err
 
             logger.debug("Workflow result updated successfully.")
 
@@ -455,20 +417,6 @@ def delete_workflow_result(user_id: int, transcription_id: str) -> None:
             get_db().commit()
             logger.info(f"Deleted {deleted_count} workflow LLM operation record(s) for transcription {transcription_id}.")
 
-            if deleted_count > 0 or transcription.get('llm_operation_id') is not None:
-                update_sql = """
-                    UPDATE transcriptions
-                    SET llm_operation_id = NULL,
-                        llm_operation_status = NULL,
-                        llm_operation_result = NULL,
-                        llm_operation_error = NULL,
-                        llm_operation_ran_at = NULL
-                    WHERE id = %s AND user_id = %s
-                """
-                cursor.execute(update_sql, (transcription_id, user_id))
-                get_db().commit()
-                logger.info(f"Cleared workflow fields from transcription record {transcription_id}.")
-
         except MySQLError as db_err:
             logger.error(f"Database error deleting workflow operations: {db_err}", exc_info=True)
             raise WorkflowError("Database error deleting workflow result(s).") from db_err
@@ -479,9 +427,7 @@ def delete_workflow_result(user_id: int, transcription_id: str) -> None:
 
 def delete_all_workflow_results_for_user(user_id: int) -> int:
     """
-    Deletes all workflow LLM operation records for a user and clears the
-    associated fields on their transcription rows — in two bulk SQL statements
-    instead of one round-trip per transcription.
+    Deletes all workflow LLM operation records for a user.
 
     Returns the number of llm_operations rows deleted.
     """
@@ -504,21 +450,6 @@ def delete_all_workflow_results_for_user(user_id: int) -> int:
             (user_id,)
         )
         deleted_count = cursor.rowcount
-        get_db().commit()
-
-        cursor.execute(
-            """
-            UPDATE transcriptions
-            SET llm_operation_id     = NULL,
-                llm_operation_status = NULL,
-                llm_operation_result = NULL,
-                llm_operation_error  = NULL,
-                llm_operation_ran_at = NULL
-            WHERE user_id = %s
-              AND is_hidden_from_user = FALSE
-            """,
-            (user_id,)
-        )
         get_db().commit()
         log.info(f"Bulk-deleted {deleted_count} workflow LLM operation record(s) for user.")
     except MySQLError as db_err:

@@ -305,20 +305,6 @@ def test_delete_workflow_result_clears_records(app, workflow_user):
             prompt_id=None,
             status="finished",
         )
-        cursor = workflow_service.get_cursor()
-        cursor.execute(
-            """
-            UPDATE transcriptions
-            SET llm_operation_id=%s,
-                llm_operation_status='finished',
-                llm_operation_result='Result text',
-                llm_operation_error=NULL,
-                llm_operation_ran_at=NOW()
-            WHERE id=%s
-            """,
-            (op_id, transcription_id),
-        )
-        workflow_service.get_db().commit()
 
     workflow_service.delete_workflow_result(
         workflow_user.id, transcription_id=transcription_id
@@ -330,9 +316,7 @@ def test_delete_workflow_result_clears_records(app, workflow_user):
         transcription = transcription_model.get_transcription_by_id(
             transcription_id, workflow_user.id
         )
-        assert transcription["llm_operation_id"] is None
-        assert transcription["llm_operation_status"] is None
-        assert transcription["llm_operation_result"] is None
+        assert transcription is not None
 
 
 def test_delete_workflow_result_transcription_not_found(app, workflow_user):

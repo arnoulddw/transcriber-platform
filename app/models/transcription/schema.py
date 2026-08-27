@@ -50,11 +50,6 @@ def init_db_command() -> None:
                 is_hidden_from_user BOOLEAN NOT NULL DEFAULT FALSE,
                 hidden_date TIMESTAMP NULL DEFAULT NULL,
                 hidden_reason ENUM('USER_DELETED', 'RETENTION_POLICY') DEFAULT NULL,
-                llm_operation_id INT DEFAULT NULL,
-                llm_operation_status VARCHAR(20) DEFAULT NULL,
-                llm_operation_result MEDIUMTEXT,
-                llm_operation_error TEXT DEFAULT NULL,
-                llm_operation_ran_at TIMESTAMP NULL DEFAULT NULL,
                 pending_workflow_prompt_text TEXT DEFAULT NULL,
                 pending_workflow_prompt_title VARCHAR(100) DEFAULT NULL,
                 pending_workflow_prompt_color VARCHAR(7) DEFAULT NULL,
@@ -145,22 +140,6 @@ def init_db_command() -> None:
         if not hidden_reason_exists:
             logger.info("Adding 'hidden_reason' column (ENUM).")
             cursor.execute("ALTER TABLE transcriptions ADD COLUMN hidden_reason ENUM('USER_DELETED', 'RETENTION_POLICY') DEFAULT NULL AFTER hidden_date")
-
-        # Check and add workflow columns
-        cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'llm_operation_id'")
-        workflow_col_exists = cursor.fetchone()
-        cursor.fetchall()
-        if not workflow_col_exists:
-            logger.info("Adding workflow columns to 'transcriptions' table.")
-            alter_workflow_sql = """
-                  ALTER TABLE transcriptions
-                  ADD COLUMN llm_operation_id INT DEFAULT NULL AFTER error_message,
-                  ADD COLUMN llm_operation_status VARCHAR(20) DEFAULT NULL AFTER llm_operation_id,
-                  ADD COLUMN llm_operation_result MEDIUMTEXT AFTER llm_operation_status,
-                  ADD COLUMN llm_operation_error TEXT DEFAULT NULL AFTER llm_operation_result,
-                  ADD COLUMN llm_operation_ran_at TIMESTAMP NULL DEFAULT NULL AFTER llm_operation_error
-            """
-            cursor.execute(alter_workflow_sql)
 
         # Add generated_title and title_generation_status columns idempotently
         cursor.execute("SHOW COLUMNS FROM transcriptions LIKE 'generated_title'")

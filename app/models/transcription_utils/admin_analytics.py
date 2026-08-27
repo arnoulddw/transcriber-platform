@@ -305,22 +305,20 @@ def get_workflow_model_distribution(
 ) -> Dict[str, int]:
     """
     Gets workflow counts per model used within a date range.
-    Uses 'llm_operation_status' from the 'transcriptions' table and joins with 'llm_operations'.
+    Queries from 'llm_operations' where operation_type = 'workflow'.
     """
-    status_filter_column_on_t = 't.llm_operation_status'
     status_filter = (
-        f"{status_filter_column_on_t} != 'idle'"
+        "lo.status != 'idle'"
         if include_attempted
-        else f"{status_filter_column_on_t} = 'finished'"
+        else "lo.status = 'finished'"
     )
-    date_column_on_t = f"t.{'llm_operation_ran_at' if not include_attempted else 'created_at'}"
+    date_column = "lo.completed_at" if not include_attempted else "lo.created_at"
 
     sql = f"""
         SELECT
             COALESCE(lo.model, lo.provider) AS llm_operation_model_used,
-            COUNT(t.id) AS count
-        FROM transcriptions t
-        JOIN llm_operations lo ON t.llm_operation_id = lo.id
+            COUNT(lo.id) AS count
+        FROM llm_operations lo
         WHERE
             lo.operation_type = 'workflow'
             AND {status_filter}
@@ -328,10 +326,10 @@ def get_workflow_model_distribution(
     params: List[Any] = []
 
     if start_dt:
-        sql += f" AND {date_column_on_t} >= %s"
+        sql += f" AND {date_column} >= %s"
         params.append(start_dt.isoformat(timespec='seconds'))
     if end_dt:
-        sql += f" AND {date_column_on_t} < %s"
+        sql += f" AND {date_column} < %s"
         params.append(end_dt.isoformat(timespec='seconds'))
 
     sql += " GROUP BY COALESCE(lo.model, lo.provider)"
@@ -355,7 +353,7 @@ def get_workflow_model_distribution(
         )
         if err.errno == 1054:
             logging.warning(
-                "[DB:AdminUtils] Error getting workflow model distribution: A column might be missing in the join. %s",
+                "[DB:AdminUtils] Error getting workflow model distribution: A column might be missing. %s",
                 err.msg,
             )
         return {}
@@ -376,13 +374,12 @@ def get_common_workflow_error_messages(
     limit: int = 10,
 ) -> List[Dict[str, Any]]:
     """
-    Gets the most common workflow error messages and their counts within a date range (includes hidden).
-    Uses 'llm_operation_status' and 'llm_operation_error'.
+    Gets the most common workflow error messages and their counts within a date range (from llm_operations).
     """
     sql = """
-        SELECT llm_operation_error, COUNT(*) as count
-        FROM transcriptions
-        WHERE llm_operation_status = 'error' AND llm_operation_error IS NOT NULL AND llm_operation_error != ''
+        SELECT error AS llm_operation_error, COUNT(*) as count
+        FROM llm_operations
+        WHERE operation_type = 'workflow' AND status = 'error' AND error IS NOT NULL AND error != ''
     """
     params: List[Any] = []
     if start_dt:
@@ -392,7 +389,7 @@ def get_common_workflow_error_messages(
         sql += " AND created_at < %s"
         params.append(end_dt.isoformat(timespec='seconds'))
 
-    sql += " GROUP BY llm_operation_error ORDER BY count DESC LIMIT %s"
+    sql += " GROUP BY error ORDER BY count DESC LIMIT %s"
     params.append(limit)
 
     cursor = get_cursor()
@@ -433,12 +430,12 @@ def count_workflow_jobs_with_filters(
 ) -> int:
     """
     Counts transcription jobs that have associated workflow operations matching the given criteria.
-    Joins transcriptions with llm_operations.
+    Joins transcriptions with llm_operations on transcription_id.
     """
     sql = """
-        SELECT COUNT(t.id) as count
-        FROM transcriptions t
-        JOIN llm_operations lo ON t.llm_operation_id = lo.id
+        SELECT COUNT(DISTINCT lo.transcription_id) as count
+        FROM llm_operations lo
+        JOIN transcriptions t ON lo.transcription_id = t.id
         WHERE lo.operation_type = 'workflow'
     """
     params: List[Any] = []

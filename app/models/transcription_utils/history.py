@@ -338,6 +338,7 @@ def get_paginated_transcriptions(
         WITH RankedOperations AS (
             SELECT
                 lo.id AS llm_operation_id,
+                lo.status AS llm_operation_status,
                 lo.transcription_id,
                 ROW_NUMBER() OVER(PARTITION BY lo.transcription_id ORDER BY lo.completed_at DESC, lo.created_at DESC) as rn
             FROM llm_operations lo
@@ -350,13 +351,14 @@ def get_paginated_transcriptions(
             t.file_size_mb, t.audio_length_minutes, t.detected_language, t.api_used, t.api_model,
             t.created_at, t.status, t.context_prompt_used, t.has_transcription_warning, t.downloaded,
             t.is_hidden_from_user, t.hidden_date, t.hidden_reason,
-            t.llm_operation_status, t.pending_workflow_prompt_text,
+            t.pending_workflow_prompt_text,
             t.pending_workflow_prompt_title, t.pending_workflow_prompt_color,
             t.pending_workflow_origin_prompt_id, t.public_api_invocation,
             t.cost, t.is_pinned,
             LEFT(COALESCE(t.transcription_text, ''), 4000) AS transcription_preview,
             (CHAR_LENGTH(COALESCE(t.transcription_text, '')) > 4000) AS transcription_has_more,
-            ro.llm_operation_id
+            ro.llm_operation_id,
+            ro.llm_operation_status
         FROM transcriptions t
         LEFT JOIN RankedOperations ro ON t.id = ro.transcription_id AND ro.rn = 1
         WHERE t.user_id = %s AND t.is_hidden_from_user = FALSE AND t.status = %s{search_clause}

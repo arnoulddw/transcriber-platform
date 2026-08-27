@@ -1,6 +1,7 @@
 import uuid
 from unittest.mock import patch
 
+from app.models import llm_operation as llm_operation_model
 from app.models import transcription as transcription_model
 from app.models import transcription_utils
 from app.models.user import get_user_by_username
@@ -388,16 +389,26 @@ def test_get_workflow_details(app, logged_in_client_with_permissions):
         user = get_user_by_username("testuser_permissions")
     job_id = _create_transcription(app, user.id)
     with app.app_context():
+        operation_id = llm_operation_model.create_llm_operation(
+            user_id=user.id,
+            provider="GEMINI",
+            operation_type="workflow",
+            input_text="Prompt text",
+            transcription_id=job_id,
+            status="processing",
+            model="gemini-test",
+        )
+        assert operation_id is not None
+        assert llm_operation_model.update_llm_operation_status(
+            operation_id,
+            "finished",
+            result="Result text",
+        )
         cursor = transcription_model.get_cursor()
         cursor.execute(
             """
             UPDATE transcriptions
-            SET llm_operation_id=12,
-                llm_operation_status='finished',
-                llm_operation_result='Result text',
-                llm_operation_error=NULL,
-                llm_operation_ran_at=NOW(),
-                pending_workflow_prompt_text='Pending text',
+            SET pending_workflow_prompt_text='Pending text',
                 pending_workflow_prompt_title='Pending title',
                 pending_workflow_prompt_color='#123456',
                 pending_workflow_origin_prompt_id=3
@@ -413,7 +424,9 @@ def test_get_workflow_details(app, logged_in_client_with_permissions):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["llm_operation_id"] == 12
+    assert payload["llm_operation_id"] == operation_id
+    assert payload["llm_operation_status"] == "finished"
+    assert payload["llm_operation_result"] == "Result text"
     assert payload["pending_workflow_prompt_text"] == "Pending text"
 def _get_permissions_user_id(client):
     with client.application.app_context():

@@ -21,6 +21,7 @@ from app.services import transcription_service, file_service, user_service, pric
 from app.models import transcription as transcription_model
 from app.models import transcription_utils
 from app.models import transcription_catalog as transcription_catalog_model
+from app.models import llm_operation as llm_operation_model
 from app.models import user as user_model
 from app.models import role as role_model
 from app.models.user import User # For type hinting
@@ -1241,19 +1242,23 @@ def get_workflow_details_for_transcription(transcription_id: str):
                 logging.warning(f"{log_prefix} Job not found.")
                 return jsonify({'error': _('We could not find that transcription job.')}), 404
 
+        latest_op = llm_operation_model.get_latest_workflow_operation_for_transcription(transcription_id, user_id)
+
         response_data = {
             'transcription_id': transcription_id,
-            'llm_operation_id': job_data.get('llm_operation_id'),
-            'llm_operation_status': job_data.get('llm_operation_status'),
-            'llm_operation_result': job_data.get('llm_operation_result'),
-            'llm_operation_error': job_data.get('llm_operation_error'),
-            'llm_operation_ran_at': job_data.get('llm_operation_ran_at'),
+            'llm_operation_id': latest_op.get('id') if latest_op else None,
+            'llm_operation_status': latest_op.get('status') if latest_op else None,
+            'llm_operation_result': latest_op.get('result') if latest_op else None,
+            'llm_operation_error': latest_op.get('error') if latest_op else None,
+            'llm_operation_ran_at': (
+                latest_op.get('completed_at').replace(tzinfo=timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+                if latest_op and isinstance(latest_op.get('completed_at'), datetime)
+                else (str(latest_op.get('completed_at')) if latest_op and latest_op.get('completed_at') else None)
+            ),
             'pending_workflow_prompt_text': job_data.get('pending_workflow_prompt_text'),
             'pending_workflow_prompt_title': job_data.get('pending_workflow_prompt_title'),
             'pending_workflow_prompt_color': job_data.get('pending_workflow_prompt_color'),
-            # --- MODIFIED: Include pending_workflow_origin_prompt_id in response ---
             'pending_workflow_origin_prompt_id': job_data.get('pending_workflow_origin_prompt_id')
-            # --- END MODIFIED ---
         }
         logging.debug(f"{log_prefix} Returning workflow details: OpID {response_data['llm_operation_id']}, Status {response_data['llm_operation_status']}")
         return jsonify(response_data), 200
