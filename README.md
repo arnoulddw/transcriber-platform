@@ -2,7 +2,7 @@
 
 **Self-hosted AI transcription platform for teams, SMBs and individuals who need control over their data, users, API keys and transcription costs.**
 
-Transcriber Platform turns audio into organized text through a web UI, a public transcription API and reusable AI workflows. It supports three fixed transcription providers — **OpenAI**, **AssemblyAI** and **OpenRouter** — plus LLM providers such as **OpenAI**, **Google Gemini** and **OpenRouter** for titles, summaries and custom post-processing. Models are not pre-seeded: each model becomes available the moment an admin or user saves an API key for it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, or any OpenRouter STT slug).
+Transcriber Platform turns audio into organized text through a web UI, a public transcription API and reusable AI workflows. It supports four fixed transcription providers — **OpenAI**, **AssemblyAI**, **Google Gemini** and **OpenRouter** — plus LLM providers such as **OpenAI**, **Google Gemini** and **OpenRouter** for titles, summaries and custom post-processing. Models are not pre-seeded: each model becomes available the moment an admin or user saves an API key for it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, `gemini-3.5-transcribe`, or any OpenRouter STT slug).
 
 Use it as a simple personal transcription app in `single` mode, or run it as a team platform in `multi` mode with authentication, RBAC, per-user API keys, public API keys, usage limits, admin analytics, cost tracking and workflow templates.
 
@@ -24,7 +24,8 @@ Use it as a simple personal transcription app in `single` mode, or run it as a t
 ## ✨ Key Features
 
 ### Core Functionality
--   **Three Fixed Transcription Providers:** OpenAI, AssemblyAI and OpenRouter. Models are not bundled with the app — saving an API key for a model (via **Manage API Keys**) registers it in the catalog and makes it available. With OpenRouter you bring your own model slug (e.g. `openai/gpt-transcribe`).
+-   **Four Fixed Transcription Providers:** OpenAI, AssemblyAI, Google Gemini and OpenRouter. Models are not bundled with the app — saving an API key for a model (via **Manage API Keys**) registers it in the catalog and makes it available. With OpenRouter you bring your own model slug (e.g. `openai/gpt-transcribe`); with Gemini you save your API key with a model name such as `gemini-3.5-transcribe`.
+-   **Live Transcription (Google Gemini):** Stream from the browser straight to Google over WebSocket using short-lived single-use tokens, so the raw Gemini API key never reaches the browser. Google caps each connection at about 10 minutes — the app bridges this automatically via session resumption so sessions run to the standard limit. Interim partials show while you speak and finalized text lands turn-by-turn.
 -   **Speaker Diarization (AssemblyAI):** Toggle speaker labels to identify who said what on supported jobs.
 -   **Large File Handling:** Enforces a 200MB upload limit and automatically splits files over each model's provider limit into chunks for processing.
 -   **AI-Powered Title Generation:** Automatically generates a concise title for each transcription.
@@ -95,7 +96,7 @@ This section provides more detailed setup instructions.
 -   **API Keys:** You need API keys for the services you plan to use:
     -   [OpenAI](https://platform.openai.com/) (for Whisper, GPT-4o Transcribe, GPT-Transcribe and LLM workflows)
     -   [AssemblyAI](https://www.assemblyai.com/) (transcription with speaker diarization)
-    -   [Google Gemini](https://ai.google.dev/) (for title generation and LLM workflows)
+    -   [Google Gemini](https://ai.google.dev/) (for transcription, live transcription and LLM workflows)
     -   [OpenRouter](https://openrouter.ai/) (optional; provide your own model slug for transcription and LLM operations)
 -   **Docker & Docker Compose:** Required for the recommended installation method.
 -   **Google Client ID (Optional):** Required for Google Sign-In in `multi` user mode.
@@ -119,11 +120,11 @@ The application is configured using environment variables in a `.env` file. The 
 | **API Keys (Global Fallback)** | | |
 | `OPENAI_API_KEY` | Your API key for OpenAI (Whisper, GPT-4o Transcribe, LLMs). | (none) |
 | `ASSEMBLYAI_API_KEY` | Your API key for AssemblyAI. | (none) |
-| `GEMINI_API_KEY` | Your API key for Google Gemini (Title Generation, LLMs). | (none) |
+| `GEMINI_API_KEY` | Your API key for Google Gemini (transcription, live transcription, Title Generation and LLMs). | (none) |
 | `OPENROUTER_API_KEY` | Your API key for OpenRouter (transcription and LLM operations). | (none) |
 | `ANTHROPIC_API_KEY` | Reserved for future Anthropic LLM support. | (none) |
 | **Provider, Model & Language Settings** | | |
-| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers the app can talk to. Fixed list; admins cannot add providers, only models (registered when API keys are saved). | `assemblyai,openai,openrouter` |
+| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers the app can talk to. Fixed list; admins cannot add providers, only models (registered when API keys are saved). | `assemblyai,openai,gemini,openrouter` |
 | `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription provider on load. Must be one of `TRANSCRIPTION_PROVIDERS`. | `openai` |
 | `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`, `OPENROUTER`). | `GEMINI` |
 | `LLM_MODEL` | General fallback LLM model for direct or legacy LLM calls. | (none) |
@@ -225,7 +226,7 @@ The application is configured using environment variables in a `.env` file. The 
 1.  **Access the Application:** Open the application in your web browser.
 2.  **Authentication (Multi-User Mode):**
     *   Register for an account or log in.
-    *   Navigate to "Manage API Keys" to add your personal API keys for OpenAI, AssemblyAI, Gemini and OpenRouter if your role can manage keys. Otherwise, the app uses the configured global fallback keys. For each key you also enter the **model name** exactly as the provider knows it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, or an OpenRouter slug like `openai/gpt-transcribe`) and what to use it for (transcription, LLM workflows, or both). Saving a key registers that model in the catalog and makes it selectable — nothing is available before keys are saved.
+    *   Navigate to "Manage API Keys" to add your personal API keys for OpenAI, AssemblyAI, Gemini and OpenRouter if your role can manage keys. Otherwise, the app uses the configured global fallback keys. For each key you also enter the **model name** exactly as the provider knows it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, a Gemini model like `gemini-3.5-transcribe`, or an OpenRouter slug like `openai/gpt-transcribe`) and what to use it for (transcription, LLM workflows, or both). Saving a key registers that model in the catalog and makes it selectable — nothing is available before keys are saved.
     *   Use profile settings to choose your interface language, default transcription language and model, workflow LLM model, auxiliary LLM model and automatic title generation preference.
 3.  **Upload Audio:** Click the "File" button to select an audio file.
 4.  **Configure Transcription:**
