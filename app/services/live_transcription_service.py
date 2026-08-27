@@ -17,6 +17,7 @@ from flask_babel import gettext as _
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app.core.decorators import check_permission
+from app.core.utils import split_vocabulary_terms
 from app.models import role as role_model
 from app.models import transcription as transcription_model
 from app.models import transcription_catalog as transcription_catalog_model
@@ -240,31 +241,12 @@ def build_session_config(model: str, language: str, prompt: str) -> Dict[str, An
     }
 
 
-def _context_prompt_to_vocabulary(prompt: str) -> list[str]:
-    """Split and dedupe prompt terms as custom-vocabulary hints.
-
-    Batch API mode strings lowercase these and live mode uppercases them;
-    neither transformation is applied today - terms are sent verbatim.
-    """
-    vocabulary: list[str] = []
-    seen: set[str] = set()
-    for raw_term in re.split(r"[,\n]+", prompt or ""):
-        term = raw_term.strip()
-        if not term or term in seen:
-            continue
-        seen.add(term)
-        vocabulary.append(term)
-        if len(vocabulary) >= 1000:
-            break
-    return vocabulary
-
-
 def build_live_connect_constraints(model: str, language: str, prompt: str) -> Dict[str, Any]:
     """Build snake_case live_connect_constraints for Gemini ephemeral tokens."""
     transcription: Dict[str, Any] = {
         "language_codes": [] if language == "auto" else [language],
     }
-    vocabulary = _context_prompt_to_vocabulary(prompt)
+    vocabulary = split_vocabulary_terms(prompt)
     if vocabulary:
         transcription["custom_vocabulary"] = vocabulary
     # Snake_case here matches the Python SDK auth_tokens.create config; the

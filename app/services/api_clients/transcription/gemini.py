@@ -9,9 +9,9 @@ only a catalog row (created when the API key is saved) and, optionally, an
 ``API_LIMITS`` entry for non-default behaviour.
 """
 
-import re
 from typing import Any, Dict, Optional, Tuple
 
+from app.core.utils import split_vocabulary_terms
 from app.logging_config import get_logger
 from app.config import Config
 
@@ -88,30 +88,6 @@ class GeminiTranscriptionClient(BaseTranscriptionClient):
         self._genai_client = genai.Client(api_key=api_key)
         self.logger.debug("Google GenAI client initialized successfully.")
 
-    @staticmethod
-    def _context_prompt_to_vocabulary(raw_prompt: str) -> list[str]:
-        """Split a context prompt into deduplicated custom-vocabulary terms.
-
-        Terms are separated by commas and/or newlines; whitespace splits any
-        leftover phrase. Order is preserved and terms are capped at Google's
-        1000-term limit for ``custom_vocabulary``.
-        """
-        raw_prompt = str(raw_prompt or "").strip()
-        if not raw_prompt:
-            return []
-        vocabulary: list[str] = []
-        seen: set[str] = set()
-        for piece in re.split(r"[,\n]+", raw_prompt):
-            for term in piece.split():
-                key = term.casefold()
-                if key in seen:
-                    continue
-                seen.add(key)
-                vocabulary.append(term)
-                if len(vocabulary) >= 1000:
-                    return vocabulary
-        return vocabulary
-
     def _prepare_api_params(
         self,
         language_code: str,
@@ -141,7 +117,7 @@ class GeminiTranscriptionClient(BaseTranscriptionClient):
             ui_lang_msg = f"Invalid language code '{language_code}'. Using auto-detection as fallback."
             language_code = "auto"
 
-        vocabulary = self._context_prompt_to_vocabulary(context_prompt)
+        vocabulary = split_vocabulary_terms(context_prompt)
         if vocabulary:
             transcription_config["custom_vocabulary"] = vocabulary
             if not is_chunk:

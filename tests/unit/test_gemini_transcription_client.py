@@ -89,7 +89,14 @@ def test_context_prompt_becomes_custom_vocabulary_terms():
         "auto", "Noud, Adyen\nAdyen avans, scalapay", "json", False
     )
     vocab = params["transcription_config"]["custom_vocabulary"]
-    assert vocab == ["Noud", "Adyen", "avans", "scalapay"]
+    assert vocab == ["Noud", "Adyen", "Adyen avans", "scalapay"]
+
+
+def test_context_prompt_vocabulary_dedupes_case_insensitively():
+    client, _ = _make_client()
+    params = client._prepare_api_params("auto", "Adyen, adyen ,ADYEN", "json", False)
+    vocab = params["transcription_config"]["custom_vocabulary"]
+    assert vocab == ["Adyen"]
 
 
 def test_empty_prompt_omits_custom_vocabulary_key():

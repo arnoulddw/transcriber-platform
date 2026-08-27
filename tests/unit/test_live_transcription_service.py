@@ -953,6 +953,13 @@ def test_build_live_connect_constraints_dedupes_prompt_vocabulary():
     assert vocab == ["alpha", "beta", "gamma"]
 
 
+def test_build_live_connect_constraints_dedupes_prompt_vocabulary_case_insensitively():
+    constraints = service.build_live_connect_constraints("m", "auto", "Alpha, alpha ,ALPHA")
+
+    vocab = constraints["config"]["input_audio_transcription"]["custom_vocabulary"]
+    assert vocab == ["Alpha"]
+
+
 def test_build_live_connect_constraints_caps_custom_vocabulary_at_1000_terms():
     prompt = ", ".join(f"term{i}" for i in range(1200))
     constraints = service.build_live_connect_constraints("m", "auto", prompt)
