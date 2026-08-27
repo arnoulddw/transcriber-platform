@@ -8,6 +8,7 @@ const {
     LiveTranscriptReducer,
     buildGeminiRealtimeAudioFrame,
     buildGeminiSetupFrame,
+    buildGeminiWebSocketUrl,
     createCompleteOffer,
     downsampleTo16k,
     encodePcm16,
@@ -220,6 +221,16 @@ test('handles empty and missing model values defensively', () => {
     assert.equal(providerLocalModelCode(''), '');
     assert.equal(providerLocalModelCode(null), '');
     assert.equal(providerLocalModelCode(undefined), '');
+});
+
+test('builds the Gemini ephemeral-token WebSocket URL with access_token auth', () => {
+    assert.equal(
+        buildGeminiWebSocketUrl(
+            'wss://generativelanguage.googleapis.com/ws/Constrained?existing=value',
+            'auth_tokens/live/abc+123',
+        ),
+        'wss://generativelanguage.googleapis.com/ws/Constrained?existing=value&access_token=auth_tokens%2Flive%2Fabc%2B123',
+    );
 });
 
 test('encodes raw PCM16 little-endian samples without a WAV header', () => {

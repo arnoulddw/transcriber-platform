@@ -39,7 +39,7 @@ ENDED_CALL_STATUS_CODES = frozenset({404, 409})
 MAX_OPENROUTER_CHUNK_BYTES = 8 * 1024 * 1024
 GEMINI_WS_URL = (
     "wss://generativelanguage.googleapis.com/ws/"
-    "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+    "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained"
 )
 OPENROUTER_AUDIO_FORMATS = frozenset({"wav", "mp3", "flac", "m4a", "ogg", "webm", "aac"})
 OPENROUTER_STT_MODELS = frozenset({
