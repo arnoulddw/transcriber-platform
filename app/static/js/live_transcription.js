@@ -4,6 +4,7 @@
     const MAX_SESSION_DURATION_MS = 120 * 60 * 1000;
     const OPENROUTER_CHUNK_SECONDS = 3;
     const GEMINI_RECONNECT_FAILURE_LIMIT = 3;
+    const GEMINI_RECONNECT_DELAY_MS = 500;
     const AUDIO_STREAM_END_FRAME = { realtimeInput: { audioStreamEnd: true } };
 
     function encodePcm16(samples) {
@@ -190,6 +191,11 @@
         return colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
     }
 
+    function buildGeminiWebSocketUrl(wsUrl, ephemeralToken) {
+        const separator = wsUrl.includes('?') ? '&' : '?';
+        return `${wsUrl}${separator}access_token=${encodeURIComponent(ephemeralToken)}`;
+    }
+
     function resolveLiveTransport(optionLike) {
         const provider = optionLike && optionLike.dataset
             ? String(optionLike.dataset.provider || '')
@@ -258,6 +264,7 @@
             LiveTranscriptReducer,
             buildGeminiRealtimeAudioFrame,
             buildGeminiSetupFrame,
+            buildGeminiWebSocketUrl,
             createCompleteOffer,
             downsampleTo16k,
             encodePcm16,
@@ -646,7 +653,25 @@
             return terms;
         }
 
-        function handleGeminiMessage(payload) {
+        function handleGeminiMessage(payload, socket) {
+            if (!geminiState || geminiState.ws !== socket || stopping) return;
+            if (payload.error) {
+                const message = payload.error && payload.error.message
+                    ? payload.error.message
+                    : labels.realtimeError;
+                console.error('Gemini Live WebSocket error.', payload.error);
+                stopAndSave(true)
+                    .finally(() => setError(message))
+                    .catch(() => {});
+                return;
+            }
+            if (payload.setupComplete) {
+                geminiState.setupComplete = true;
+                geminiState.consecutiveFailures = 0;
+                if (!audioProcessor && stream) startGeminiCapture(stream);
+                setStatus('live', labels.listening);
+                setAction(labels.stop, 'stop', false, true);
+            }
             const content = payload.serverContent;
             if (content) {
                 const interim = content.interimInputTranscription
@@ -674,48 +699,72 @@
             }
         }
 
-        async function handleGeminiDisconnect() {
-            if (stopping || !geminiState || !sessionToken) return;
-            const failures = geminiState.consecutiveFailures + 1;
+        async function handleGeminiDisconnect(socket) {
+            if (
+                stopping
+                || !geminiState
+                || !sessionToken
+                || geminiState.ws !== socket
+                || geminiState.reconnectInFlight
+            ) return;
+            const disconnectedState = geminiState;
+            const disconnectedToken = sessionToken;
+            const failures = disconnectedState.consecutiveFailures + 1;
+            disconnectedState.consecutiveFailures = failures;
+            disconnectedState.setupComplete = false;
             if (!shouldAttemptReconnect(Date.now() - startedAt, failures)) {
-                setError(labels.geminiDisconnected);
-                stopAndSave(true);
+                stopAndSave(true)
+                    .finally(() => setError(labels.geminiDisconnected))
+                    .catch(() => {});
                 return;
             }
-            geminiState.consecutiveFailures = failures;
+            disconnectedState.reconnectInFlight = true;
             setStatus('connecting', labels.geminiReconnecting);
             try {
+                await wait(GEMINI_RECONNECT_DELAY_MS * failures);
+                if (
+                    stopping
+                    || geminiState !== disconnectedState
+                    || sessionToken !== disconnectedToken
+                ) return;
                 const refreshed = await postJson('/api/live/session/refresh', {
-                    session_token: sessionToken,
+                    session_token: disconnectedToken,
                 });
-                if (stopping || !geminiState || !sessionToken) return;
+                if (
+                    stopping
+                    || geminiState !== disconnectedState
+                    || sessionToken !== disconnectedToken
+                ) return;
                 connectGeminiSocket(refreshed.ws_url, refreshed.ephemeral_token);
             } catch (error) {
-                setError(error.message || labels.geminiDisconnected);
-                stopAndSave(true);
+                if (stopping || geminiState !== disconnectedState) return;
+                stopAndSave(true)
+                    .finally(() => setError(error.message || labels.geminiDisconnected))
+                    .catch(() => {});
+            } finally {
+                if (geminiState === disconnectedState) {
+                    disconnectedState.reconnectInFlight = false;
+                }
             }
         }
 
         function connectGeminiSocket(wsUrl, ephemeralToken) {
-            const socket = new WebSocket(`${wsUrl}?key=${encodeURIComponent(ephemeralToken)}`);
-            if (stopping || !geminiState) {
-                try {
-                    socket.close();
-                } catch (_) {}
-                return;
-            }
-            geminiState.ws = socket;
+            if (stopping || !geminiState) return;
+            const socket = new WebSocket(buildGeminiWebSocketUrl(wsUrl, ephemeralToken));
+            const connectedState = geminiState;
+            connectedState.ws = socket;
+            connectedState.setupComplete = false;
             socket.onopen = () => {
-                geminiState.consecutiveFailures = 0;
+                if (stopping || geminiState !== connectedState || connectedState.ws !== socket) {
+                    socket.close();
+                    return;
+                }
                 socket.send(JSON.stringify(buildGeminiSetupFrame(
-                    geminiState.model,
-                    geminiState.language,
-                    geminiState.vocabulary,
-                    geminiState.resumeHandle,
+                    connectedState.model,
+                    connectedState.language,
+                    connectedState.vocabulary,
+                    connectedState.resumeHandle,
                 )));
-                startGeminiCapture(stream);
-                setStatus('live', labels.listening);
-                setAction(labels.stop, 'stop', false, true);
             };
             socket.onmessage = (message) => {
                 let payload;
@@ -725,10 +774,10 @@
                     console.warn('Ignored an unreadable Gemini event.', error);
                     return;
                 }
-                handleGeminiMessage(payload);
+                handleGeminiMessage(payload, socket);
             };
             socket.onerror = () => {};
-            socket.onclose = handleGeminiDisconnect;
+            socket.onclose = () => handleGeminiDisconnect(socket);
         }
 
         function startGeminiSession(session) {
@@ -737,6 +786,8 @@
                 resumeHandle: null,
                 finalSeq: 0,
                 consecutiveFailures: 0,
+                reconnectInFlight: false,
+                setupComplete: false,
                 model: elements.model ? providerLocalModelCode(elements.model.value) : '',
                 language: elements.language.value,
                 vocabulary: deriveGeminiVocabulary(
@@ -763,7 +814,13 @@
                 const channel = event.inputBuffer.getChannelData(0);
                 event.outputBuffer.getChannelData(0).fill(0);
                 const socket = geminiState ? geminiState.ws : null;
-                if (!socket || !global.WebSocket || socket.readyState !== global.WebSocket.OPEN) {
+                if (
+                    !socket
+                    || !geminiState
+                    || !geminiState.setupComplete
+                    || !global.WebSocket
+                    || socket.readyState !== global.WebSocket.OPEN
+                ) {
                     return;
                 }
                 const pcm = downsampleTo16k(channel, audioContext.sampleRate);
@@ -913,8 +970,6 @@
                 stopSignalSent = false;
                 if ((session.transport || selectedTransport) === 'gemini-wss') {
                     startGeminiSession(session);
-                    setStatus('live', labels.listening);
-                    setAction(labels.stop, 'stop', false, true);
                     startTimer();
                     return;
                 }

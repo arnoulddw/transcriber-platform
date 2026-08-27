@@ -997,7 +997,7 @@ def test_create_session_gemini_mints_ephemeral_token_without_webrtc(live_app, mo
     assert result["transport"] == "gemini-wss"
     assert result["answer_sdp"] == ""
     assert result["ephemeral_token"] == "tokens/live-42"
-    assert result["ws_url"].startswith("wss://generativelanguage.googleapis.com/")
+    assert result["ws_url"].endswith("BidiGenerateContentConstrained")
     assert result["session_token"]
     post.assert_not_called()
     assert payload["provider"] == "gemini"
