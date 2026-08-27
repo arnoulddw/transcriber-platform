@@ -99,7 +99,7 @@ def test_reconcile_ignores_unknown_provider_and_blank_code():
     with patch.object(transcription_catalog, "get_cursor", return_value=cursor), patch.object(
         transcription_catalog, "get_db", return_value=_RecordingDatabase()
     ):
-        transcription_catalog.reconcile_model_purposes("gemini", "gpt-transcribe")
+        transcription_catalog.reconcile_model_purposes("acme", "gpt-transcribe")
         transcription_catalog.reconcile_model_purposes("openai", "")
 
     assert cursor.updates == []

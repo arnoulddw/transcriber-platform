@@ -1,8 +1,33 @@
 # app/core/utils.py
 # Contains core utility functions for the application.
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
+
+def split_vocabulary_terms(prompt: str, cap: int = 1000) -> list[str]:
+    """
+    Splits a context prompt into custom-vocabulary terms.
+    Pieces are separated by commas/newlines, trimmed, deduplicated
+    case-insensitively (first spelling wins, order preserved) and capped
+    at ``cap`` entries (Google accepts up to 1000 phrases).
+    Empty/whitespace-only input returns []. Neither batch nor live modes
+    transform term casing - terms are sent verbatim.
+    """
+    vocabulary: list[str] = []
+    seen: set[str] = set()
+    if cap <= 0:
+        return vocabulary
+    for piece in re.split(r"[,\n]+", str(prompt or "")):
+        term = piece.strip()
+        key = term.casefold()
+        if not term or key in seen:
+            continue
+        seen.add(key)
+        vocabulary.append(term)
+        if len(vocabulary) >= cap:
+            break
+    return vocabulary
 
 def format_currency(value: float) -> str:
     """

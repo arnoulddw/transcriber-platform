@@ -89,6 +89,20 @@ class BaseTranscriptionClient(ABC):
                 self.logger.warning("Invalid single_file_max_retries_override value: %s", override)
         return int(self.config.get('TRANSCRIPTION_SINGLE_FILE_MAX_RETRIES', 0))
 
+    def _resolve_split_limits(self, model_code: Optional[str], provider_code: str) -> Dict[str, Any]:
+        """Return split-limit kwargs for a model, falling back to its provider.
+
+        Lookup order: API_LIMITS[model_code] -> API_PROVIDER_LIMITS[provider]
+        -> {}. Subclasses feed this into SPLIT_THRESHOLD_SECONDS/BYTES so a
+        future model without its own row inherits sane provider-wide caps."""
+        api_limits = self.config.get('API_LIMITS') or {}
+        provider_limits = self.config.get('API_PROVIDER_LIMITS') or {}
+        if model_code:
+            row = api_limits.get(model_code)
+            if row:
+                return row
+        return provider_limits.get(str(provider_code).strip().lower()) or {}
+
     def _get_chunk_max_retries(self) -> int:
         """
         Determine how many retries to allow per chunk when chunking is required.

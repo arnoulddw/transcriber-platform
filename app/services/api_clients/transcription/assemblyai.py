@@ -56,10 +56,7 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
         self.max_concurrent_chunks = 1
         self.logger.info("Max concurrent chunks set to 1 (handled by SDK).")
 
-        api_limits = (
-            self.config.get('API_LIMITS', {}).get(self.model_code)
-            or self.config.get('API_LIMITS', {}).get('assemblyai', {})
-        )
+        api_limits = self._resolve_split_limits(self.model_code, 'assemblyai')
         self.SPLIT_THRESHOLD_SECONDS = api_limits.get('duration_s')
         size_mb = api_limits.get('size_mb')
         if size_mb is not None:

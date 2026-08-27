@@ -3,6 +3,18 @@
 
     const MAX_SESSION_DURATION_MS = 120 * 60 * 1000;
     const OPENROUTER_CHUNK_SECONDS = 3;
+    const GEMINI_RECONNECT_FAILURE_LIMIT = 3;
+    const AUDIO_STREAM_END_FRAME = { realtimeInput: { audioStreamEnd: true } };
+
+    function encodePcm16(samples) {
+        const buffer = new ArrayBuffer(samples.length * 2);
+        const view = new DataView(buffer);
+        samples.forEach((sample, index) => {
+            const clipped = Math.max(-1, Math.min(1, sample));
+            view.setInt16(index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+        });
+        return buffer;
+    }
 
     function encodePcm16Wav(samples, sampleRate) {
         const buffer = new ArrayBuffer(44 + samples.length * 2);
@@ -25,10 +37,8 @@
         view.setUint16(34, 16, true);
         writeString(36, 'data');
         view.setUint32(40, samples.length * 2, true);
-        samples.forEach((sample, index) => {
-            const clipped = Math.max(-1, Math.min(1, sample));
-            view.setInt16(44 + index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
-        });
+        const pcm = encodePcm16(samples);
+        new Uint8Array(buffer, 44).set(new Uint8Array(pcm));
         return buffer;
     }
 
@@ -94,6 +104,14 @@
             this.order = [];
             this.turns.clear();
             this.detectedLanguage = null;
+        }
+
+        replace(itemId, text) {
+            if (!this.turns.has(itemId)) {
+                this.order.push(itemId);
+                this.turns.set(itemId, { text: '', complete: false });
+            }
+            this.turns.get(itemId).text = text;
         }
     }
 
@@ -163,15 +181,91 @@
         return Math.max(0, MAX_SESSION_DURATION_MS - (now - startedAt));
     }
 
+    // Live-model <option> values are provider-qualified keys ('gemini:gemini-3.5-transcribe-live'),
+    // but Google expects the bare provider-local model id in `models/<id>`.
+    function providerLocalModelCode(value) {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) return '';
+        const colonIndex = trimmed.indexOf(':');
+        return colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
+    }
+
+    function resolveLiveTransport(optionLike) {
+        const provider = optionLike && optionLike.dataset
+            ? String(optionLike.dataset.provider || '')
+            : '';
+        const value = optionLike ? String(optionLike.value || '') : '';
+        if (provider === 'gemini') return 'gemini-wss';
+        if (value.startsWith('gemini-')) return 'gemini-wss';
+        if (value.includes('/') || provider === 'openrouter') return 'openrouter-sse';
+        return 'openai-webrtc';
+    }
+
+    function downsampleTo16k(samples, sourceSampleRate) {
+        if (sourceSampleRate === 16000) return samples;
+        const outputLength = Math.ceil(samples.length * 16000 / sourceSampleRate);
+        const output = new Float32Array(outputLength);
+        const ratio = sourceSampleRate / 16000;
+        for (let index = 0; index < outputLength; index += 1) {
+            const position = index * ratio;
+            const lower = Math.floor(position);
+            const upper = Math.min(lower + 1, samples.length - 1);
+            output[index] = samples[lower] + (position - lower) * (samples[upper] - samples[lower]);
+        }
+        return output;
+    }
+
+    function buildGeminiSetupFrame(modelCode, languageCode, vocabulary, resumeHandle) {
+        const inputAudioTranscription = {
+            languageCodes: languageCode === 'auto' ? [] : [languageCode],
+        };
+        if (vocabulary && vocabulary.length) {
+            inputAudioTranscription.customVocabulary = vocabulary;
+        }
+        return {
+            setup: {
+                model: `models/${modelCode}`,
+                generationConfig: { responseModalities: ['TEXT'] },
+                inputAudioTranscription,
+                sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
+            },
+        };
+    }
+
+    function buildGeminiRealtimeAudioFrame(base64Chunk) {
+        return {
+            realtimeInput: {
+                audio: {
+                    data: base64Chunk,
+                    mimeType: 'audio/pcm;rate=16000',
+                },
+            },
+        };
+    }
+
+    function shouldAttemptReconnect(elapsedMilliseconds, consecutiveFailures) {
+        return elapsedMilliseconds >= 0
+            && elapsedMilliseconds < MAX_SESSION_DURATION_MS
+            && consecutiveFailures < GEMINI_RECONNECT_FAILURE_LIMIT;
+    }
+
     global.LiveTranscriptReducer = LiveTranscriptReducer;
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             MAX_SESSION_DURATION_MS,
             OPENROUTER_CHUNK_SECONDS,
+            AUDIO_STREAM_END_FRAME,
             LiveTranscriptReducer,
-            encodePcm16Wav,
+            buildGeminiRealtimeAudioFrame,
+            buildGeminiSetupFrame,
             createCompleteOffer,
+            downsampleTo16k,
+            encodePcm16,
+            encodePcm16Wav,
+            providerLocalModelCode,
             remainingSessionMilliseconds,
+            resolveLiveTransport,
+            shouldAttemptReconnect,
             waitForDataChannelOpen,
         };
     }
@@ -228,6 +322,8 @@
             noSpeech: root.dataset.i18nNoSpeech,
             copyError: root.dataset.i18nCopyError,
             requestFailed: root.dataset.i18nRequestFailed,
+            geminiReconnecting: root.dataset.i18nGeminiReconnecting,
+            geminiDisconnected: root.dataset.i18nGeminiDisconnected,
         };
 
         const reducer = new LiveTranscriptReducer();
@@ -256,6 +352,7 @@
         let openrouterChunkTimer = null;
         let openrouterChunkSequence = 0;
         let openrouterChunkPromise = Promise.resolve();
+        let geminiState = null;
 
         function setError(message) {
             elements.error.textContent = message || '';
@@ -444,6 +541,21 @@
                 peerConnection.close();
             }
             peerConnection = null;
+            if (geminiState && geminiState.ws) {
+                const socket = geminiState.ws;
+                socket.onopen = null;
+                socket.onmessage = null;
+                socket.onerror = null;
+                socket.onclose = null;
+                if (
+                    global.WebSocket
+                    && socket.readyState !== global.WebSocket.CLOSING
+                    && socket.readyState !== global.WebSocket.CLOSED
+                ) {
+                    socket.close();
+                }
+            }
+            geminiState = null;
             if (stream) {
                 stream.getTracks().forEach((track) => {
                     track.onended = null;
@@ -519,6 +631,148 @@
                 flushOpenrouterChunk,
                 OPENROUTER_CHUNK_SECONDS * 1000,
             );
+        }
+
+        function deriveGeminiVocabulary(prompt) {
+            const seen = new Set();
+            const terms = [];
+            String(prompt || '').split(/[,\n]+/).forEach((candidate) => {
+                const term = candidate.trim();
+                if (term && !seen.has(term) && terms.length < 1000) {
+                    seen.add(term);
+                    terms.push(term);
+                }
+            });
+            return terms;
+        }
+
+        function handleGeminiMessage(payload) {
+            const content = payload.serverContent;
+            if (content) {
+                const interim = content.interimInputTranscription
+                    ? content.interimInputTranscription.text
+                    : null;
+                const final = content.inputTranscription ? content.inputTranscription.text : null;
+                if (typeof final === 'string' && final) {
+                    geminiState.finalSeq += 1;
+                    reducer.apply({
+                        type: 'conversation.item.input_audio_transcription.completed',
+                        item_id: `gemini-final-${geminiState.finalSeq}`,
+                        transcript: final,
+                    });
+                    reducer.replace('gemini-interim', '');
+                } else if (typeof interim === 'string' && interim) {
+                    reducer.replace('gemini-interim', interim);
+                }
+                renderTranscript();
+            }
+            const newHandle = payload.sessionResumptionUpdate
+                ? payload.sessionResumptionUpdate.newHandle
+                : null;
+            if (typeof newHandle === 'string' && newHandle) {
+                geminiState.resumeHandle = newHandle;
+            }
+        }
+
+        async function handleGeminiDisconnect() {
+            if (stopping || !geminiState || !sessionToken) return;
+            const failures = geminiState.consecutiveFailures + 1;
+            if (!shouldAttemptReconnect(Date.now() - startedAt, failures)) {
+                setError(labels.geminiDisconnected);
+                stopAndSave(true);
+                return;
+            }
+            geminiState.consecutiveFailures = failures;
+            setStatus('connecting', labels.geminiReconnecting);
+            try {
+                const refreshed = await postJson('/api/live/session/refresh', {
+                    session_token: sessionToken,
+                });
+                if (stopping || !geminiState || !sessionToken) return;
+                connectGeminiSocket(refreshed.ws_url, refreshed.ephemeral_token);
+            } catch (error) {
+                setError(error.message || labels.geminiDisconnected);
+                stopAndSave(true);
+            }
+        }
+
+        function connectGeminiSocket(wsUrl, ephemeralToken) {
+            const socket = new WebSocket(`${wsUrl}?key=${encodeURIComponent(ephemeralToken)}`);
+            if (stopping || !geminiState) {
+                try {
+                    socket.close();
+                } catch (_) {}
+                return;
+            }
+            geminiState.ws = socket;
+            socket.onopen = () => {
+                geminiState.consecutiveFailures = 0;
+                socket.send(JSON.stringify(buildGeminiSetupFrame(
+                    geminiState.model,
+                    geminiState.language,
+                    geminiState.vocabulary,
+                    geminiState.resumeHandle,
+                )));
+                startGeminiCapture(stream);
+                setStatus('live', labels.listening);
+                setAction(labels.stop, 'stop', false, true);
+            };
+            socket.onmessage = (message) => {
+                let payload;
+                try {
+                    payload = JSON.parse(message.data);
+                } catch (error) {
+                    console.warn('Ignored an unreadable Gemini event.', error);
+                    return;
+                }
+                handleGeminiMessage(payload);
+            };
+            socket.onerror = () => {};
+            socket.onclose = handleGeminiDisconnect;
+        }
+
+        function startGeminiSession(session) {
+            geminiState = {
+                ws: null,
+                resumeHandle: null,
+                finalSeq: 0,
+                consecutiveFailures: 0,
+                model: elements.model ? providerLocalModelCode(elements.model.value) : '',
+                language: elements.language.value,
+                vocabulary: deriveGeminiVocabulary(
+                    elements.contextPrompt ? elements.contextPrompt.value.trim() : ''
+                ),
+            };
+            connectGeminiSocket(session.ws_url, session.ephemeral_token);
+        }
+
+        function startGeminiCapture(activeStream) {
+            if (!audioContext) throw new Error(labels.unsupported);
+            if (audioInputSource) {
+                audioInputSource.disconnect();
+                audioInputSource = null;
+            }
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor.onaudioprocess = null;
+                audioProcessor = null;
+            }
+            audioInputSource = audioContext.createMediaStreamSource(activeStream);
+            audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+            audioProcessor.onaudioprocess = (event) => {
+                const channel = event.inputBuffer.getChannelData(0);
+                event.outputBuffer.getChannelData(0).fill(0);
+                const socket = geminiState ? geminiState.ws : null;
+                if (!socket || !global.WebSocket || socket.readyState !== global.WebSocket.OPEN) {
+                    return;
+                }
+                const pcm = downsampleTo16k(channel, audioContext.sampleRate);
+                socket.send(JSON.stringify(
+                    buildGeminiRealtimeAudioFrame(arrayBufferToBase64(encodePcm16(pcm)))
+                ));
+            };
+            audioInputSource.connect(audioProcessor);
+            audioProcessor.connect(audioContext.destination);
         }
 
         async function postJson(url, body, keepalive = false) {
@@ -611,24 +865,60 @@
                 await listMicrophones();
                 startVolumeMeter(stream);
 
-                const selectedModel = elements.model?.selectedOptions?.[0];
-                const requestedTransport = selectedModel?.dataset.provider === 'openrouter'
-                    || (elements.model?.value || '').includes('/');
-
-                if (!requestedTransport && !global.RTCPeerConnection) {
+                const selectedTransport = resolveLiveTransport(elements.model?.selectedOptions?.[0]);
+                if (selectedTransport === 'openai-webrtc' && !global.RTCPeerConnection) {
                     throw new Error(labels.unsupported);
                 }
-                liveTransport = requestedTransport ? 'openrouter-sse' : 'openai-webrtc';
-                peerConnection = requestedTransport ? null : new RTCPeerConnection();
-                if (liveTransport === 'openrouter-sse') {
-                    const session = await postJson('/api/live/session', {
-                        sdp: '',
-                        language_code: elements.language.value,
-                        model: elements.model ? elements.model.value : '',
-                        context_prompt: elements.contextPrompt ? elements.contextPrompt.value.trim() : '',
-                    });
-                    sessionToken = session.session_token;
-                    stopSignalSent = false;
+                liveTransport = selectedTransport;
+
+                const sessionBody = {
+                    language_code: elements.language.value,
+                    model: elements.model ? elements.model.value : '',
+                    context_prompt: elements.contextPrompt ? elements.contextPrompt.value.trim() : '',
+                };
+
+                if (selectedTransport === 'openai-webrtc') {
+                    peerConnection = new RTCPeerConnection();
+                    stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
+                    dataChannel = peerConnection.createDataChannel('oai-events');
+                    dataChannel.onmessage = (message) => {
+                        try {
+                            handleRealtimeEvent(JSON.parse(message.data));
+                        } catch (error) {
+                            console.warn('Ignored an unreadable realtime event.', error);
+                        }
+                    };
+                    dataChannel.onclose = () => {
+                        if (state === 'live' && !stopping) stopAndSave();
+                    };
+                    peerConnection.onconnectionstatechange = () => {
+                        if (
+                            peerConnection
+                            && peerConnection.connectionState === 'failed'
+                            && state === 'live'
+                            && !stopping
+                        ) {
+                            setError(labels.interrupted);
+                            stopAndSave();
+                        }
+                    };
+                    const offer = await createCompleteOffer(peerConnection);
+                    sessionBody.sdp = offer.sdp;
+                } else if (selectedTransport === 'openrouter-sse') {
+                    sessionBody.sdp = '';
+                }
+
+                const session = await postJson('/api/live/session', sessionBody);
+                sessionToken = session.session_token;
+                stopSignalSent = false;
+                if ((session.transport || selectedTransport) === 'gemini-wss') {
+                    startGeminiSession(session);
+                    setStatus('live', labels.listening);
+                    setAction(labels.stop, 'stop', false, true);
+                    startTimer();
+                    return;
+                }
+                if (selectedTransport === 'openrouter-sse') {
                     resetOpenrouterCapture();
                     startOpenrouterCapture(stream);
                     setStatus('live', labels.listening);
@@ -636,39 +926,6 @@
                     startTimer();
                     return;
                 }
-                stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
-                dataChannel = peerConnection.createDataChannel('oai-events');
-                dataChannel.onmessage = (message) => {
-                    try {
-                        handleRealtimeEvent(JSON.parse(message.data));
-                    } catch (error) {
-                        console.warn('Ignored an unreadable realtime event.', error);
-                    }
-                };
-                dataChannel.onclose = () => {
-                    if (state === 'live' && !stopping) stopAndSave();
-                };
-                peerConnection.onconnectionstatechange = () => {
-                    if (
-                        peerConnection
-                        && peerConnection.connectionState === 'failed'
-                        && state === 'live'
-                        && !stopping
-                    ) {
-                        setError(labels.interrupted);
-                        stopAndSave();
-                    }
-                };
-
-                const offer = await createCompleteOffer(peerConnection);
-                const session = await postJson('/api/live/session', {
-                    sdp: offer.sdp,
-                    language_code: elements.language.value,
-                    model: elements.model ? elements.model.value : '',
-                    context_prompt: elements.contextPrompt ? elements.contextPrompt.value.trim() : '',
-                });
-                sessionToken = session.session_token;
-                stopSignalSent = false;
                 await peerConnection.setRemoteDescription({
                     type: 'answer',
                     sdp: session.answer_sdp,
@@ -703,6 +960,15 @@
             setAction(labels.saving, 'hourglass_top', true, false);
             stopTimer();
             if (stopAudioImmediately) stopAudioInput();
+
+            if (liveTransport === 'gemini-wss' && geminiState && geminiState.ws
+                && global.WebSocket && geminiState.ws.readyState === global.WebSocket.OPEN) {
+                try {
+                    geminiState.ws.send(JSON.stringify(AUDIO_STREAM_END_FRAME));
+                } catch (error) {
+                    console.warn('Could not signal end of audio stream.', error);
+                }
+            }
 
             if (liveTransport === 'openrouter-sse') {
                 flushOpenrouterChunk();

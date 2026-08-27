@@ -8,25 +8,41 @@ from flask_babel import Babel
 from app.services import live_transcription_service as service
 
 
-def test_google_live_model_is_rejected_before_the_openai_runtime_is_called(monkeypatch):
+def test_gemini_live_model_resolves_to_gemini_and_serves_websocket_session(monkeypatch):
     app = Flask(__name__)
     app.config.update(
         SECRET_KEY="test-secret",
         DEPLOYMENT_MODE="single",
         OPENAI_API_KEY="openai-key",
-        LIVE_TRANSCRIPTION_MODEL="gemini-2.5-flash-native-audio",
-        LIVE_TRANSCRIPTION_MODELS=["gemini-2.5-flash-native-audio"],
-        LIVE_TRANSCRIPTION_PROVIDERS={"gemini-2.5-flash-native-audio": "google"},
+        GEMINI_API_KEY="gemini-key",
+        LIVE_TRANSCRIPTION_MODEL="gemini-3.5-transcribe-live",
+        LIVE_TRANSCRIPTION_MODELS=["gemini-3.5-transcribe-live"],
+        LIVE_TRANSCRIPTION_PROVIDERS={"gemini-3.5-transcribe-live": "gemini"},
     )
     Babel(app)
     monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    monkeypatch.setattr(service, "_resolve_provider_api_key", lambda *_: "k")
+    monkeypatch.setattr(
+        service.role_model,
+        "reserve_usage_if_allowed",
+        MagicMock(return_value=(True, "")),
+    )
+    fake_client = MagicMock()
+    fake_client.auth_tokens.create.return_value.name = "tokens/gemini-ephemeral"
+    monkeypatch.setattr(service, "_gemini_client", lambda _api_key: fake_client)
     post = MagicMock()
     monkeypatch.setattr(service.httpx, "post", post)
 
-    user = SimpleNamespace(id=7)
-    with app.app_context(), pytest.raises(service.LiveTranscriptionValidationError, match="not supported"):
-        service.create_session(user, "offer-sdp", "auto", "", "gemini-2.5-flash-native-audio")
+    user = SimpleNamespace(id=7, role=SimpleNamespace(name="member"))
+    with app.app_context():
+        assert service._resolve_provider(user, "gemini-3.5-transcribe-live") == "gemini"
+        result = service.create_session(user, None, "auto", "", "gemini-3.5-transcribe-live")
 
+    assert result["transport"] == "gemini-wss"
+    assert result["answer_sdp"] == ""
+    assert result["session_token"]
+    assert result["ws_url"].startswith("wss://generativelanguage.googleapis.com/")
+    assert result["ephemeral_token"] == "tokens/gemini-ephemeral"
     post.assert_not_called()
 
 

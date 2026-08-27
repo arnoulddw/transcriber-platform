@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import httpx
@@ -17,6 +17,7 @@ from flask_babel import gettext as _
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app.core.decorators import check_permission
+from app.core.utils import split_vocabulary_terms
 from app.models import role as role_model
 from app.models import transcription as transcription_model
 from app.models import transcription_catalog as transcription_catalog_model
@@ -36,6 +37,10 @@ LIVE_MINUTES_RESERVATION = 10.0
 RETRYABLE_SESSION_STATUS_CODES = frozenset({502, 503, 504})
 ENDED_CALL_STATUS_CODES = frozenset({404, 409})
 MAX_OPENROUTER_CHUNK_BYTES = 8 * 1024 * 1024
+GEMINI_WS_URL = (
+    "wss://generativelanguage.googleapis.com/ws/"
+    "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+)
 OPENROUTER_AUDIO_FORMATS = frozenset({"wav", "mp3", "flac", "m4a", "ogg", "webm", "aac"})
 OPENROUTER_STT_MODELS = frozenset({
     "nvidia/nemotron-3.5-asr-streaming-multilingual-0.6b",
@@ -49,6 +54,27 @@ OPENROUTER_STT_MODELS = frozenset({
     "openai/whisper-1",
     "openai/gpt-4o-transcribe",
 })
+
+
+def _load_genai():
+    """Lazily import google-genai so non-Gemini installs pay no import cost."""
+    global _genai_module
+    if _genai_module is None:
+        try:
+            from google import genai as genai_module
+        except Exception as exc:
+            raise LiveTranscriptionUpstreamError(
+                _("Could not connect to the live transcription service.")
+            ) from exc
+        _genai_module = genai_module
+    return _genai_module
+
+
+_genai_module: Optional[Any] = None
+
+
+def _gemini_client(api_key: str):
+    return _load_genai().Client(api_key=api_key)
 
 
 def _configured_openrouter_stt_models() -> frozenset[str]:
@@ -152,6 +178,8 @@ def _resolve_provider(user, model: str) -> str:
     configured = current_app.config.get('LIVE_TRANSCRIPTION_PROVIDERS', {}).get(model)
     if configured:
         return str(configured).strip().lower()
+    if model.startswith("gemini-"):
+        return "gemini"
     return "openrouter" if "/" in model else "openai"
 
 
@@ -209,6 +237,26 @@ def build_session_config(model: str, language: str, prompt: str) -> Dict[str, An
                 "transcription": transcription,
                 "turn_detection": None,
             }
+        },
+    }
+
+
+def build_live_connect_constraints(model: str, language: str, prompt: str) -> Dict[str, Any]:
+    """Build snake_case live_connect_constraints for Gemini ephemeral tokens."""
+    transcription: Dict[str, Any] = {
+        "language_codes": [] if language == "auto" else [language],
+    }
+    vocabulary = split_vocabulary_terms(prompt)
+    if vocabulary:
+        transcription["custom_vocabulary"] = vocabulary
+    # Snake_case here matches the Python SDK auth_tokens.create config; the
+    # browser-side setup frame uses camelCase siblings under setup instead.
+    return {
+        "model": model,
+        "config": {
+            "response_modalities": ["TEXT"],
+            "input_audio_transcription": transcription,
+            "session_resumption": {},
         },
     }
 
@@ -277,6 +325,47 @@ def create_session(
             "answer_sdp": "",
             "session_token": token,
             "transport": "openrouter-sse",
+        }
+    if provider == "gemini":
+        # WebRTC offer is not required for the Gemini WebSocket transport.
+        _reserve_live_minutes_or_raise(user)  # single reservation per logical session
+        api_key = _resolve_provider_api_key(user, provider, model)
+        constraints = build_live_connect_constraints(model, language, prompt)
+        now = datetime.now(timezone.utc)
+        try:
+            token_obj = _gemini_client(api_key).auth_tokens.create(
+                config={
+                    "uses": 1,
+                    "expire_time": now + timedelta(minutes=30),
+                    "new_session_expire_time": now + timedelta(minutes=1),
+                    "live_connect_constraints": constraints,
+                }
+            )
+        except Exception as exc:
+            LOGGER.error("Gemini ephemeral token request failed: %s", exc)
+            raise LiveTranscriptionUpstreamError(
+                _("Could not connect to the live transcription service.")
+            ) from exc
+        transcription_id = str(uuid.uuid4())
+        token = _serializer().dumps(
+            {
+                "user_id": user.id,
+                "transcription_id": transcription_id,
+                "started_at": time.time(),
+                "language": language,
+                "context_prompt_used": bool(prompt),
+                "context_prompt": prompt,
+                "model": model,
+                "provider": provider,
+                "transport": "gemini-wss",
+            }
+        )
+        return {
+            "answer_sdp": "",
+            "session_token": token,
+            "transport": "gemini-wss",
+            "ws_url": GEMINI_WS_URL,
+            "ephemeral_token": token_obj.name,
         }
     if not isinstance(sdp, str) or not sdp.strip():
         raise LiveTranscriptionValidationError(_("A WebRTC session offer is required."))
@@ -520,6 +609,11 @@ def hangup_session(user, session_token: str) -> Dict[str, bool]:
         raise LiveTranscriptionPermissionError(
             _("This live session belongs to another user.")
         )
+    transport = payload.get("transport")
+    if transport in ("openrouter-sse", "gemini-wss"):
+        # Nothing to terminate server-side: OpenRouter SSE chunks and Gemini
+        # WebSocket sessions simply end when the browser disconnects.
+        return {"stopped": True}
     if payload.get("provider") == "openrouter":
         return {"stopped": True}
     call_id = payload.get("call_id")
@@ -555,6 +649,43 @@ def hangup_session(user, session_token: str) -> Dict[str, bool]:
             _("Could not stop the live transcription service.")
         )
     return {"stopped": True}
+
+
+def refresh_session_token(user, session_token: str) -> Dict[str, str]:
+    """Mint a fresh Gemini ephemeral token without re-reserving live minutes."""
+    payload = _decode_session_token(session_token)
+    if int(payload["user_id"]) != int(user.id):
+        raise LiveTranscriptionPermissionError(
+            _("This live session belongs to another user.")
+        )
+    if payload.get("provider") != "gemini" or payload.get("transport") != "gemini-wss":
+        raise LiveTranscriptionValidationError(_("The live session cannot be refreshed."))
+    if time.time() - float(payload["started_at"]) >= MAX_SESSION_DURATION_MINUTES * 60:
+        raise LiveTranscriptionValidationError(
+            _("The live session has reached its maximum duration.")
+        )
+    # One reservation per logical session happened at create_session; a refresh
+    # only mints a new ephemeral WebSocket credential.
+    api_key = _resolve_provider_api_key(user, "gemini", payload["model"])
+    constraints = build_live_connect_constraints(
+        payload["model"], payload["language"], payload.get("context_prompt", "")
+    )
+    now = datetime.now(timezone.utc)
+    try:
+        token_obj = _gemini_client(api_key).auth_tokens.create(
+            config={
+                "uses": 1,
+                "expire_time": now + timedelta(minutes=30),
+                "new_session_expire_time": now + timedelta(minutes=1),
+                "live_connect_constraints": constraints,
+            }
+        )
+    except Exception as exc:
+        LOGGER.error("Gemini ephemeral token request failed: %s", exc)
+        raise LiveTranscriptionUpstreamError(
+            _("Could not connect to the live transcription service.")
+        ) from exc
+    return {"ephemeral_token": token_obj.name, "ws_url": GEMINI_WS_URL}
 
 
 def _resolve_saved_language(requested: Optional[str], detected: Optional[str]) -> str:

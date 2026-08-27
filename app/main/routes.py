@@ -221,6 +221,7 @@ def live():
             check_permission(current_user, 'use_api_openai')
             or check_permission(current_user, 'use_api_openai_live_transcribe')
             or check_permission(current_user, 'use_api_openrouter')
+            or check_permission(current_user, 'use_api_google_gemini')
         )
     ):
         abort(403)

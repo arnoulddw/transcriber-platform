@@ -28,6 +28,7 @@ def live_permission_required(view):
             check_permission(current_user, "use_api_openai")
             or check_permission(current_user, "use_api_openai_live_transcribe")
             or check_permission(current_user, "use_api_openrouter")
+            or check_permission(current_user, "use_api_google_gemini")
         ):
             return jsonify({"error": _("You do not have access to Live transcription.")}), 403
         return view(*args, **kwargs)
@@ -58,6 +59,28 @@ def create_live_session():
     except Exception:
         LOGGER.exception("Unexpected error while creating a live transcription session.")
         return jsonify({"error": _("Could not start Live transcription.")}), 500
+
+
+@live_bp.route("/session/refresh", methods=["POST"])
+@live_permission_required
+@limiter.limit("10 per minute", key_func=lambda: build_user_limit_key("live-session-refresh"))
+def refresh_live_session():
+    data = request.get_json(silent=True) or {}
+    try:
+        result = live_transcription_service.refresh_session_token(
+            current_user,
+            data.get("session_token"),
+        )
+        return jsonify(result)
+    except LiveTranscriptionValidationError as exc:
+        return jsonify({"error": _(str(exc))}), 400
+    except (LiveTranscriptionPermissionError, MissingApiKeyError) as exc:
+        return jsonify({"error": _(str(exc))}), 403
+    except LiveTranscriptionUpstreamError as exc:
+        return jsonify({"error": _(str(exc))}), 502
+    except Exception:
+        LOGGER.exception("Unexpected error while refreshing a live transcription session.")
+        return jsonify({"error": _("Could not refresh Live transcription.")}), 500
 
 
 @live_bp.route("/chunk", methods=["POST"])

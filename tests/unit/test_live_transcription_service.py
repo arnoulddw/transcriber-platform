@@ -890,3 +890,280 @@ def test_finalize_session_records_actual_live_minutes(live_app, monkeypatch):
 
     assert increment_usage.call_count == 1
     assert increment_usage.call_args.kwargs.get("live_minutes_processed") == pytest.approx(0.0)
+
+
+# --- Gemini Live WebSocket transport ---------------------------------------
+
+
+GEMINI_LIVE_CONFIG = {
+    "LIVE_TRANSCRIPTION_MODELS": ["gemini-3.5-transcribe-live"],
+    "LIVE_TRANSCRIPTION_PROVIDERS": {"gemini-3.5-transcribe-live": "gemini"},
+    "GEMINI_API_KEY": "server-only-gemini-key",
+}
+
+
+def _gemini_fake_client(monkeypatch, token_name="tokens/gemini-ephemeral"):
+    fake_client = MagicMock()
+    fake_client.auth_tokens.create.return_value.name = token_name
+    gemini_client = MagicMock(return_value=fake_client)
+    monkeypatch.setattr(service, "_gemini_client", gemini_client)
+    return gemini_client, fake_client
+
+
+def test_resolve_provider_prefix_rule_maps_gemini_models(live_app):
+    live_app.config.update(LIVE_TRANSCRIPTION_PROVIDERS={})
+
+    with live_app.app_context():
+        assert service._resolve_provider(None, "gemini-3.5-transcribe-live") == "gemini"
+        assert service._resolve_provider(None, "gpt-live-transcribe") == "openai"
+        assert service._resolve_provider(None, "openai/whisper-1") == "openrouter"
+
+
+def test_configured_provider_beats_gemini_prefix_rule(live_app):
+    live_app.config.update(
+        LIVE_TRANSCRIPTION_PROVIDERS={"gemini-3.5-transcribe-live": "openrouter"}
+    )
+
+    with live_app.app_context():
+        assert service._resolve_provider(None, "gemini-3.5-transcribe-live") == "openrouter"
+
+
+def test_build_live_connect_constraints_auto_language_has_empty_language_codes():
+    constraints = service.build_live_connect_constraints("gemini-3.5-transcribe-live", "auto", "")
+
+    config = constraints["config"]
+    assert constraints["model"] == "gemini-3.5-transcribe-live"
+    assert config["response_modalities"] == ["TEXT"]
+    assert config["input_audio_transcription"] == {"language_codes": []}
+    assert config["session_resumption"] == {}
+
+
+def test_build_live_connect_constraints_adds_explicit_language_code():
+    constraints = service.build_live_connect_constraints("gemini-3.5-transcribe-live", "es", "")
+
+    language_codes = constraints["config"]["input_audio_transcription"]["language_codes"]
+    assert language_codes == ["es"]
+
+
+def test_build_live_connect_constraints_dedupes_prompt_vocabulary():
+    prompt = "alpha, beta ,\n alpha\nbeta\ngamma,,gamma"
+    constraints = service.build_live_connect_constraints("m", "auto", prompt)
+
+    vocab = constraints["config"]["input_audio_transcription"]["custom_vocabulary"]
+    assert vocab == ["alpha", "beta", "gamma"]
+
+
+def test_build_live_connect_constraints_dedupes_prompt_vocabulary_case_insensitively():
+    constraints = service.build_live_connect_constraints("m", "auto", "Alpha, alpha ,ALPHA")
+
+    vocab = constraints["config"]["input_audio_transcription"]["custom_vocabulary"]
+    assert vocab == ["Alpha"]
+
+
+def test_build_live_connect_constraints_caps_custom_vocabulary_at_1000_terms():
+    prompt = ", ".join(f"term{i}" for i in range(1200))
+    constraints = service.build_live_connect_constraints("m", "auto", prompt)
+
+    vocab = constraints["config"]["input_audio_transcription"]["custom_vocabulary"]
+    assert len(vocab) == 1000
+
+
+def test_build_live_connect_constraints_omits_vocabulary_for_empty_prompt():
+    constraints = service.build_live_connect_constraints("m", "auto", "")
+
+    assert "custom_vocabulary" not in constraints["config"]["input_audio_transcription"]
+
+
+def test_create_session_gemini_mints_ephemeral_token_without_webrtc(live_app, monkeypatch):
+    live_app.config.update(**GEMINI_LIVE_CONFIG)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(
+        service, "_validate_settings", lambda *_: ("fr", "Falcon budget")
+    )
+    post = MagicMock()
+    monkeypatch.setattr(service.httpx, "post", post)
+    gemini_client, fake_client = _gemini_fake_client(monkeypatch, "tokens/live-42")
+
+    with live_app.app_context():
+        result = service.create_session(
+            user,
+            "",
+            "fr",
+            "Falcon budget",
+            requested_model="gemini-3.5-transcribe-live",
+        )
+        payload = service._serializer().loads(result["session_token"])
+
+    assert result["transport"] == "gemini-wss"
+    assert result["answer_sdp"] == ""
+    assert result["ephemeral_token"] == "tokens/live-42"
+    assert result["ws_url"].startswith("wss://generativelanguage.googleapis.com/")
+    assert result["session_token"]
+    post.assert_not_called()
+    assert payload["provider"] == "gemini"
+    assert payload["transport"] == "gemini-wss"
+    assert payload["model"] == "gemini-3.5-transcribe-live"
+    assert payload["context_prompt"] == "Falcon budget"
+    assert gemini_client.call_args.args[0] == "server-only-gemini-key"
+    token_config = fake_client.auth_tokens.create.call_args.kwargs["config"]
+    assert token_config["uses"] == 1
+    constraints = token_config["live_connect_constraints"]
+    assert constraints["model"] == "gemini-3.5-transcribe-live"
+    assert constraints["config"]["session_resumption"] == {}
+    assert constraints["config"]["input_audio_transcription"]["custom_vocabulary"] == [
+        "Falcon budget"
+    ]
+
+
+def test_create_session_gemini_requires_an_api_key(live_app, monkeypatch):
+    live_app.config.update(**GEMINI_LIVE_CONFIG)
+    live_app.config.update(LIVE_TRANSCRIPTION_PROVIDERS={}, GEMINI_API_KEY=None)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+
+    with live_app.app_context(), pytest.raises(service.MissingApiKeyError):
+        service.create_session(
+            user, "", "auto", "", requested_model="gemini-3.5-transcribe-live"
+        )
+
+
+def test_create_session_gemini_wraps_upstream_failures(live_app, monkeypatch):
+    live_app.config.update(**GEMINI_LIVE_CONFIG)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    _, fake_client = _gemini_fake_client(monkeypatch)
+    fake_client.auth_tokens.create.side_effect = RuntimeError("token endpoint down")
+
+    with live_app.app_context(), pytest.raises(service.LiveTranscriptionUpstreamError):
+        service.create_session(
+            user, "", "auto", "", requested_model="gemini-3.5-transcribe-live"
+        )
+
+
+def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
+    live_app, monkeypatch
+):
+    live_app.config.update(**GEMINI_LIVE_CONFIG)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("fr", "Falcon budget"))
+    reserve = MagicMock(return_value=(True, ""))
+    monkeypatch.setattr(service.role_model, "reserve_usage_if_allowed", reserve)
+    gemini_client, _fake_client = _gemini_fake_client(monkeypatch, "tokens/refreshed")
+
+    with live_app.app_context():
+        created = service.create_session(
+            user,
+            "",
+            "fr",
+            "Falcon budget",
+            requested_model="gemini-3.5-transcribe-live",
+        )
+        refreshed = service.refresh_session_token(user, created["session_token"])
+
+    assert refreshed == {
+        "ephemeral_token": "tokens/refreshed",
+        "ws_url": service.GEMINI_WS_URL,
+    }
+    # One reservation per logical session: taken at create only.
+    assert reserve.call_count == 1
+    assert gemini_client.call_count == 2
+
+
+def test_refresh_session_token_rejects_non_gemini_sessions(live_app, monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 42,
+            "transcription_id": "live-job",
+            "started_at": service.time.time(),
+            "language": "auto",
+            "context_prompt_used": False,
+            "provider": "openai",
+            "model": "gpt-live-transcribe",
+            "transport": "openai-webrtc",
+        },
+    )
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionValidationError, match="cannot be refreshed"
+    ):
+        service.refresh_session_token(SimpleNamespace(id=42), "token")
+
+
+def test_refresh_session_token_rejects_sessions_past_max_duration(live_app, monkeypatch):
+    started_at = 1000.0
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 42,
+            "transcription_id": "long-gemini-job",
+            "started_at": started_at,
+            "language": "auto",
+            "context_prompt_used": False,
+            "provider": "gemini",
+            "model": "gemini-3.5-transcribe-live",
+            "transport": "gemini-wss",
+        },
+    )
+    monkeypatch.setattr(
+        service.time,
+        "time",
+        lambda: started_at + (service.MAX_SESSION_DURATION_MINUTES * 60) + 1,
+    )
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionValidationError, match="maximum duration"
+    ):
+        service.refresh_session_token(SimpleNamespace(id=42), "token")
+
+
+def test_hangup_session_stops_gemini_websocket_sessions_without_http_call(
+    live_app, monkeypatch
+):
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "gemini-live-job",
+            "started_at": 1000.0,
+            "language": "auto",
+            "context_prompt_used": False,
+            "provider": "gemini",
+            "model": "gemini-3.5-transcribe-live",
+            "transport": "gemini-wss",
+        },
+    )
+    post = MagicMock()
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        assert service.hangup_session(SimpleNamespace(id=7), "token") == {"stopped": True}
+
+    post.assert_not_called()
+
+
+def test_hangup_session_stops_openrouter_transport_without_http_call(live_app, monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "user_id": 7,
+            "transcription_id": "sse-live-job",
+            "started_at": 1000.0,
+            "language": "auto",
+            "context_prompt_used": False,
+            "provider": "openrouter",
+            "model": "openai/whisper-1",
+            "transport": "openrouter-sse",
+        },
+    )
+    post = MagicMock()
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        assert service.hangup_session(SimpleNamespace(id=7), "token") == {"stopped": True}
+
+    post.assert_not_called()

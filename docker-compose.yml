@@ -49,7 +49,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
 
       # --- Provider Configuration ---
-      TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-assemblyai,openai,openrouter}
+      TRANSCRIPTION_PROVIDERS: ${TRANSCRIPTION_PROVIDERS:-assemblyai,openai,gemini,openrouter}
       DEFAULT_TRANSCRIPTION_PROVIDER: ${DEFAULT_TRANSCRIPTION_PROVIDER:-gpt-4o-transcribe}
       DEFAULT_LLM_PROVIDER: ${DEFAULT_LLM_PROVIDER:-gemini}
 

@@ -135,6 +135,9 @@ class ApiKeyForm(FlaskForm):
         if not value:
             if service == 'openrouter':
                 raise ValidationError("OpenRouter model is required.")
+            purpose = self.model_purpose.data or 'transcription'
+            if service == 'gemini' and purpose != 'llm':
+                raise ValidationError("Google model name is required.")
             # Provider-wide rows from older clients are still accepted. New UI
             # submissions always provide a model name.
             field.data = None

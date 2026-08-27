@@ -5,7 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from app.services.api_clients import get_transcription_client
 from app.services.api_clients.exceptions import TranscriptionProcessingError
+from app.services.api_clients.transcription.assemblyai import AssemblyAITranscriptionAPI
 from app.services.api_clients.transcription.base_transcription_client import (
     BaseTranscriptionClient,
 )
@@ -134,3 +136,92 @@ def test_split_and_transcribe_does_not_warn_for_empty_source_chunk(tmp_path, cap
     assert result == ("", "en")
     assert client.has_transcription_warning is False
     assert not any("returned no transcription text" in record.message for record in caplog.records)
+
+
+# --- split-limit resolution ---
+
+
+def _stub_with_limits(config):
+    client = StubTranscriptionClient({1: ("", None)})
+    client.config = config
+    return client
+
+
+def test_model_row_wins_over_provider_row():
+    limits = {"duration_s": 420, "size_mb": 25}
+    client = _stub_with_limits({
+        "API_LIMITS": {"gpt-4o-transcribe": limits},
+        "API_PROVIDER_LIMITS": {"openai": {"duration_s": None, "size_mb": 25}},
+    })
+    assert client._resolve_split_limits("gpt-4o-transcribe", "openai") == limits
+
+
+def test_provider_fallback_used_when_no_model_row():
+    provider_row = {"duration_s": 3300, "size_mb": None}
+    client = _stub_with_limits({
+        "API_PROVIDER_LIMITS": {"gemini": provider_row},
+    })
+    # A future Gemini model with no API_LIMITS row of its own.
+    assert client._resolve_split_limits("gemini-9-future", "gemini") == provider_row
+
+
+def test_unknown_model_and_provider_return_empty_dict():
+    client = _stub_with_limits({"API_LIMITS": {"whisper": {"size_mb": 25}}})
+    assert client._resolve_split_limits("unknown-model", "mystery-provider") == {}
+
+
+def test_missing_limit_dicts_tolerated():
+    client = _stub_with_limits({})
+    assert client._resolve_split_limits(None, "openai") == {}
+
+
+def test_provider_lookup_is_case_insensitive():
+    provider_row = {"duration_s": None, "size_mb": 25}
+    client = _stub_with_limits({
+        "API_PROVIDER_LIMITS": {"openrouter": provider_row},
+    })
+    assert client._resolve_split_limits("vendor/model-x", " OpenRouter ") == provider_row
+
+
+# --- future AssemblyAI model names work via provider fallback limits ---
+
+
+def _assemblyai_future_config():
+    return {
+        "API_PROVIDER_LIMITS": {"assemblyai": {"duration_s": None, "size_mb": None}},
+        "TRANSCRIPTION_WORKERS": 1,
+    }
+
+
+def test_assemblyai_future_model_passes_catalog_code():
+    """A model code never seen before is passed verbatim to the API."""
+    with patch.object(AssemblyAITranscriptionAPI, "_initialize_client", return_value=None):
+        client = AssemblyAITranscriptionAPI(
+            "aai-key", _assemblyai_future_config(), model_code="universal-3"
+        )
+
+    assert client.CATALOG_MODEL_CODE == "universal-3"
+
+    params = client._prepare_api_params(
+        language_code="auto",
+        context_prompt="",
+        response_format="json",
+        is_chunk=False,
+    )
+    assert params["speech_models"] == ["universal-3"]
+
+    # Limits came from the assemblyai PROVIDER fallback: no duration rule and
+    # no size row, so the adapter's 1 GB safety ceiling applies.
+    assert client.SPLIT_THRESHOLD_SECONDS is None
+    assert client.SPLIT_THRESHOLD_BYTES == 1024 * 1024 * 1024
+
+
+def test_factory_routes_qualified_assemblyai_future_model():
+    """get_transcription_client resolves 'assemblyai:universal-3' to the adapter."""
+    config = dict(_assemblyai_future_config(), TRANSCRIPTION_WORKERS=1)
+    with patch.object(AssemblyAITranscriptionAPI, "_initialize_client", return_value=None):
+        client = get_transcription_client("assemblyai:universal-3", "aai-key", config)
+
+    assert isinstance(client, AssemblyAITranscriptionAPI)
+    assert client.model_code == "universal-3"
+    assert client.CATALOG_MODEL_CODE == "universal-3"

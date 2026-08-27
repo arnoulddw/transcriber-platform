@@ -73,12 +73,18 @@ _PROVIDER_METADATA: Dict[str, Dict[str, Optional[str]]] = {
         "required_api_key": "openrouter",
         "client_kind": "openrouter",
     },
+    "gemini": {
+        "display_name": "Google",
+        "permission_key": "use_api_google_gemini",
+        "required_api_key": "gemini",
+        "client_kind": "gemini",
+    },
 }
 
 # Provider labels and retired identifiers are never selectable models. The
 # provider table remains the source of provider metadata; these sets are only
 # defensive compatibility filters for databases being migrated.
-PROVIDER_ONLY_MODEL_CODES = frozenset({"openai", "assemblyai", "openrouter"})
+PROVIDER_ONLY_MODEL_CODES = frozenset({"openai", "assemblyai", "gemini", "openrouter"})
 DEPRECATED_MODEL_CODES = frozenset({"whisper", "gpt-4o-transcribe-diarize"})
 MODEL_KEY_SEPARATOR = ":"
 

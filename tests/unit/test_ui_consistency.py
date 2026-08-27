@@ -667,7 +667,7 @@ def test_providers_are_fixed_and_models_are_never_provider_labels(monkeypatch):
 
     After the display-name rework the legacy API_PROVIDER_NAME_MAP is gone:
     models are registered at runtime from saved keys with the raw model name
-    as display name, and the provider list is fixed to the three transcription
+    as display name, and the provider list is fixed to the four transcription
     backends. Regression guard: no provider label may leak in as a model's
     display name, and providers are never treated as pre-seeded models.
     """
@@ -678,16 +678,21 @@ def test_providers_are_fixed_and_models_are_never_provider_labels(monkeypatch):
     assert not hasattr(Config, "API_PROVIDER_NAME_MAP")
 
     # Providers are fixed and seeded; models are NOT (no whisper/gpt-4o codes).
-    assert Config.TRANSCRIPTION_PROVIDERS == ["assemblyai", "openai", "openrouter"]
+    assert Config.TRANSCRIPTION_PROVIDERS == ["assemblyai", "openai", "gemini", "openrouter"]
 
     # Provider display names belong to provider metadata only. They are not
     # emitted by the shared model-option builder as selectable model rows.
     from app.models import transcription_catalog
-    assert set(transcription_catalog._PROVIDER_METADATA) == {"assemblyai", "openai", "openrouter"}
+    assert set(transcription_catalog._PROVIDER_METADATA) == {
+        "assemblyai",
+        "openai",
+        "openrouter",
+        "gemini",
+    }
     assert {
         meta["display_name"]
         for meta in transcription_catalog._PROVIDER_METADATA.values()
-    } == {"AssemblyAI", "OpenAI", "OpenRouter"}
+    } == {"AssemblyAI", "OpenAI", "OpenRouter", "Google"}
 
 
 def test_key_save_and_delete_refresh_the_model_catalog_globals():
