@@ -15,6 +15,7 @@ const {
     encodePcm16,
     encodePcm16Wav,
     providerLocalModelCode,
+    parseGeminiWebSocketPayload,
     remainingSessionMilliseconds,
     resolveLiveTransport,
     shouldAttemptReconnect,
@@ -294,6 +295,14 @@ test('builds the Gemini ephemeral-token WebSocket URL with access_token auth', (
     );
 });
 
+test('parses Gemini WebSocket JSON delivered as text or a binary Blob', async () => {
+    const event = { setupComplete: {} };
+    const json = JSON.stringify(event);
+
+    assert.deepEqual(await parseGeminiWebSocketPayload(json), event);
+    assert.deepEqual(await parseGeminiWebSocketPayload(new Blob([json])), event);
+});
+
 test('encodes raw PCM16 little-endian samples without a WAV header', () => {
     const pcm = encodePcm16(new Float32Array([0, 0.999, -1, 1.5]));
 
@@ -420,7 +429,38 @@ test('replace() clears the interim slot without leaving stray text', () => {
     reducer.replace('gemini-interim', 'partial');
     reducer.replace('gemini-interim', '');
 
+    assert.deepEqual(reducer.entries(), []);
     assert.equal(reducer.text(), '');
+});
+
+test('a new Gemini interim follows finalized speech and is not duplicated on completion', () => {
+    const reducer = new LiveTranscriptReducer();
+
+    reducer.replace('gemini-interim', 'This is a test one two three.');
+    reducer.apply({
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'gemini-final-1',
+        transcript: 'This is a test one two three.',
+    });
+    reducer.replace('gemini-interim', '');
+    reducer.replace('gemini-interim', 'Why does it appear twice?');
+
+    assert.equal(
+        reducer.text(),
+        'This is a test one two three. Why does it appear twice?',
+    );
+
+    reducer.apply({
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'gemini-final-2',
+        transcript: 'Why does it appear twice?',
+    });
+    reducer.replace('gemini-interim', '');
+
+    assert.equal(
+        reducer.text(),
+        'This is a test one two three. Why does it appear twice?',
+    );
 });
 
 test('reconnects only within duration limits and below three consecutive failures', () => {

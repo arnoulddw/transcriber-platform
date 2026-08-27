@@ -109,6 +109,12 @@
         }
 
         replace(itemId, text) {
+            if (!text) {
+                if (this.turns.delete(itemId)) {
+                    this.order = this.order.filter((existingId) => existingId !== itemId);
+                }
+                return;
+            }
             if (!this.turns.has(itemId)) {
                 this.order.push(itemId);
                 this.turns.set(itemId, { text: '', complete: false });
@@ -250,6 +256,15 @@
         };
     }
 
+    async function parseGeminiWebSocketPayload(data) {
+        if (typeof data === 'string') return JSON.parse(data);
+        if (data && typeof data.text === 'function') return JSON.parse(await data.text());
+        if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+            return JSON.parse(new TextDecoder().decode(data));
+        }
+        return JSON.parse(String(data));
+    }
+
     function shouldAttemptReconnect(elapsedMilliseconds, consecutiveFailures) {
         return elapsedMilliseconds >= 0
             && elapsedMilliseconds < MAX_SESSION_DURATION_MS
@@ -296,6 +311,7 @@
             encodePcm16,
             encodePcm16Wav,
             providerLocalModelCode,
+            parseGeminiWebSocketPayload,
             remainingSessionMilliseconds,
             resolveLiveTransport,
             shouldAttemptReconnect,
@@ -469,6 +485,15 @@
 
         function renderTranscript() {
             const entries = reducer.entries();
+            const activeItemIds = new Set(
+                entries.filter((turn) => turn.text).map((turn) => turn.itemId)
+            );
+            turnElements.forEach((element, itemId) => {
+                if (!activeItemIds.has(itemId)) {
+                    element.remove();
+                    turnElements.delete(itemId);
+                }
+            });
             if (!entries.some((turn) => turn.text.trim())) {
                 const empty = document.createElement('p');
                 empty.id = 'liveEmptyState';
@@ -821,10 +846,10 @@
                     connectedState.resumeHandle,
                 )));
             };
-            socket.onmessage = (message) => {
+            socket.onmessage = async (message) => {
                 let payload;
                 try {
-                    payload = JSON.parse(message.data);
+                    payload = await parseGeminiWebSocketPayload(message.data);
                 } catch (error) {
                     console.warn('Ignored an unreadable Gemini event.', error);
                     return;
