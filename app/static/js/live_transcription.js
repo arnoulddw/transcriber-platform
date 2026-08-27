@@ -6,6 +6,16 @@
     const GEMINI_RECONNECT_FAILURE_LIMIT = 3;
     const AUDIO_STREAM_END_FRAME = { realtimeInput: { audioStreamEnd: true } };
 
+    function encodePcm16(samples) {
+        const buffer = new ArrayBuffer(samples.length * 2);
+        const view = new DataView(buffer);
+        samples.forEach((sample, index) => {
+            const clipped = Math.max(-1, Math.min(1, sample));
+            view.setInt16(index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+        });
+        return buffer;
+    }
+
     function encodePcm16Wav(samples, sampleRate) {
         const buffer = new ArrayBuffer(44 + samples.length * 2);
         const view = new DataView(buffer);
@@ -27,20 +37,8 @@
         view.setUint16(34, 16, true);
         writeString(36, 'data');
         view.setUint32(40, samples.length * 2, true);
-        samples.forEach((sample, index) => {
-            const clipped = Math.max(-1, Math.min(1, sample));
-            view.setInt16(44 + index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
-        });
-        return buffer;
-    }
-
-    function encodePcm16(samples) {
-        const buffer = new ArrayBuffer(samples.length * 2);
-        const view = new DataView(buffer);
-        samples.forEach((sample, index) => {
-            const clipped = Math.max(-1, Math.min(1, sample));
-            view.setInt16(index * 2, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
-        });
+        const pcm = encodePcm16(samples);
+        new Uint8Array(buffer, 44).set(new Uint8Array(pcm));
         return buffer;
     }
 
