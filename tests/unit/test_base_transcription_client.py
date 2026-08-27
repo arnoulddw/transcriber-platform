@@ -5,7 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from app.services.api_clients import get_transcription_client
 from app.services.api_clients.exceptions import TranscriptionProcessingError
+from app.services.api_clients.transcription.assemblyai import AssemblyAITranscriptionAPI
 from app.services.api_clients.transcription.base_transcription_client import (
     BaseTranscriptionClient,
 )
@@ -179,3 +181,47 @@ def test_provider_lookup_is_case_insensitive():
         "API_PROVIDER_LIMITS": {"openrouter": provider_row},
     })
     assert client._resolve_split_limits("vendor/model-x", " OpenRouter ") == provider_row
+
+
+# --- future AssemblyAI model names work via provider fallback limits ---
+
+
+def _assemblyai_future_config():
+    return {
+        "API_PROVIDER_LIMITS": {"assemblyai": {"duration_s": None, "size_mb": None}},
+        "TRANSCRIPTION_WORKERS": 1,
+    }
+
+
+def test_assemblyai_future_model_passes_catalog_code():
+    """A model code never seen before is passed verbatim to the API."""
+    with patch.object(AssemblyAITranscriptionAPI, "_initialize_client", return_value=None):
+        client = AssemblyAITranscriptionAPI(
+            "aai-key", _assemblyai_future_config(), model_code="universal-3"
+        )
+
+    assert client.CATALOG_MODEL_CODE == "universal-3"
+
+    params = client._prepare_api_params(
+        language_code="auto",
+        context_prompt="",
+        response_format="json",
+        is_chunk=False,
+    )
+    assert params["speech_models"] == ["universal-3"]
+
+    # Limits came from the assemblyai PROVIDER fallback: no duration rule and
+    # no size row, so the adapter's 1 GB safety ceiling applies.
+    assert client.SPLIT_THRESHOLD_SECONDS is None
+    assert client.SPLIT_THRESHOLD_BYTES == 1024 * 1024 * 1024
+
+
+def test_factory_routes_qualified_assemblyai_future_model():
+    """get_transcription_client resolves 'assemblyai:universal-3' to the adapter."""
+    config = dict(_assemblyai_future_config(), TRANSCRIPTION_WORKERS=1)
+    with patch.object(AssemblyAITranscriptionAPI, "_initialize_client", return_value=None):
+        client = get_transcription_client("assemblyai:universal-3", "aai-key", config)
+
+    assert isinstance(client, AssemblyAITranscriptionAPI)
+    assert client.model_code == "universal-3"
+    assert client.CATALOG_MODEL_CODE == "universal-3"
