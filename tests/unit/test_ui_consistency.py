@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -83,6 +84,34 @@ def test_index_template_has_first_run_empty_state_warning_with_manage_api_keys_l
     assert "window.openApiKeyModalDialog" in index_template
     # Admins without the permission get a plain "contact administrator" message.
     assert "Contact your administrator to enable them" in index_template
+
+
+def test_gemini_permission_gate_present_in_transcribe_button_matrix():
+    """The home transcribe-button gate must admit Gemini-permitted users.
+
+    Regression guard: the provider->permission matrix in main_init.js
+    originally had no 'gemini' branch, so selecting a Gemini model always
+    disabled the button with 'Permission denied'.
+    """
+    script = Path("app/static/js/main_init.js").read_text(encoding="utf-8")
+
+    matrix_line = [
+        line for line in script.splitlines()
+        if "selectedProvider === 'gemini'" in line
+        and "use_api_google_gemini" in line
+    ]
+    assert matrix_line, (
+        "main_init.js must grant canUseSelectedApi for gemini via "
+        "permissions.use_api_google_gemini"
+    )
+    assert "canUseSelectedApi" in matrix_line[0]
+
+    # Context prompts are supported for Gemini file transcription (mapped to
+    # custom_vocabulary), matched via the provider (values are qualified keys).
+    assert re.search(
+        r"supportsContextPrompt = [^;]*\|\| selectedProvider === 'gemini'",
+        script,
+    ), "context-prompt gate must treat gemini as a prompt-capable provider"
 
 
 def test_transcribe_button_gate_checks_daily_weekly_monthly_cost_and_minutes_limits():

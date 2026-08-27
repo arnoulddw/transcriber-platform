@@ -268,7 +268,8 @@ async function checkTranscribeButtonState() {
         const currentPermissions = readinessData.permissions || {};
         const hasContextPermission = currentPermissions.allow_context_prompt === true;
         const supportsContextPrompt = CONTEXT_PROMPT_SUPPORTED_APIS.includes(selectedApiValue)
-            || selectedProvider === 'assemblyai';
+            || selectedProvider === 'assemblyai'
+            || selectedProvider === 'gemini';
         const canShowContextPromptButton = hasContextPermission && supportsContextPrompt;
 
         if (lastContextPromptVisibility !== canShowContextPromptButton) {
@@ -315,6 +316,7 @@ async function checkTranscribeButtonState() {
         if (selectedProvider === 'openai') canUseSelectedApi = permissions.use_api_openai || permissions.use_api_openai_gpt_4o_transcribe || permissions.use_api_openai_whisper;
         else if (selectedProvider === 'assemblyai') canUseSelectedApi = permissions.use_api_assemblyai;
         else if (selectedProvider === 'openrouter') canUseSelectedApi = permissions.use_api_openrouter;
+        else if (selectedProvider === 'gemini') canUseSelectedApi = permissions.use_api_google_gemini;
 
         if (!canUseSelectedApi || (selectedApiOption && selectedApiOption.disabled)) {
             const apiName = window.API_NAME_MAP_FRONTEND[selectedApiValue] || selectedApiValue;
