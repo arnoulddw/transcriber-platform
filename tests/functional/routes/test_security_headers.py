@@ -29,3 +29,11 @@ def test_csp_allows_jsdelivr_source_map_fetches(client):
 
     assert "https://cdn.jsdelivr.net" in script_src.group(0)
     assert "https://cdn.jsdelivr.net" in connect_src.group(0)
+
+
+def test_csp_allows_gemini_live_websocket(client):
+    csp = client.get('/login').headers['Content-Security-Policy']
+    connect_src = re.search(r"connect-src[^;]*", csp)
+
+    assert connect_src
+    assert "wss://generativelanguage.googleapis.com" in connect_src.group(0)
