@@ -1013,6 +1013,7 @@ def test_create_session_gemini_mints_ephemeral_token_without_webrtc(live_app, mo
     assert constraints["config"]["input_audio_transcription"]["custom_vocabulary"] == [
         "Falcon budget"
     ]
+    fake_client.close.assert_called_once()
 
 
 def test_create_session_gemini_requires_an_api_key(live_app, monkeypatch):
@@ -1039,6 +1040,24 @@ def test_create_session_gemini_wraps_upstream_failures(live_app, monkeypatch):
             user, "", "auto", "", requested_model="gemini-3.5-transcribe-live"
         )
 
+    fake_client.close.assert_called_once()
+
+
+def test_create_session_gemini_wraps_client_construction_failures(live_app, monkeypatch):
+    live_app.config.update(**GEMINI_LIVE_CONFIG)
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    monkeypatch.setattr(
+        service,
+        "_gemini_client",
+        MagicMock(side_effect=RuntimeError("client initialization failed")),
+    )
+
+    with live_app.app_context(), pytest.raises(service.LiveTranscriptionUpstreamError):
+        service.create_session(
+            user, "", "auto", "", requested_model="gemini-3.5-transcribe-live"
+        )
+
 
 def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
     live_app, monkeypatch
@@ -1048,7 +1067,7 @@ def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
     monkeypatch.setattr(service, "_validate_settings", lambda *_: ("fr", "Falcon budget"))
     reserve = MagicMock(return_value=(True, ""))
     monkeypatch.setattr(service.role_model, "reserve_usage_if_allowed", reserve)
-    gemini_client, _fake_client = _gemini_fake_client(monkeypatch, "tokens/refreshed")
+    gemini_client, fake_client = _gemini_fake_client(monkeypatch, "tokens/refreshed")
 
     with live_app.app_context():
         created = service.create_session(
@@ -1067,6 +1086,7 @@ def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
     # One reservation per logical session: taken at create only.
     assert reserve.call_count == 1
     assert gemini_client.call_count == 2
+    assert fake_client.close.call_count == 2
 
 
 def test_refresh_session_token_rejects_non_gemini_sessions(live_app, monkeypatch):
