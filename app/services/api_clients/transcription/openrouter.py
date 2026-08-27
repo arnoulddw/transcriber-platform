@@ -21,7 +21,7 @@ class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
         # so a user context prompt cannot be applied. Report that once per job.
         self._context_prompt_unsupported_reported = False
         super().__init__(api_key, config)
-        api_limits = self.config.get("API_LIMITS", {}).get("openrouter", {})
+        api_limits = self._resolve_split_limits(self.model_code, "openrouter")
         self.SPLIT_THRESHOLD_SECONDS = api_limits.get("duration_s")
         size_mb = api_limits.get("size_mb")
         if size_mb is not None:

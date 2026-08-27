@@ -246,26 +246,19 @@ class Config:
             'rate_limit_rpm': 50,
             'api_model_name': 'whisper-1',
             'response_style': 'whisper',
-        },
-        'assemblyai': {
-            'duration_s': None,
-            'size_mb': None,
-            'rate_limit_rpm': None  # Handled by SDK
-        },
-        'openrouter': {
-            'duration_s': None,
-            'size_mb': 25,
-            'rate_limit_rpm': None,
-        },
-        'gemini-3.5-transcribe': {
-            # Unary transcription requests accept up to 1 hour of audio; split
-            # earlier so borderline files chunk automatically. The stricter
-            # 30-minute rule only applies when word timestamps/diarization are
-            # requested, which this client never does.
-            'duration_s': 3300,
-            'size_mb': None,
-            'rate_limit_rpm': None,
         }
+    }
+    # Fallback limits used when a model code has no API_LIMITS row.
+    # Sources (2026-08): OpenAI docs "Files can be up to 25 MB"; AssemblyAI
+    # docs "local files uploaded via /v2/upload up to 2.2 GB" (adapter adds
+    # a 1 GB safety ceiling); Gemini unary transcription caps at 1 hour;
+    # OpenRouter routes third-party STT models so keep the smallest
+    # common denominator.
+    API_PROVIDER_LIMITS = {
+        'openai': {'duration_s': None, 'size_mb': 25},
+        'assemblyai': {'duration_s': None, 'size_mb': None},
+        'gemini': {'duration_s': 3300, 'size_mb': None},
+        'openrouter': {'duration_s': None, 'size_mb': 25},
     }
 
     # --- Transcription Workers ---

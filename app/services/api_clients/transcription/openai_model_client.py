@@ -4,7 +4,8 @@
 Per-model behaviour (API model name, upload limits, response parsing style)
 comes from ``API_LIMITS[model_code]`` in config — adding a new OpenAI model
 requires no new class, only a catalog row (created when the API key is saved)
-and, optionally, an ``API_LIMITS`` entry for non-default behaviour.
+and, optionally, an ``API_LIMITS`` entry for non-default behaviour; a model
+without its own row inherits the ``API_PROVIDER_LIMITS['openai']`` caps.
 """
 
 from typing import Any, Dict, Optional, Tuple
@@ -26,11 +27,12 @@ class OpenAIModelTranscriptionClient(OpenAIBaseTranscriptionClient):
         # Set BEFORE super().__init__(): the base ctor resolves/caches
         # _get_api_name(), which reads self.CATALOG_MODEL_CODE.
         self.CATALOG_MODEL_CODE = str(model_code or "").strip()
-        limits = (config.get("API_LIMITS") or {}).get(self.CATALOG_MODEL_CODE, {})
-        self.api_model_name = str(limits.get("api_model_name") or self.CATALOG_MODEL_CODE)
-        self.response_style = str(limits.get("response_style") or "standard")
 
         super().__init__(api_key, config)
+
+        limits = self._resolve_split_limits(self.CATALOG_MODEL_CODE, "openai")
+        self.api_model_name = str(limits.get("api_model_name") or self.CATALOG_MODEL_CODE)
+        self.response_style = str(limits.get("response_style") or "standard")
 
         self.SPLIT_THRESHOLD_SECONDS = limits.get("duration_s")
         size_mb = limits.get("size_mb")

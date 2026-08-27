@@ -6,7 +6,8 @@ Files API, transcribed with ``interactions.create`` using a
 ``transcription_config`` generation config, and the uploaded file is deleted
 afterwards. Adding a new Gemini transcription model requires no new class,
 only a catalog row (created when the API key is saved) and, optionally, an
-``API_LIMITS`` entry for non-default behaviour.
+``API_LIMITS`` entry for non-default behaviour; a model without its own row
+inherits the ``API_PROVIDER_LIMITS['gemini']`` caps.
 """
 
 from typing import Any, Dict, Optional, Tuple
@@ -60,10 +61,9 @@ class GeminiTranscriptionClient(BaseTranscriptionClient):
         # The Interactions API takes the catalog code verbatim; there is no
         # API_LIMITS override mapping catalog codes to provider-native names.
         self.api_model_name = self.CATALOG_MODEL_CODE
-        limits = (config.get("API_LIMITS") or {}).get(self.CATALOG_MODEL_CODE, {})
-
         super().__init__(api_key, config)
 
+        limits = self._resolve_split_limits(self.CATALOG_MODEL_CODE, "gemini")
         self.SPLIT_THRESHOLD_SECONDS = limits.get("duration_s")
         size_mb = limits.get("size_mb")
         if size_mb is not None:

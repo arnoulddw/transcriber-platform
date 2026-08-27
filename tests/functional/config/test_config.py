@@ -99,9 +99,18 @@ def test_default_transcription_provider_validates_against_list():
 
 
 def test_gemini_api_limit_registered():
-    """The gemini transcribe model has duration and size limit entries."""
+    """The gemini provider fallback carries duration and size limit entries."""
     from app.config import Config
 
-    limits = Config.API_LIMITS['gemini-3.5-transcribe']
+    limits = Config.API_PROVIDER_LIMITS['gemini']
     assert limits['duration_s'] == 3300
     assert 'size_mb' in limits
+
+
+def test_gemini_model_row_dropped_in_favour_of_provider_fallback():
+    """API_LIMITS no longer repeats values covered by the gemini provider row."""
+    from app.config import Config
+
+    assert 'gemini-3.5-transcribe' not in Config.API_LIMITS
+    assert Config.API_LIMITS['gpt-4o-transcribe']['duration_s'] == 420
+    assert Config.API_LIMITS['whisper']['size_mb'] == 25
