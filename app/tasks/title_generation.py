@@ -13,6 +13,7 @@ from app.models import transcription as transcription_model
 from app.models import llm_operation as llm_operation_model # Keep for potential future logging
 from app.models import llm_catalog as llm_catalog_model
 from app.models.user import User # For type hinting
+from app.database import close_db
 
 # Import services
 from app.services import llm_service
@@ -301,6 +302,10 @@ Generated Title:"""
                     final_status = 'failed'
                     transcription_model.update_title_generation_status(transcription_id, 'failed')
                     return
+
+                # The outer task context does not need its pooled connection
+                # while it waits for the provider thread.
+                close_db()
 
                 result_container: Dict[str, str] = {}
                 exception_container: Dict[str, Exception] = {}

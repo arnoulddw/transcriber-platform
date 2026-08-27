@@ -81,6 +81,7 @@ def test_fallback_attempts_use_separate_operation_records():
         side_effect=lambda op_id, status, **kwargs: status_updates.append((op_id, status, kwargs))
         or True
     )
+    release_connection = MagicMock()
     release_primary = threading.Event()
     primary_started = threading.Event()
     thread_args = []
@@ -143,6 +144,7 @@ def test_fallback_attempts_use_separate_operation_records():
         patch.object(
             title_generation.llm_operation_model, "update_llm_operation_status", update_status
         ),
+        patch.object(title_generation, "close_db", release_connection),
         patch.object(
             title_generation, "_call_gemini_for_title", side_effect=fake_call
         ),
@@ -162,6 +164,7 @@ def test_fallback_attempts_use_separate_operation_records():
     assert thread_targets[0].__defaults__[1] is not thread_targets[1].__defaults__[1]
 
     assert create_operation.call_count == 2
+    assert release_connection.call_count == 2
     updated_ops = {call[0] for call in status_updates}
     # Both attempts' records were finalized individually: the failed primary
     # and the successful fallback each own their own row.

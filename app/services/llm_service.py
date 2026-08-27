@@ -20,6 +20,7 @@ from app.services import user_service # Added import
 from app.models import user as user_model
 from app.models import llm_operation as llm_operation_model
 from app.models import llm_catalog as llm_catalog_model
+from app.database import close_db
 from app.services.pricing_service import get_price as get_pricing_service_price, PricingServiceError
 # --- END MODIFIED ---
  
@@ -267,6 +268,10 @@ def generate_text_via_llm(
 
     if not effective_api_key:
         raise LlmConfigurationError(f"API key for LLM provider '{provider_name}' is not configured (checked user-specific and global).", provider=provider_name)
+
+    # Key and permission lookups may have acquired the current context's pooled
+    # connection. Do not hold it while waiting on a remote LLM request.
+    close_db()
 
     try:
         app_config = current_app.config
