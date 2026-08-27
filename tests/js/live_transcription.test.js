@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
     MAX_SESSION_DURATION_MS,
     OPENROUTER_CHUNK_SECONDS,
+    GEMINI_SETUP_TIMEOUT_MS,
     AUDIO_STREAM_END_FRAME,
     LiveTranscriptReducer,
     buildGeminiRealtimeAudioFrame,
@@ -17,6 +18,8 @@ const {
     remainingSessionMilliseconds,
     resolveLiveTransport,
     shouldAttemptReconnect,
+    armGeminiSetupTimeout,
+    shouldTimeoutGeminiSetup,
     waitForDataChannelOpen,
 } = require('../../app/static/js/live_transcription.js');
 
@@ -27,6 +30,64 @@ test('caps live sessions at 120 minutes', () => {
         remainingSessionMilliseconds(1000, 1000 + MAX_SESSION_DURATION_MS),
         0,
     );
+});
+
+test('detects an incomplete Gemini setup at the timeout deadline', () => {
+    assert.equal(GEMINI_SETUP_TIMEOUT_MS, 10000);
+    assert.equal(shouldTimeoutGeminiSetup(GEMINI_SETUP_TIMEOUT_MS - 1, false), false);
+    assert.equal(shouldTimeoutGeminiSetup(GEMINI_SETUP_TIMEOUT_MS, false), true);
+    assert.equal(shouldTimeoutGeminiSetup(GEMINI_SETUP_TIMEOUT_MS + 1, false), true);
+    assert.equal(shouldTimeoutGeminiSetup(GEMINI_SETUP_TIMEOUT_MS + 1, true), false);
+});
+
+test('fires one current Gemini setup watchdog and ignores stale or completed attempts', () => {
+    const timers = [];
+    let now = 0;
+    let currentAttempt = 'first';
+    let setupComplete = false;
+    let reconnects = 0;
+    let closes = 0;
+
+    const schedule = (callback, delay) => {
+        const timer = { callback, delay };
+        timers.push(timer);
+        return timer;
+    };
+    const arm = (attempt) => armGeminiSetupTimeout({
+        startedAt: 0,
+        isCurrent: () => currentAttempt === attempt,
+        isSetupComplete: () => setupComplete,
+        onTimeout: () => {
+            reconnects += 1;
+            closes += 1;
+            currentAttempt = 'replacement';
+        },
+        schedule,
+        now: () => now,
+    });
+
+    const firstTimer = arm('first');
+    assert.equal(firstTimer.delay, GEMINI_SETUP_TIMEOUT_MS);
+    now = GEMINI_SETUP_TIMEOUT_MS - 1;
+    firstTimer.callback();
+    assert.equal(reconnects, 0);
+
+    now = GEMINI_SETUP_TIMEOUT_MS;
+    firstTimer.callback();
+    firstTimer.callback();
+    assert.equal(reconnects, 1);
+    assert.equal(closes, 1);
+
+    const replacementTimer = arm('replacement');
+    setupComplete = true;
+    replacementTimer.callback();
+    assert.equal(reconnects, 1);
+
+    setupComplete = false;
+    currentAttempt = 'replacement';
+    replacementTimer.callback();
+    assert.equal(reconnects, 2);
+    assert.equal(closes, 2);
 });
 
 test('encodes browser samples as a PCM WAV payload for OpenRouter', () => {

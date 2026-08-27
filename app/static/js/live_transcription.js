@@ -5,6 +5,7 @@
     const OPENROUTER_CHUNK_SECONDS = 3;
     const GEMINI_RECONNECT_FAILURE_LIMIT = 3;
     const GEMINI_RECONNECT_DELAY_MS = 500;
+    const GEMINI_SETUP_TIMEOUT_MS = 10000;
     const AUDIO_STREAM_END_FRAME = { realtimeInput: { audioStreamEnd: true } };
 
     function encodePcm16(samples) {
@@ -255,11 +256,36 @@
             && consecutiveFailures < GEMINI_RECONNECT_FAILURE_LIMIT;
     }
 
+    function shouldTimeoutGeminiSetup(elapsedMilliseconds, setupComplete) {
+        return !setupComplete && elapsedMilliseconds >= GEMINI_SETUP_TIMEOUT_MS;
+    }
+
+    function armGeminiSetupTimeout({
+        startedAt,
+        isCurrent,
+        isSetupComplete,
+        onTimeout,
+        schedule = (callback, delay) => global.setTimeout(callback, delay),
+        now = () => Date.now(),
+    }) {
+        let fired = false;
+        return schedule(() => {
+            if (
+                fired
+                || !isCurrent()
+                || !shouldTimeoutGeminiSetup(now() - startedAt, isSetupComplete())
+            ) return;
+            fired = true;
+            onTimeout();
+        }, GEMINI_SETUP_TIMEOUT_MS);
+    }
+
     global.LiveTranscriptReducer = LiveTranscriptReducer;
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             MAX_SESSION_DURATION_MS,
             OPENROUTER_CHUNK_SECONDS,
+            GEMINI_SETUP_TIMEOUT_MS,
             AUDIO_STREAM_END_FRAME,
             LiveTranscriptReducer,
             buildGeminiRealtimeAudioFrame,
@@ -273,6 +299,8 @@
             remainingSessionMilliseconds,
             resolveLiveTransport,
             shouldAttemptReconnect,
+            armGeminiSetupTimeout,
+            shouldTimeoutGeminiSetup,
             waitForDataChannelOpen,
         };
     }
@@ -360,6 +388,12 @@
         let openrouterChunkSequence = 0;
         let openrouterChunkPromise = Promise.resolve();
         let geminiState = null;
+
+        function clearGeminiSetupTimeout(stateToClear) {
+            if (!stateToClear || stateToClear.setupTimeout === null) return;
+            global.clearTimeout(stateToClear.setupTimeout);
+            stateToClear.setupTimeout = null;
+        }
 
         function setError(message) {
             elements.error.textContent = message || '';
@@ -548,18 +582,21 @@
                 peerConnection.close();
             }
             peerConnection = null;
-            if (geminiState && geminiState.ws) {
-                const socket = geminiState.ws;
-                socket.onopen = null;
-                socket.onmessage = null;
-                socket.onerror = null;
-                socket.onclose = null;
-                if (
-                    global.WebSocket
-                    && socket.readyState !== global.WebSocket.CLOSING
-                    && socket.readyState !== global.WebSocket.CLOSED
-                ) {
-                    socket.close();
+            if (geminiState) {
+                clearGeminiSetupTimeout(geminiState);
+                if (geminiState.ws) {
+                    const socket = geminiState.ws;
+                    socket.onopen = null;
+                    socket.onmessage = null;
+                    socket.onerror = null;
+                    socket.onclose = null;
+                    if (
+                        global.WebSocket
+                        && socket.readyState !== global.WebSocket.CLOSING
+                        && socket.readyState !== global.WebSocket.CLOSED
+                    ) {
+                        socket.close();
+                    }
                 }
             }
             geminiState = null;
@@ -666,6 +703,7 @@
                 return;
             }
             if (payload.setupComplete) {
+                clearGeminiSetupTimeout(geminiState);
                 geminiState.setupComplete = true;
                 geminiState.consecutiveFailures = 0;
                 if (!audioProcessor && stream) startGeminiCapture(stream);
@@ -754,6 +792,23 @@
             const connectedState = geminiState;
             connectedState.ws = socket;
             connectedState.setupComplete = false;
+            clearGeminiSetupTimeout(connectedState);
+            const setupStartedAt = Date.now();
+            connectedState.setupTimeout = armGeminiSetupTimeout({
+                startedAt: setupStartedAt,
+                isCurrent: () => (
+                    !stopping
+                    && geminiState === connectedState
+                    && connectedState.ws === socket
+                ),
+                isSetupComplete: () => connectedState.setupComplete,
+                onTimeout: () => {
+                    connectedState.setupTimeout = null;
+                    console.warn('Gemini Live setup timed out before setupComplete.');
+                    handleGeminiDisconnect(socket);
+                    socket.close();
+                },
+            });
             socket.onopen = () => {
                 if (stopping || geminiState !== connectedState || connectedState.ws !== socket) {
                     socket.close();
@@ -776,8 +831,21 @@
                 }
                 handleGeminiMessage(payload, socket);
             };
-            socket.onerror = () => {};
-            socket.onclose = () => handleGeminiDisconnect(socket);
+            socket.onerror = () => {
+                if (geminiState === connectedState && connectedState.ws === socket) {
+                    console.warn('Gemini Live WebSocket transport error.');
+                }
+            };
+            socket.onclose = (event) => {
+                if (geminiState === connectedState && connectedState.ws === socket) {
+                    clearGeminiSetupTimeout(connectedState);
+                    console.warn('Gemini Live WebSocket closed.', {
+                        code: event.code,
+                        reason: event.reason || '',
+                    });
+                }
+                handleGeminiDisconnect(socket);
+            };
         }
 
         function startGeminiSession(session) {
@@ -788,6 +856,7 @@
                 consecutiveFailures: 0,
                 reconnectInFlight: false,
                 setupComplete: false,
+                setupTimeout: null,
                 model: elements.model ? providerLocalModelCode(elements.model.value) : '',
                 language: elements.language.value,
                 vocabulary: deriveGeminiVocabulary(
