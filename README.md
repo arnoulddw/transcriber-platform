@@ -1,273 +1,279 @@
 # Transcriber Platform
 
-**Self-hosted AI transcription platform for teams, SMBs and individuals who need control over their data, users, API keys and transcription costs.**
+**Self-hosted AI transcription, live speech-to-text, and reusable LLM workflows for individuals and teams.**
 
-Transcriber Platform turns audio into organized text through a web UI, a public transcription API and reusable AI workflows. It supports four fixed transcription providers — **OpenAI**, **AssemblyAI**, **Google Gemini** and **OpenRouter** — plus LLM providers such as **OpenAI**, **Google Gemini** and **OpenRouter** for titles, summaries and custom post-processing. Models are not pre-seeded: each model becomes available the moment an admin or user saves an API key for it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, `gemini-3.5-transcribe`, or any OpenRouter STT slug).
+Transcriber Platform turns uploaded audio or a live microphone feed into searchable transcription history. It combines a clean web app, a bearer-token REST API, role-based access control, per-user model keys, usage quotas, and cost analytics—while keeping deployment and data under your control.
 
-Use it as a simple personal transcription app in `single` mode, or run it as a team platform in `multi` mode with authentication, RBAC, per-user API keys, public API keys, usage limits, admin analytics, cost tracking and workflow templates.
+[![CI](https://github.com/arnoulddw/transcriber-platform/actions/workflows/docker-build.yml/badge.svg)](https://github.com/arnoulddw/transcriber-platform/actions/workflows/docker-build.yml)
+[![Docker](https://img.shields.io/docker/pulls/arnoulddw/transcriber-platform?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/arnoulddw/transcriber-platform)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/arnoulddw/transcriber-platform)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Transcriber Platform web interface](transcriber-platform-screenshot.png)
 
-![Screenshot of the Transcriber Platform App](transcriber-platform-screenshot.png)
+## Why Transcriber Platform?
 
-## Table of Contents
+- **Batch and live transcription:** Upload audio files or transcribe a microphone in real time.
+- **Bring your own models and keys:** Use OpenAI, AssemblyAI, Google Gemini, and OpenRouter without locking the app to a hard-coded model list.
+- **Turn transcripts into useful output:** Generate titles and run reusable prompts for summaries, action items, notes, or any custom workflow.
+- **Operate it for a team:** Add authentication, RBAC, per-user keys, quotas, retention policies, pricing, and admin analytics.
+- **Automate it:** Submit and poll transcription jobs through a public REST API.
+- **Self-host it:** Run the Flask and MySQL stack with Docker Compose or deploy the published Docker image.
 
--   [✨ Key Features](#-key-features)
--   [🚀 Quick Start (Docker)](#-quick-start-docker)
--   [🔧 Installation & Configuration](#-installation--configuration)
--   [💻 Usage Guide](#-usage-guide)
--   [🛠️ For Developers](#️-for-developers)
--   [🤔 Troubleshooting](#-troubleshooting)
--   [📜 License](#-license)
+## Feature overview
 
-## ✨ Key Features
+### Transcription
 
-### Core Functionality
--   **Four Fixed Transcription Providers:** OpenAI, AssemblyAI, Google Gemini and OpenRouter. Models are not bundled with the app — saving an API key for a model (via **Manage API Keys**) registers it in the catalog and makes it available. With OpenRouter you bring your own model slug (e.g. `openai/gpt-transcribe`); with Gemini you save your API key with a model name such as `gemini-3.5-transcribe`.
--   **Live Transcription (Google Gemini):** Stream from the browser straight to Google over WebSocket using short-lived single-use tokens, so the raw Gemini API key never reaches the browser. Google caps each connection at about 10 minutes — the app bridges this automatically via session resumption so sessions run to the standard limit. Interim partials show while you speak and finalized text lands turn-by-turn.
--   **Speaker Diarization (AssemblyAI):** Toggle speaker labels to identify who said what on supported jobs.
--   **Large File Handling:** Enforces a 200MB upload limit and automatically splits files over each model's provider limit into chunks for processing.
--   **AI-Powered Title Generation:** Automatically generates a concise title for each transcription.
--   **Custom AI Workflows:** Execute custom prompts (ex. summarize, extract action items) on transcribed text using LLMs like OpenAI models, Google Gemini or OpenRouter; save reusable workflows from the UI and edit or delete workflow results.
--   **Pre-Applied Workflows:** Select a saved workflow before upload so the transcript and AI analysis are produced together.
--   **Public Transcription API:** Submit audio programmatically using per-user public API keys with permission checks and rate limiting.
--   **Flexible Language Options:** Select the audio language manually or use automatic detection, backed by an active language catalog.
--   **Context Prompting:** Improve accuracy for jargon or specific names by providing context hints to OpenAI models.
+| Capability | What it supports |
+|---|---|
+| File transcription | OpenAI, AssemblyAI, Google Gemini, and OpenRouter models |
+| Live transcription | OpenAI over WebRTC, Google Gemini over WebSocket, and OpenRouter using short audio chunks with streamed responses |
+| Speaker diarization | Speaker labels on supported AssemblyAI jobs |
+| Context prompting | Names, acronyms, and domain vocabulary where supported by the selected provider |
+| Language handling | Manual language selection, automatic detection, and persisted detected-language metadata |
+| Large files | Uploads up to 200 MB, with automatic splitting when a file exceeds the selected model or provider limit |
+| Job lifecycle | Live progress, cancellation, recovery of abandoned jobs, and incomplete-chunk warnings |
 
-### User Experience
--   **Intuitive Web Interface:** Clean and simple UI for uploading files, managing history and running workflows.
--   **Live Progress & Cancellation:** Track uploads/transcriptions with live updates and cancel long-running jobs without leaving the page.
--   **Comprehensive History:** View, search, pin, copy, download (.txt), delete, restore and clear past transcriptions.
--   **User Preferences:** Set profile details, interface language, default transcription model, default content language and automatic title generation.
--   **Internationalization (i18n):** Multi-language support (English, Spanish, French, Dutch).
+Live sessions can run for up to 120 minutes. The app reserves live minutes against role quotas, automatically resumes Gemini connections when possible, and saves the finished live transcript to normal history. Provider API keys remain server-side; Gemini uses a constrained, short-lived token for the browser connection.
 
-### Multi-User & Admin Features
--   **Dual Deployment Modes:**
-    -   `single`: Simple, no-login mode using global API keys. Perfect for personal use.
-    -   `multi`: Full-featured user mode with registration, login and individual API key management.
--   **Secure User Authentication:** Supports username/password, Google Sign-In and password resets.
--   **Role-Based Access Control (RBAC):** Granularly control permissions for features, API usage and more.
--   **Role-Based Limits:** Configure daily, weekly and monthly limits for cost, transcription minutes and workflow runs, plus history limits and retention.
--   **Smart API Key Handling:** If a user has permission to manage keys, their personal key is used. Otherwise, the system seamlessly falls back to the global API key, ensuring uninterrupted service.
--   **Comprehensive Admin Panel:**
-    -   **User Management:** View and manage all users and their usage.
-    -   **Role Management:** Create and edit roles, permissions, model defaults and usage quotas.
-    -   **Model Management:** The **Models** page shows every registered model and lets you rename its display name. The catalog `display_name` is the single source of truth — dropdowns, history, logs and analytics all follow it.
-    -   **Usage, Cost & Performance Analytics:** Dashboards for transcription minutes, workflows, language/model distribution, API expenses, user insights and errors.
-    -   **System-wide Templates:** Create language-specific or all-language workflow templates available to users.
-    -   **Pricing Controls:** Maintain transcription, title-generation and workflow pricing inputs used for cost analytics.
+### Models, API keys, and AI workflows
 
-## 🚀 Quick Start (Docker)
+- Models are registered dynamically when an admin or permitted user saves a provider API key and model name in **Manage API Keys**.
+- A saved model can be marked for `transcription`, `live`, `llm`, or multiple purposes. Model lists refresh immediately after a key is saved or removed.
+- Admins can rename registered models in one place, **Admin → Models**; that display name is then used consistently in selectors, history, pricing, logs, and analytics.
+- Users can choose separate defaults for file transcription, live transcription, title generation, and workflows.
+- Reusable workflows can summarize transcripts, extract decisions or action items, create notes, or run any custom prompt.
+- A workflow can be selected before upload, or run later from history. Workflow results can be edited or deleted.
+- Automatic title generation supports provider/model fallback and recovers cleanly from interrupted operations.
 
-Get the platform running in under 5 minutes. This is the recommended method.
+### History and user experience
 
-**Prerequisites:** [Docker](https://www.docker.com/get-started) and [Docker Compose](https://docs.docker.com/compose/install/).
+- Search, pin, copy, download, delete, restore, or clear transcriptions.
+- View provider/model, duration, language, timestamps, workflow output, and processing warnings.
+- Use the responsive interface on desktop or mobile.
+- Choose English, Spanish, French, or Dutch for the interface.
+- Set personal defaults for content language, models, and automatic title generation.
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/arnoulddw/transcriber-platform.git
-    cd transcriber-platform
-    ```
+### Team and administration
 
-2.  **Configure Your Environment**
-    Copy the example environment file and edit it with your details.
-    ```bash
-    cp .env.example .env
-    nano .env 
-    ```
-    -   **Crucially, you must set:** `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_USER`, `MYSQL_DB` and the API keys for the providers you want to use (`OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`). Model availability is driven by the keys saved in the app — see [Usage Guide](#-usage-guide).
-    -   For multi-user mode, also set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to create your admin account.
+Transcriber Platform has two deployment modes:
 
-3.  **Build and Run**
-    ```bash
-    docker-compose up -d --build
-    ```
+- `single` — a personal, no-login experience backed by global provider keys.
+- `multi` — user registration and login, Google Sign-In, password resets, personal provider keys, and role-based permissions.
 
-4.  **Access the App**
-    Open your browser and go to `http://localhost:5004` (or the `APP_PORT` you set in `.env`). The database will be initialized automatically on the first run.
+The admin panel includes:
 
-## 🔧 Installation & Configuration
+- User and role management.
+- Provider and feature permissions, including API key management, public API access, downloads, workflows, context prompts, diarization, and live transcription.
+- Daily, weekly, and monthly limits for transcription minutes, live minutes, workflow runs, and cost.
+- History item and retention limits.
+- Default models per role for file transcription, live transcription, titles, and workflows.
+- Transcription, workflow, language, model, cost, performance, user, and error analytics.
+- Per-model pricing for transcription, title generation, and workflows.
+- System-wide workflow templates scoped to one language or all languages.
 
-This section provides more detailed setup instructions.
+## Quick start with Docker Compose
 
 ### Prerequisites
 
--   **API Keys:** You need API keys for the services you plan to use:
-    -   [OpenAI](https://platform.openai.com/) (for Whisper, GPT-4o Transcribe, GPT-Transcribe and LLM workflows)
-    -   [AssemblyAI](https://www.assemblyai.com/) (transcription with speaker diarization)
-    -   [Google Gemini](https://ai.google.dev/) (for transcription, live transcription and LLM workflows)
-    -   [OpenRouter](https://openrouter.ai/) (optional; provide your own model slug for transcription and LLM operations)
--   **Docker & Docker Compose:** Required for the recommended installation method.
--   **Google Client ID (Optional):** Required for Google Sign-In in `multi` user mode.
--   **Python 3.9+:** Required for local development without Docker.
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+- At least one API key for a provider you intend to use
 
-### Environment Variables
+### 1. Clone and configure
 
-The application is configured using environment variables in a `.env` file. The table below lists all available options.
+```bash
+git clone https://github.com/arnoulddw/transcriber-platform.git
+cd transcriber-platform
+cp .env.example .env
+```
 
-<details>
-<summary><strong>Click to expand all environment variables</strong></summary>
+Generate a strong application secret:
 
-| Variable | Description | Default |
+```bash
+openssl rand -hex 32
+```
+
+Edit `.env` and replace the placeholder values. At minimum, set:
+
+```dotenv
+SECRET_KEY=<generated-secret>
+MYSQL_USER=transcriber_user
+MYSQL_PASSWORD=<strong-database-password>
+MYSQL_DB=transcriber_db
+MYSQL_ROOT_PASSWORD=<strong-root-password>
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=<strong-admin-password>
+```
+
+Add the global provider keys you need, such as `OPENAI_API_KEY`, `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY`, or `OPENROUTER_API_KEY`. In `multi` mode, permitted users can instead save model-specific keys in the UI.
+
+### 2. Start the stack
+
+```bash
+docker compose up -d --build
+```
+
+Open [http://localhost:5004](http://localhost:5004). The application initializes the database, migrations, default roles, languages, and initial admin account on first startup.
+
+Useful operational commands:
+
+```bash
+docker compose ps
+docker compose logs -f transcriber-platform
+docker compose down
+```
+
+MySQL data is kept in the `mysql_data` Docker volume. Uploaded temporary files, logs, and runtime markers are mounted from the repository directory.
+
+## Configure providers and models
+
+The application has four built-in provider integrations, but it does not assume a permanent list of model names. This lets new provider models work without waiting for a release.
+
+| Provider | File transcription | Live transcription | LLM workflows/titles | Notes |
+|---|:---:|:---:|:---:|---|
+| OpenAI | Yes | WebRTC | Yes | Examples include `whisper-1`, `gpt-4o-transcribe`, and `gpt-transcribe` |
+| AssemblyAI | Yes | — | — | Supports optional speaker diarization |
+| Google Gemini | Yes | WebSocket | Yes | Save the exact Gemini model name, such as `gemini-3.5-transcribe` |
+| OpenRouter | Yes | Chunked streaming | Yes | Save the full vendor/model slug, such as `openai/gpt-transcribe` |
+
+In `multi` mode:
+
+1. Open **Manage API Keys**.
+2. Choose a provider and enter its API key.
+3. Enter the exact provider model name.
+4. Select one or more purposes: file transcription, live transcription, or LLM use.
+5. Save the key. The new model becomes available immediately in the relevant selectors.
+
+If a role allows personal API key management, the application uses that user's model-specific key. Otherwise it can fall back to an administrator or environment-level provider key. Roles still determine which providers and features a user may access.
+
+### Live transcription configuration
+
+The default live model is `gpt-live-transcribe`. Configure additional live models with a comma-separated list:
+
+```dotenv
+LIVE_TRANSCRIPTION_MODEL=gpt-live-transcribe
+LIVE_TRANSCRIPTION_MODELS=gpt-live-transcribe,openai/gpt-transcribe
+LIVE_TRANSCRIPTION_PROVIDER_OPENAI_GPT_TRANSCRIBE=openrouter
+```
+
+Slashless model names default to OpenAI; `vendor/model` slugs default to OpenRouter. A Gemini model saved with the `live` purpose is routed to Gemini automatically. Use `OPENROUTER_LIVE_TRANSCRIPTION_MODELS` to allow a newly released OpenRouter STT model that is not yet in the built-in compatibility list.
+
+## Configuration reference
+
+Start from [`.env.example`](.env.example). These are the settings most deployments need to understand:
+
+| Variable | Purpose | Default |
 |---|---|---|
-| **Core Application** | | |
-| `SECRET_KEY` | **CRITICAL:** A strong, random key for session security. **Must be set.** | (none) |
-| `DEPLOYMENT_MODE` | `single` (no login) or `multi` (user accounts). | `multi` |
-| `TZ` | Timezone for the application (ex. `UTC`, `Europe/Paris`). | `UTC` |
-| `APP_PORT` | Port on which the app is accessible on the host machine. | `5004` |
-| `FLASK_ENV` | Set to `development` for debug logging; production defaults to info logging. | `production` |
-| **API Keys (Global Fallback)** | | |
-| `OPENAI_API_KEY` | Your API key for OpenAI (Whisper, GPT-4o Transcribe, LLMs). | (none) |
-| `ASSEMBLYAI_API_KEY` | Your API key for AssemblyAI. | (none) |
-| `GEMINI_API_KEY` | Your API key for Google Gemini (transcription, live transcription, Title Generation and LLMs). | (none) |
-| `OPENROUTER_API_KEY` | Your API key for OpenRouter (transcription and LLM operations). | (none) |
-| `ANTHROPIC_API_KEY` | Reserved for future Anthropic LLM support. | (none) |
-| **Provider, Model & Language Settings** | | |
-| `TRANSCRIPTION_PROVIDERS` | Comma-separated transcription providers the app can talk to. Fixed list; admins cannot add providers, only models (registered when API keys are saved). | `assemblyai,openai,gemini,openrouter` |
-| `DEFAULT_TRANSCRIPTION_PROVIDER` | Default transcription provider on load. Must be one of `TRANSCRIPTION_PROVIDERS`. | `openai` |
-| `LLM_PROVIDER` | General LLM provider (`GEMINI`, `OPENAI`, `OPENROUTER`). | `GEMINI` |
-| `LLM_MODEL` | General fallback LLM model for direct or legacy LLM calls. | (none) |
-| `TITLE_GENERATION_LLM_PROVIDER` | Provider used for generated transcript titles. | `GEMINI` |
-| `TITLE_GENERATION_LLM_MODEL` | Auxiliary model used for generated transcript titles and other auxiliary tasks when a user has no preference. | `gemma-4-26b-a4b-it` |
-| `WORKFLOW_LLM_PROVIDER` | Provider used for workflow runs when the model catalog cannot infer it. | `OPENROUTER` |
-| `WORKFLOW_LLM_MODEL` | Model used for workflow runs when a user has no preference. | `google/gemini-3.7-flash` |
-| `GEMINI_MODELS` | Legacy: previously seeded Gemini models into the LLM catalog. No longer used — LLM models register when API keys are saved. | `gemini-3.0-flash,gemma-4-26b-a4b-it` |
-| `OPENAI_MODELS` | Legacy: previously seeded OpenAI LLM models into the LLM catalog. No longer used. | *(empty)* |
-| `OPENROUTER_MODELS` | Legacy: previously seeded OpenRouter model slugs into the LLM catalog for title/workflow defaults. No longer used. | `google/gemini-3.7-flash` |
-| `DEFAULT_LANGUAGE` | Default transcription language on load (`auto`, `en`, `es`, etc.). | `auto` |
-| `SUPPORTED_LANGUAGE_CODES` | Comma-separated language codes to seed into the active language catalog (ex. `en,nl,fr,es`). | `en,nl,fr,es` |
-| **Database (MySQL)** | | |
-| `MYSQL_HOST` | Hostname for the MySQL server. Use `mysql` for Docker Compose. | `localhost` |
-| `MYSQL_PORT` | Port for the MySQL server. | `3306` |
-| `MYSQL_USER` | Username for MySQL connection. **Must be set.** | (none) |
-| `MYSQL_PASSWORD` | Password for MySQL connection. **Must be set.** | (none) |
-| `MYSQL_DB` | Name of the MySQL database. **Must be set.** | (none) |
-| `MYSQL_ROOT_PASSWORD` | Root password for the MySQL service (used by Docker Compose). | (none) |
-| `MYSQL_HOST_PORT` | Host port to map to MySQL's internal port (for external access). | `3307` |
-| `MYSQL_POOL_SIZE` | Number of connections in the MySQL connection pool. | `10` |
-| **Multi-User Mode** | | |
-| `ADMIN_USERNAME` | Username for the initial admin account (created on first run). | `admin` |
-| `ADMIN_PASSWORD` | Password for the initial admin account. **Must be set for admin creation.** | (none) |
-| `ADMIN_EMAIL` | Email for the initial admin account. | (none) |
-| `GOOGLE_CLIENT_ID` | Your Google OAuth 2.0 Client ID for Google Sign-In. | (none) |
-| **Email (for Password Resets)** | | |
-| `MAIL_SERVER` | SMTP server for sending emails. | (none) |
-| `MAIL_PORT` | SMTP server port. | `587` |
-| `MAIL_USE_TLS` | Whether to use TLS for SMTP (`true`, `false`). | `true` |
-| `MAIL_USE_SSL` | Whether to use SSL for SMTP (`true`, `false`). | `false` |
-| `MAIL_USERNAME` | Username for SMTP authentication. | (none) |
-| `MAIL_PASSWORD` | Password or App Password for SMTP authentication. | (none) |
-| `MAIL_DEFAULT_SENDER` | Default sender email address (ex. `noreply@example.com`). | `noreply@example.com` |
-| `MAIL_DEBUG` | Enable verbose mail logging. | `false` |
-| **Advanced Configuration** | | |
-| `TRANSCRIPTION_WORKERS` | Number of parallel workers for chunked transcription. | `4` |
-| `TRANSCRIPTION_MAX_CONCURRENT_JOBS` | Total transcription jobs allowed to run at once across all web workers. | `2` |
-| `TRANSCRIPTION_SLOT_POLL_SECONDS` | How often a waiting job checks for available capacity. | `2` |
-| `TRANSCRIPTION_ABANDONED_JOB_SECONDS` | Time before an unowned waiting job is considered interrupted. | `300` |
-| `WORKFLOW_MAX_OUTPUT_TOKENS` | Maximum generated tokens for workflow responses. | `1024` |
-| `WORKFLOW_RATE_LIMIT` | Rate limit for workflow API calls per user (ex. `10 per hour`). | `10 per hour` |
-| `DIRECT_LLM_RATE_LIMIT` | Extra process-local limit for direct LLM generation; MySQL workflow quotas remain authoritative. | `5 per hour` |
-| `DELETE_THRESHOLD` | Seconds before temporary uploaded files are deleted. | `86400` |
-| `PHYSICAL_DELETION_DAYS` | Days after soft-deletion before a transcription is permanently removed. | `120` |
-| `BCRYPT_LOG_ROUNDS` | Password hashing cost factor. | `12` |
-| `RATELIMIT_DEFAULT` | Default Flask-Limiter limits for general routes. | `600 per minute;10000 per day` |
-| `PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS` | Password reset token lifetime in seconds. | `3600` |
+| `DEPLOYMENT_MODE` | `single` for personal/no-login use or `multi` for accounts and RBAC | `multi` |
+| `APP_PORT` | Host port exposed by Docker Compose | `5004` |
+| `TZ` | Time zone used for quota periods and display | `UTC` |
+| `TRANSCRIPTION_PROVIDERS` | Enabled built-in provider integrations | `assemblyai,openai,gemini,openrouter` |
+| `DEFAULT_TRANSCRIPTION_PROVIDER` | Fallback provider when no catalog default is available | `openai` |
+| `DEFAULT_LANGUAGE` | Default content language or `auto` | `auto` |
+| `SUPPORTED_LANGUAGE_CODES` | Languages seeded into the active language catalog | `en,nl,fr,es` |
+| `TRANSCRIPTION_MAX_CONCURRENT_JOBS` | System-wide jobs allowed to process simultaneously | `2` |
+| `TRANSCRIPTION_WORKERS` | Parallel workers used for a split transcription | `4` |
+| `WORKFLOW_MAX_OUTPUT_TOKENS` | Maximum generated tokens for a workflow result | `1024` |
+| `WORKFLOW_RATE_LIMIT` | Per-user workflow endpoint limit | `10 per hour` |
+| `PHYSICAL_DELETION_DAYS` | Delay before soft-deleted records are purged | `120` |
+| `GOOGLE_CLIENT_ID` | Enables Google Sign-In in `multi` mode | unset |
+| `MAIL_*` | SMTP settings used for password reset email | unset |
+| `RECAPTCHA_V3_*` | Optional reCAPTCHA v3 or Enterprise login protection | unset |
 
-</details>
+Additional settings in `.env.example` cover MySQL, title/workflow defaults, OpenRouter, live models, rate limiting, upload cleanup, logging, OAuth, email, and transcription queue behavior.
 
-### Other Installation Options
+> **Production note:** use strong unique values for `SECRET_KEY`, `ADMIN_PASSWORD`, `MYSQL_PASSWORD`, and `MYSQL_ROOT_PASSWORD`; terminate TLS in front of the app; and keep `.env` out of version control.
 
-<details>
-<summary><strong>Click to see alternative installation methods (Docker Hub, Local Development)</strong></summary>
+## Using the app
 
-#### Option 2: Using a Pre-built Docker Hub Image
+### Transcribe a file
 
-1.  **Create a `.env` file** on your host machine with all necessary variables. Ensure `MYSQL_HOST` points to your accessible MySQL server.
-2.  **Pull the Docker Image:**
-    ```bash
-    docker pull arnoulddw/transcriber-platform:latest
-    ```
-3.  **Run the Docker Container:**
-    ```bash
-    docker run -d -p 5004:5004 \
-      --env-file ./.env \
-      --name transcriber-platform-app \
-      arnoulddw/transcriber-platform:latest
-    ```
+1. Choose a registered transcription model.
+2. Select the spoken language or leave automatic detection enabled.
+3. Optionally add names, acronyms, or subject vocabulary as context.
+4. Optionally enable AssemblyAI speaker diarization.
+5. Optionally select a workflow to run after transcription.
+6. Upload an `mp3`, `m4a`, `wav`, `ogg`, `webm`, `mpga`, or `mpeg` file and select **Transcribe**.
+7. Follow progress in the page; completed output appears in history.
 
-#### Option 3: Local Development (Without Docker)
+### Transcribe live audio
 
-1.  **Clone the repository** and `cd` into it.
-2.  **Create and activate a Python virtual environment:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate  # On macOS/Linux
-    ```
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Set up MySQL:** Ensure you have a running MySQL server. Create a database and user.
-5.  **Configure `.env`:** Create the file and add your `SECRET_KEY`, API keys and local MySQL connection details (`MYSQL_HOST=localhost`, etc.).
-6.  **Initialize the Database:**
-    ```bash
-    export FLASK_APP=app
-    flask bootstrap
-    ```
-7.  **Run the App:**
-    ```bash
-    flask run --host=0.0.0.0 --port=5004
-    ```
-</details>
+Open **Live transcription**, choose a microphone, language, and live model, then select **Start**. Interim text appears while you speak. Select **Stop and save** to store the completed transcript in history, where it behaves like any uploaded transcription.
 
-## 💻 Usage Guide
+Live microphone transcription requires browser microphone permission and a browser with the transport capabilities needed by the selected provider.
 
-1.  **Access the Application:** Open the application in your web browser.
-2.  **Authentication (Multi-User Mode):**
-    *   Register for an account or log in.
-    *   Navigate to "Manage API Keys" to add your personal API keys for OpenAI, AssemblyAI, Gemini and OpenRouter if your role can manage keys. Otherwise, the app uses the configured global fallback keys. For each key you also enter the **model name** exactly as the provider knows it (e.g. `whisper-1`, `gpt-4o-transcribe`, `gpt-transcribe`, an AssemblyAI model, a Gemini model like `gemini-3.5-transcribe`, or an OpenRouter slug like `openai/gpt-transcribe`) and what to use it for (transcription, LLM workflows, or both). Saving a key registers that model in the catalog and makes it selectable — nothing is available before keys are saved.
-    *   Use profile settings to choose your interface language, default transcription language and model, workflow LLM model, auxiliary LLM model and automatic title generation preference.
-3.  **Upload Audio:** Click the "File" button to select an audio file.
-4.  **Configure Transcription:**
-    *   Select your preferred model from the ones registered under your saved keys (display names as shown in the catalog; admins can rename them in the Admin Panel → Models).
-    *   Choose the audio language or leave it on "Automatic Detection."
-    *   (Optional) Provide a context prompt to improve accuracy.
-    *   (Optional) Enable speaker diarization when using AssemblyAI to label speakers in the transcript.
-5.  **Transcribe:** Click the "Transcribe" button.
-6.  **Manage History:** Your completed transcriptions will appear in the history panel. From there you can:
-    *   View, search, pin, copy or download the text.
-    *   Delete individual transcriptions, restore them when available or clear your history.
-    *   Run, edit or delete an AI workflow result (ex. summarize, extract action items).
+### Create and run workflows
 
-### Workflow Prompts
+Open **Manage Workflow Prompts** to save reusable prompts. Workflows can be run from a completed transcript or pre-applied before an upload. Admins can publish templates for a specific transcription language or for all languages.
 
-Users with workflow access can create reusable custom prompts from **Manage Workflow Prompts**. Admins with template permissions can create system-wide workflow templates and scope them to a specific transcription language or all languages.
+## Public transcription API
 
-### Public Transcription API
+Users whose role allows public API access can create and revoke named bearer tokens from **Manage API Keys → Public API Access**. API jobs use the user's default model and language, enforce the same permissions and quotas as the web UI, and appear in normal history.
 
-You can trigger transcriptions programmatically using your personal public API key (generate it in **Manage API Keys** -> **Public API Access**). The user's role must allow public API access. Requests run with the user's default transcription model and language, observe usage limits, and the results land in normal history.
+### Submit audio
 
 ```bash
 curl -X POST https://your-domain.example.com/api/v1/transcribe \
-  -H "Authorization: Bearer <YOUR_USER_API_KEY>" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   -F "audio_file=@/path/to/audio.wav"
 ```
 
-Use your deployment's base URL (or `http://localhost:5004` in local dev). The API responds with a `job_id` and `audio_length_minutes`. Signed-in users can poll `/api/progress/<job_id>` for status and results. Keep your API key secret; rotate or revoke it from the same modal.
+A successful request returns HTTP `202`:
 
-Public API clients can poll the job without browser cookies:
+```json
+{
+  "job_id": "<uuid>",
+  "message": "Transcription job started successfully.",
+  "audio_length_minutes": 3.42
+}
+```
+
+### Poll status and retrieve the result
 
 ```bash
 curl https://your-domain.example.com/api/v1/transcribe/<job_id> \
-  -H "Authorization: Bearer <YOUR_USER_API_KEY>"
+  -H "Authorization: Bearer <YOUR_API_KEY>"
 ```
 
-The polling endpoint returns a machine-readable status while the job is running, `result.transcription_text` when it finishes, or `error_message` if it fails. The plural form `/api/v1/transcriptions/<job_id>` is also supported.
+The response includes a machine-readable `status`. A finished job includes `result.transcription_text`, detected language, filename, provider, duration, and creation time. Failed or cancelled jobs include `error_message`. The alias `/api/v1/transcriptions/<job_id>` is also supported.
 
-## 🛠️ For Developers
+The default rate limits are 10 submissions per hour and 120 status requests per hour per API key.
 
-Database schema setup, migrations, default roles, language-catalog seeding and initial admin creation are handled automatically on startup behind a runtime initialization marker. Model catalogs are intentionally not seeded — models register when API keys are saved. The CLI also exposes manual commands:
+## Alternative installation methods
+
+### Published Docker image
+
+Create `.env` and provide an accessible MySQL database, then run:
+
+```bash
+docker pull arnoulddw/transcriber-platform:latest
+docker run -d \
+  --name transcriber-platform \
+  --env-file .env \
+  -p 5004:5004 \
+  arnoulddw/transcriber-platform:latest
+```
+
+### Local development
+
+Python 3.11, Node.js 18, MySQL 8, and FFmpeg match the container and CI environments.
+
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements-dev.txt
+npm ci
+export FLASK_APP=app
+flask bootstrap
+npm run build:css:prod
+flask run --host=0.0.0.0 --port=5004
+```
+
+Set the MySQL variables in `.env` for your local database and use `MYSQL_HOST=localhost`. For CSS development, run `npm run build:css:dev` in a second terminal.
+
+## Development and testing
+
+The startup bootstrap handles schema creation, migrations, default roles, language seeding, model-catalog repair, initial admin creation, and recovery of interrupted work. Manual CLI commands are also available:
 
 ```bash
 export FLASK_APP=app
@@ -278,32 +284,53 @@ flask db-migrate
 flask bootstrap
 ```
 
-Build Tailwind CSS assets with:
+Run JavaScript tests:
 
 ```bash
-npm run build:css:dev
-npm run build:css:prod
+npm ci
+npm run test:js
 ```
 
-Run tests with the dedicated MySQL test container:
+Run the Python suite against the dedicated MySQL test container:
 
 ```bash
 docker compose -f tests/docker-compose.test.yml up -d
+
 env MYSQL_HOST=127.0.0.1 MYSQL_PORT=3308 MYSQL_USER=test MYSQL_PASSWORD=test MYSQL_DB=test_db \
     MYSQL_TEST_HOST=127.0.0.1 MYSQL_TEST_PORT=3308 MYSQL_TEST_USER=test MYSQL_TEST_PASSWORD=test MYSQL_TEST_DB=test_db \
     venv/bin/pytest -q
+
 docker compose -f tests/docker-compose.test.yml down
 ```
 
-Both the plain `MYSQL_*` (config guard) and `MYSQL_TEST_*` (functional suite) variable sets are required. Unit tests run without a database.
+See [`tests/README.md`](tests/README.md) for the container-based test workflow and fixture conventions.
 
-## 🤔 Troubleshooting
+## Troubleshooting
 
--   **Port in use:** Change `APP_PORT` in `.env` and restart. If using Docker Compose, you can also change the host port in `docker-compose.yml` (ex. `"5005:5004"`).
--   **MySQL Connection Issues (Docker):** Ensure the `mysql` service is running (`docker-compose ps`). Check logs with `docker-compose logs mysql`. Verify `MYSQL_HOST` is set to `mysql` in your `.env` file.
--   **API Key Issues:** In `single` mode, double-check the global API keys in `.env`. In `multi` mode, ensure the logged-in user has added their keys correctly in the UI.
--   **Google Sign-In Errors:** Verify your `GOOGLE_CLIENT_ID` is correct and that your Google Cloud Project has the correct "Authorized JavaScript origins" (ex. `http://localhost:5004`) and "Redirect URIs".
+### No transcription models appear
 
-## 📜 License
+In `multi` mode, save a provider key together with an exact model name and the `transcription` purpose. Confirm the user's role allows that provider. If personal key management is disabled, configure an administrator or global provider key and role default.
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+### Live transcription will not start
+
+- Allow microphone access in the browser.
+- Confirm the model was saved with the `live` purpose and the role permits its provider.
+- Check that the user has remaining daily, weekly, and monthly live minutes.
+- For a new OpenRouter STT slug, add it to `OPENROUTER_LIVE_TRANSCRIPTION_MODELS`.
+- Review `docker compose logs -f transcriber-platform` for upstream or transport errors.
+
+### MySQL connection fails
+
+With Docker Compose, use `MYSQL_HOST=mysql`. For a host-installed database, use `MYSQL_HOST=localhost` and verify the port, database, user, and password. Check service health with `docker compose ps` and database logs with `docker compose logs mysql`.
+
+### Google Sign-In or password reset fails
+
+Set `GOOGLE_CLIENT_ID` and configure the matching authorized origin for Google Sign-In. Password reset requires valid `MAIL_*` SMTP settings. If reCAPTCHA is enabled, verify the site/secret key pair and allowed domain.
+
+### The app port is already in use
+
+Change `APP_PORT` in `.env`, then recreate the application service with `docker compose up -d`.
+
+## License
+
+Transcriber Platform is available under the [MIT License](LICENSE).
