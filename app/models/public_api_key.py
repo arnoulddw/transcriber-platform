@@ -40,15 +40,19 @@ def init_db_command() -> None:
             logger.info(f"{log_prefix} Adding unique index uq_public_api_key_hash to 'public_api_keys'.")
             cursor.execute("ALTER TABLE public_api_keys ADD UNIQUE INDEX uq_public_api_key_hash (key_hash)")
 
-        cursor.execute(
-            """
-            INSERT IGNORE INTO public_api_keys (user_id, name, key_hash, last_four, created_at)
-            SELECT id, 'Default key', public_api_key_hash, public_api_key_last_four,
-                   COALESCE(public_api_key_created_at, created_at)
-            FROM users
-            WHERE public_api_key_hash IS NOT NULL
-            """
-        )
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'public_api_key_hash'")
+        legacy_key_column_exists = cursor.fetchone() is not None
+        cursor.fetchall()
+        if legacy_key_column_exists:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO public_api_keys (user_id, name, key_hash, last_four, created_at)
+                SELECT id, 'Default key', public_api_key_hash, public_api_key_last_four,
+                       COALESCE(public_api_key_created_at, created_at)
+                FROM users
+                WHERE public_api_key_hash IS NOT NULL
+                """
+            )
 
         get_db().commit()
         logger.info(f"{log_prefix} 'public_api_keys' table schema verified/initialized.")

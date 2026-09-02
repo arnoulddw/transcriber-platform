@@ -165,17 +165,6 @@ def init_db_command() -> None:
             logger.info(f"{log_prefix} Adding 'language' column to 'users' table.")
             cursor.execute("ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT NULL AFTER default_transcription_model")
 
-        cursor.execute("SHOW COLUMNS FROM users LIKE 'public_api_key_hash'")
-        legacy_key_col = cursor.fetchone()
-        cursor.fetchall()
-        if legacy_key_col:
-            logger.info(f"{log_prefix} Dropping legacy public_api_key columns from 'users' table.")
-            for col in ['public_api_key_hash', 'public_api_key_last_four', 'public_api_key_created_at']:
-                try:
-                    cursor.execute(f"ALTER TABLE users DROP COLUMN {col}")
-                except MySQLError:
-                    pass
-
         cursor.execute("SHOW COLUMNS FROM users LIKE 'api_keys_encrypted'")
         api_keys_encrypted_exists = cursor.fetchone()
         cursor.fetchall()
@@ -186,7 +175,6 @@ def init_db_command() -> None:
         # Normalize timestamp-like columns to avoid invalid zero dates while preserving existing data
         timestamp_columns = {
             'created_at': "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP",
-            'public_api_key_created_at': "TIMESTAMP NULL DEFAULT NULL",
             'plan_start_at': "TIMESTAMP NULL DEFAULT NULL",
             'plan_end_at': "TIMESTAMP NULL DEFAULT NULL",
         }
@@ -237,13 +225,6 @@ def init_db_command() -> None:
         if not idx_created_at_exists:
             logger.info(f"{log_prefix} Adding index 'idx_user_created_at' to 'users' table.")
             cursor.execute("ALTER TABLE users ADD INDEX idx_user_created_at (created_at)")
-
-        cursor.execute("SHOW INDEX FROM users WHERE Key_name = 'idx_user_public_api_hash'")
-        idx_public_api_hash_exists = cursor.fetchone()
-        cursor.fetchall()
-        if not idx_public_api_hash_exists:
-            logger.info(f"{log_prefix} Adding index 'idx_user_public_api_hash' to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD INDEX idx_user_public_api_hash (public_api_key_hash)")
 
         get_db().commit()
         logger.info(f"{log_prefix} 'users' table schema verified/initialized successfully.")
