@@ -427,6 +427,7 @@ def count_workflow_jobs_with_filters(
     llm_operation_status: Optional[str] = None,
     llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> int:
     """
     Counts transcription jobs that have associated workflow operations matching the given criteria.
@@ -470,6 +471,9 @@ def count_workflow_jobs_with_filters(
     if llm_model:
         sql += " AND COALESCE(lo.model, lo.provider) = %s"
         params.append(llm_model)
+    if user_id is not None:
+        sql += " AND t.user_id = %s"
+        params.append(user_id)
 
     cursor = get_cursor()
     count = 0

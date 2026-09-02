@@ -136,12 +136,23 @@ def get_admin_dashboard_metrics() -> Dict[str, Any]:  # noqa: C901
                 error_rate_percent = _safe_division(total_transcription_errors, total_transcription_jobs_for_error_rate) * 100
                 metrics['error_rate'][key] = round(error_rate_percent, 2)
 
-                # Workflow Metrics (remains based on workflow_status)
-                total_workflows_run = transcription_utils.count_jobs_in_range(start, end, llm_operation_status='finished') # Use llm_operation_status
+                # Workflow Metrics
+                total_workflows_run = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                    llm_operation_status='finished',
+                )
                 metrics['workflows_run'][key] = total_workflows_run
-                
-                total_workflows_attempted = transcription_utils.count_jobs_in_range(start, end, llm_operation_status__ne='idle') # Use llm_operation_status
-                total_workflow_errors = transcription_utils.count_jobs_in_range(start, end, llm_operation_status='error') # Use llm_operation_status
+
+                total_workflows_attempted = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                )
+                total_workflow_errors = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                    llm_operation_status='error',
+                )
                 workflow_error_rate_percent = _safe_division(total_workflow_errors, total_workflows_attempted) * 100
                 metrics['workflow_error_rate'][key] = round(workflow_error_rate_percent, 2)
 
@@ -260,8 +271,12 @@ def get_usage_analytics_metrics() -> Dict[str, Any]:
                     'total_finished': total_finished_jobs 
                 }
                 
-                # Workflow Metrics (remains based on workflow_status)
-                workflows_run_count = transcription_utils.count_jobs_in_range(start, end, llm_operation_status='finished') # Use llm_operation_status
+                # Workflow Metrics
+                workflows_run_count = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                    llm_operation_status='finished',
+                )
                 metrics['workflows_run'][key] = workflows_run_count
                 model_dist = transcription_utils.get_workflow_model_distribution(start, end)
                 metrics['workflow_model_distribution'][key] = dict(model_dist)
@@ -365,10 +380,15 @@ def get_performance_error_metrics() -> Dict[str, Any]:
                 metrics['common_transcription_errors'][key] = common_transcription
 
                 # Workflow Errors
-                # --- MODIFIED: Use llm_operation_status for workflow error calculations ---
-                total_workflows_attempted = transcription_utils.count_jobs_in_range(start, end, llm_operation_status__ne='idle')
-                total_workflow_errors = transcription_utils.count_jobs_in_range(start, end, llm_operation_status='error')
-                # --- END MODIFIED ---
+                total_workflows_attempted = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                )
+                total_workflow_errors = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                    llm_operation_status='error',
+                )
                 overall_workflow_rate = _safe_division(total_workflow_errors, total_workflows_attempted) * 100
                 metrics['overall_workflow_error_rate'][key] = round(overall_workflow_rate, 2)
 
@@ -376,14 +396,12 @@ def get_performance_error_metrics() -> Dict[str, Any]:
                 model_attempt_dist = transcription_utils.get_workflow_model_distribution(start, end, include_attempted=True)
                 observed_models = list(dict.fromkeys(list(supported_workflow_models) + list(model_attempt_dist.keys())))
                 for model in observed_models:
-                    # --- MODIFIED: Use new function for counting errors by model ---
                     errors_for_model = transcription_utils.count_workflow_jobs_with_filters(
                         start_dt=start,
                         end_dt=end,
                         llm_operation_status='error',
                         llm_model=model
                     )
-                    # --- END MODIFIED ---
                     attempts_for_model = model_attempt_dist.get(model, 0)
                     model_rate = _safe_division(errors_for_model, attempts_for_model) * 100
                     workflow_model_rates[model] = round(model_rate, 2)
@@ -497,8 +515,11 @@ def get_user_usage_metrics(user_id: int) -> Dict[str, Any]:
                 )
 
                 # Workflows
-                metrics['workflows'][key] = transcription_utils.count_jobs_in_range(
-                    start, end, user_id=user_id, llm_operation_status='finished'
+                metrics['workflows'][key] = transcription_utils.count_workflow_jobs_with_filters(
+                    start_dt=start,
+                    end_dt=end,
+                    llm_operation_status='finished',
+                    user_id=user_id,
                 )
 
                 # Audio Processed

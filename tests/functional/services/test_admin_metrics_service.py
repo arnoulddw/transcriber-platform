@@ -58,6 +58,8 @@ def test_get_admin_dashboard_metrics_success(app, mock_db_utils):
     """
     Tests that dashboard metrics are fetched and calculated correctly.
     """
+    _mock_user_utils, mock_transcription_utils = mock_db_utils
+
     with app.app_context():
         metrics = admin_metrics_service.get_admin_dashboard_metrics()
 
@@ -69,6 +71,12 @@ def test_get_admin_dashboard_metrics_success(app, mock_db_utils):
         assert metrics['minutes_processed']['30d'] > 0
         assert 'error_rate' in metrics
         assert 'workflow_error_rate' in metrics
+        assert all(
+            'llm_operation_status' not in call.kwargs
+            and 'llm_operation_status__ne' not in call.kwargs
+            for call in mock_transcription_utils.count_jobs_in_range.call_args_list
+        )
+        mock_transcription_utils.count_workflow_jobs_with_filters.assert_called()
 
 def test_get_usage_analytics_metrics_success(app, mock_db_utils):
     """
@@ -103,19 +111,20 @@ def test_get_performance_error_metrics_success(app, mock_db_utils):
     Tests that performance and error metrics are fetched and calculated correctly.
     """
     mock_user_utils, mock_transcription_utils = mock_db_utils
-    # Specific setup for this test
-    mock_user_utils, mock_transcription_utils = mock_db_utils
     
     def count_jobs(_start, _end, **filters):
-        if filters.get('llm_operation_status__ne') == 'idle':
-            return 20
-        if filters.get('llm_operation_status') == 'error':
-            return 4
         if filters.get('status') == 'error':
             return 10
         return 100
 
     mock_transcription_utils.count_jobs_in_range.side_effect = count_jobs
+
+    def count_workflows(**filters):
+        if filters.get('llm_operation_status') == 'error':
+            return 4
+        return 20
+
+    mock_transcription_utils.count_workflow_jobs_with_filters.side_effect = count_workflows
 
     with app.app_context():
         metrics = admin_metrics_service.get_performance_error_metrics()
@@ -144,6 +153,8 @@ def test_get_user_usage_metrics_success(app, mock_db_utils):
     """
     Tests that usage metrics for a single user are fetched correctly.
     """
+    _mock_user_utils, mock_transcription_utils = mock_db_utils
+
     with app.app_context():
         metrics = admin_metrics_service.get_user_usage_metrics(user_id=1)
 
@@ -152,6 +163,11 @@ def test_get_user_usage_metrics_success(app, mock_db_utils):
         assert metrics['costs']['24h'] == 75.0
         assert metrics['transcriptions']['7d'] > 0
         assert metrics['audio_processed']['all'] > 0
+        assert any(
+            call.kwargs.get('user_id') == 1
+            and call.kwargs.get('llm_operation_status') == 'finished'
+            for call in mock_transcription_utils.count_workflow_jobs_with_filters.call_args_list
+        )
 
 def test_safe_division_by_zero():
     """

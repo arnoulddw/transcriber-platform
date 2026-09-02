@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.models.transcription_utils import admin_analytics
 from app.services import display_mapping_service
@@ -152,3 +152,21 @@ def test_api_error_rate_distribution_merges_aliases_before_calculating_rate():
 
     assert rates == {"openai:gpt-transcribe": 5.56}
     assert "GROUP BY api_used, api_model" in cursor.executed_sql[0][0]
+
+
+def test_workflow_count_can_be_scoped_to_user():
+    cursor = MagicMock()
+    cursor.fetchone.return_value = {"count": 3}
+
+    with patch.object(admin_analytics, "get_cursor", return_value=cursor):
+        count = admin_analytics.count_workflow_jobs_with_filters(
+            llm_operation_status="finished",
+            user_id=42,
+        )
+
+    assert count == 3
+    sql, params = cursor.execute.call_args.args
+    assert "lo.operation_type = 'workflow'" in sql
+    assert "lo.status = %s" in sql
+    assert "t.user_id = %s" in sql
+    assert params == ("finished", 42)
