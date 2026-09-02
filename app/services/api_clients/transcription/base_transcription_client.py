@@ -39,6 +39,7 @@ class BaseTranscriptionClient(ABC):
     # The catalog model code this client represents (e.g. "whisper"). Used to
     # resolve the display name from the catalog instead of hardcoding labels.
     CATALOG_MODEL_CODE: str = ""
+    RETURNS_DETECTED_LANGUAGE: bool = True
 
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
         """
@@ -449,7 +450,8 @@ class BaseTranscriptionClient(ABC):
 
                 if requested_language == 'auto':
                     if not final_detected_language:
-                        self.logger.warning("Language auto-detection requested, but final language not determined.")
+                        log_method = self.logger.warning if self.RETURNS_DETECTED_LANGUAGE else self.logger.info
+                        log_method("Language auto-detection requested, but the provider returned no language metadata.")
                         final_detected_language = UNKNOWN_LANGUAGE_CODE
                 else:
                     final_detected_language = requested_language
@@ -681,7 +683,8 @@ class BaseTranscriptionClient(ABC):
                 if first_successful_lang:
                     final_language_used = first_successful_lang
                 else:
-                    self.logger.warning(f"{log_prefix} Language auto-detection requested, but no chunk provided a detected language.")
+                    log_method = self.logger.warning if self.RETURNS_DETECTED_LANGUAGE else self.logger.info
+                    log_method(f"{log_prefix} Language auto-detection requested, but the provider returned no language metadata.")
                     final_language_used = UNKNOWN_LANGUAGE_CODE
                 log_lang_msg = f"{mode_log} chunked transcription aggregated. Final language (detected/fallback): {final_language_used}"
                 ui_lang_msg = f"Aggregated chunk transcriptions. Final language (detected/fallback): {final_language_used}"

@@ -43,6 +43,7 @@ from app.core.decorators import check_permission
 from mysql.connector import Error as MySQLError
 
 from app.tasks.title_generation import generate_title_task
+from app.database import close_db
 
 
 def _get_api_display_name(model_code: str) -> str:
@@ -331,14 +332,20 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 logger.error(f"Failed to get API key/client: {key_err}")
                 raise PermissionError(str(key_err)) from key_err
 
+            progress_db_lock = threading.Lock()
+
             def api_progress_callback(msg: str, is_err: bool = False):
                 nonlocal last_error_message_from_callback, was_cancelled
-                if not was_cancelled and _check_for_cancellation(app, job_id):
-                    was_cancelled = True
-                    cancel_event.set()
-                    raise InterruptedError("Job cancelled by user (detected via DB status).")
-                if is_err: last_error_message_from_callback = msg
-                _update_progress(app, job_id, msg, is_error=is_err, user_id=user_id, log_message=False)
+                # Parallel chunks report progress concurrently. Serialize their
+                # short DB operations so worker count does not become the
+                # minimum required connection-pool size.
+                with progress_db_lock:
+                    if not was_cancelled and _check_for_cancellation(app, job_id):
+                        was_cancelled = True
+                        cancel_event.set()
+                        raise InterruptedError("Job cancelled by user (detected via DB status).")
+                    if is_err: last_error_message_from_callback = msg
+                    _update_progress(app, job_id, msg, is_error=is_err, user_id=user_id, log_message=False)
 
             transcribe_args = {
                 "audio_file_path": temp_filename, "language_code": language_code,
@@ -349,6 +356,9 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
             transcription_text: Optional[str] = None
             detected_language: Optional[str] = None
+            # The outer job context does not need its pooled connection while
+            # waiting on remote transcription calls or parallel chunk workers.
+            close_db()
             result_tuple: Tuple[Optional[str], Optional[str]] = api_client.transcribe(**transcribe_args)
             transcription_text, detected_language = result_tuple
 

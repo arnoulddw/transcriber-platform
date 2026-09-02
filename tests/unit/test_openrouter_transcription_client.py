@@ -49,6 +49,7 @@ def test_auto_language_omits_language_param():
         extra_options={"model": "openai/whisper-1"},
     )
     assert "language" not in params
+    assert client.RETURNS_DETECTED_LANGUAGE is False
 
 
 def test_transcription_factory_routes_openrouter():

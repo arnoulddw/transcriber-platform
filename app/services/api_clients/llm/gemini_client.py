@@ -136,6 +136,11 @@ class GeminiClient(BaseLLMClient):
         generation_config_kwargs = {
             "temperature": temperature,
             "safety_settings": safety_settings_list,
+            # These requests never provide tools, so automatic function
+            # calling only produces an SDK advisory and should stay disabled.
+            "automatic_function_calling": genai_types.AutomaticFunctionCallingConfig(
+                disable=True
+            ),
         }
         if max_output_tokens is not None:
             generation_config_kwargs["max_output_tokens"] = max_output_tokens
@@ -162,6 +167,16 @@ class GeminiClient(BaseLLMClient):
                 contents=[prompt],
                 config=generation_config
             )
+
+            prompt_feedback = getattr(response, "prompt_feedback", None)
+            block_reason = getattr(prompt_feedback, "block_reason", None)
+            if block_reason:
+                block_reason_str = getattr(block_reason, "name", str(block_reason))
+                logger.warning(f"API call returned no valid text. Block Reason: {block_reason_str}")
+                raise LlmSafetyError(
+                    f"Gemini: Prompt blocked by safety settings (Reason: {block_reason_str}). Please revise your prompt.",
+                    provider=self._get_api_name(),
+                )
 
             # Response checking logic remains the same
             try:

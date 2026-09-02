@@ -8,6 +8,7 @@ class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
     # The catalog code is set to the selected vendor/model slug. The provider
     # name remains only as the compatibility default for older callers.
     CATALOG_MODEL_CODE = "openrouter"
+    RETURNS_DETECTED_LANGUAGE = False
 
     def __init__(
         self,

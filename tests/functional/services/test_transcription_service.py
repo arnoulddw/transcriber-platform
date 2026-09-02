@@ -42,6 +42,7 @@ def test_process_transcription_success(
 
     # Mock external dependencies
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
+         patch('app.services.transcription_service.close_db') as mock_close_db, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)) as mock_get_duration, \
          patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
          patch('app.services.transcription_service.generate_title_task') as mock_title_task, \
@@ -50,7 +51,10 @@ def test_process_transcription_success(
 
         # Configure the mock transcription client
         mock_client = MagicMock()
-        mock_client.transcribe.return_value = (expected_text, expected_lang)
+        def transcribe_after_connection_release(**_kwargs):
+            mock_close_db.assert_called_once_with()
+            return expected_text, expected_lang
+        mock_client.transcribe.side_effect = transcribe_after_connection_release
         mock_get_client.return_value = mock_client
 
         # Mock the user object found by the service
