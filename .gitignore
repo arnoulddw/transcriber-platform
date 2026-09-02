@@ -42,6 +42,7 @@ desktop.ini
 # IDE specific files
 .vscode/
 .idea/
+.hermes/
 *.sublime-project
 *.sublime-workspace
 
@@ -60,7 +61,6 @@ runtime/
 runtime_test/
 !runtime_test/.gitkeep
 flask.out
-migrations/
 
 
 # Coverage reports

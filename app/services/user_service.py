@@ -941,7 +941,6 @@ def revoke_public_api_key(user_id: int, key_id: Optional[int] = None) -> None:
 
         if not public_api_key_model.revoke_all_public_api_keys(user_id):
             raise ApiKeyManagementError("Failed to revoke the public API key.")
-        user_model.clear_public_api_key(user_id)
         logger.info(f"Revoked public API key for user {user_id}.")
     except (UserNotFoundError, KeyNotFoundError, ApiKeyManagementError) as e:
         raise e
@@ -960,11 +959,8 @@ def authenticate_public_api_key(raw_key: str) -> Optional[User]:
     try:
         key_hash = _hash_public_api_key(raw_key)
         user = public_api_key_model.get_user_by_public_api_key_hash(key_hash)
-        if not user:
-            user = user_model.get_user_by_public_api_key_hash(key_hash)
-        if user and getattr(user, 'public_api_key_hash', None):
-            if hmac.compare_digest(user.public_api_key_hash, key_hash):
-                return user
+        if user:
+            return user
         return None
     except Exception as e:
         logger.error(f"Error authenticating public API key: {e}", exc_info=True)

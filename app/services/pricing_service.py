@@ -43,7 +43,7 @@ def update_prices(pricing_data: Dict[str, Dict[str, float]]) -> None:
         raise PricingServiceError(f"Could not update prices: {e}")
 
 
-def update_price(item_type: str, item_key: str, price: float) -> None:
+def update_price(item_type: str, item_key: str, price: float, billing_unit: Optional[str] = None) -> None:
     """Validate and save one catalog item's price."""
     if item_type not in {'transcription', 'workflow', 'title_generation'}:
         raise PricingServiceError("Invalid pricing section.")
@@ -55,11 +55,15 @@ def update_price(item_type: str, item_key: str, price: float) -> None:
         raise PricingServiceError("Price must be a number.") from exc
     if numeric_price < 0:
         raise PricingServiceError("Price cannot be negative.")
+    if billing_unit and billing_unit not in {'per_minute', 'per_1k_tokens', 'per_execution'}:
+        raise PricingServiceError("Invalid billing unit.")
+    unit = billing_unit or ('per_minute' if item_type == 'transcription' else 'per_1k_tokens')
     try:
-        pricing_model.update_prices({item_type: {item_key: numeric_price}})
+        pricing_model.update_prices({item_type: {item_key: numeric_price}}, billing_units={item_key: unit})
     except Exception as e:
         logging.error("[SERVICE:Pricing:UpdateOne] Error updating price: %s", e, exc_info=True)
         raise PricingServiceError(f"Could not update price: {e}") from e
+
 
 
 def _price_key_tail(key: str) -> str:

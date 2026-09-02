@@ -897,7 +897,7 @@ def init_user_usage_table() -> None:
             CREATE TABLE IF NOT EXISTS user_usage (
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 user_id INT NOT NULL,
-                date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                date DATE NOT NULL DEFAULT (CURRENT_DATE),
                 cost DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
                 minutes DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                 workflows INT NOT NULL DEFAULT 0,
@@ -911,9 +911,9 @@ def init_user_usage_table() -> None:
         date_col = cursor.fetchone()
         cursor.fetchall()
         date_type = (date_col.get('Type') if isinstance(date_col, dict) else (date_col[1] if date_col else "")).lower()
-        if date_col and 'timestamp' not in date_type:
-            logging.info(f"{log_prefix} Converting 'date' column on 'user_usage' table to TIMESTAMP.")
-            cursor.execute("ALTER TABLE user_usage MODIFY COLUMN date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+        if date_col and ('timestamp' in date_type or 'datetime' in date_type):
+            logging.info(f"{log_prefix} Converting 'date' column on 'user_usage' table to DATE.")
+            cursor.execute("ALTER TABLE user_usage MODIFY COLUMN date DATE NOT NULL DEFAULT (CURRENT_DATE)")
         cursor.execute("SHOW COLUMNS FROM user_usage LIKE 'minutes'")
         minutes_col = cursor.fetchone()
         cursor.fetchall()

@@ -342,21 +342,8 @@ def get_user_by_oauth(provider: str, provider_id: str) -> Optional[User]:
 
 
 def get_user_by_public_api_key_hash(key_hash: str) -> Optional[User]:
-    sql = 'SELECT * FROM users WHERE public_api_key_hash = %s LIMIT 1'
-    cursor = None
-    user = None
-    try:
-        cursor = get_cursor()
-        cursor.execute(sql, (key_hash,))
-        row = cursor.fetchone()
-        user = _map_row_to_user(row)
-        logger.debug(f"[DB:User] Lookup by public API key hash found user: {'Yes' if user else 'No'}.")
-    except MySQLError as err:
-        logger.error(f"[DB:User] Error retrieving user by public API key hash: {err}", exc_info=True)
-        user = None
-    finally:
-        pass
-    return user
+    from app.models import public_api_key as public_api_key_model
+    return public_api_key_model.get_user_by_public_api_key_hash(key_hash)
 
 
 def link_oauth_to_user(user_id: int, oauth_provider: str, oauth_provider_id: str) -> bool:
@@ -421,47 +408,13 @@ def update_user_api_keys(user_id: int, encrypted_keys_json: Optional[str]) -> bo
 
 
 def update_public_api_key(user_id: int, key_hash: str, last_four: str, created_at: datetime) -> bool:
-    sql = '''
-        UPDATE users
-        SET public_api_key_hash = %s,
-            public_api_key_last_four = %s,
-            public_api_key_created_at = %s
-        WHERE id = %s
-    '''
-    cursor = get_cursor()
-    try:
-        cursor.execute(sql, (key_hash, last_four, created_at, user_id))
-        get_db().commit()
-        logger.info(f"[DB:User] Updated public API key for user ID {user_id}.")
-        return True
-    except MySQLError as err:
-        logger.error(f"[DB:User] Error updating public API key for user ID {user_id}: {err}", exc_info=True)
-        get_db().rollback()
-        return False
-    finally:
-        pass
+    """Deprecated: keys are managed in the public_api_keys table."""
+    return False
 
 
 def clear_public_api_key(user_id: int) -> bool:
-    sql = '''
-        UPDATE users
-        SET public_api_key_hash = NULL,
-            public_api_key_last_four = NULL,
-            public_api_key_created_at = NULL
-        WHERE id = %s
-    '''
-    cursor = get_cursor()
-    try:
-        cursor.execute(sql, (user_id,))
-        get_db().commit()
-        logger.info(f"[DB:User] Cleared public API key for user ID {user_id}.")
-        return True
-    except MySQLError as err:
-        logger.error(f"[DB:User] Error clearing public API key for user ID {user_id}: {err}", exc_info=True)
-        get_db().rollback()
-        return False
-    finally:
-        pass
+    """Deprecated: keys are managed in the public_api_keys table."""
+    return True
 
 
 def get_all_users() -> List[User]:

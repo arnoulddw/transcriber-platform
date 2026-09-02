@@ -74,9 +74,6 @@ def init_db_command() -> None:
                 default_workflow_model VARCHAR(100) DEFAULT NULL,
                 default_live_transcription_model VARCHAR(255) DEFAULT NULL,
                 enable_auto_title_generation BOOLEAN NOT NULL DEFAULT FALSE,
-                public_api_key_hash VARCHAR(128),
-                public_api_key_last_four VARCHAR(12),
-                public_api_key_created_at TIMESTAMP NULL DEFAULT NULL,
                 FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE SET NULL,
                 UNIQUE KEY uk_oauth (oauth_provider, oauth_provider_id),
                 INDEX idx_username (username),
@@ -169,25 +166,15 @@ def init_db_command() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT NULL AFTER default_transcription_model")
 
         cursor.execute("SHOW COLUMNS FROM users LIKE 'public_api_key_hash'")
-        public_api_key_hash_exists = cursor.fetchone()
+        legacy_key_col = cursor.fetchone()
         cursor.fetchall()
-        if not public_api_key_hash_exists:
-            logger.info(f"{log_prefix} Adding 'public_api_key_hash' column to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD COLUMN public_api_key_hash VARCHAR(128) DEFAULT NULL AFTER created_at")
-
-        cursor.execute("SHOW COLUMNS FROM users LIKE 'public_api_key_last_four'")
-        public_api_key_last_four_exists = cursor.fetchone()
-        cursor.fetchall()
-        if not public_api_key_last_four_exists:
-            logger.info(f"{log_prefix} Adding 'public_api_key_last_four' column to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD COLUMN public_api_key_last_four VARCHAR(12) DEFAULT NULL AFTER public_api_key_hash")
-
-        cursor.execute("SHOW COLUMNS FROM users LIKE 'public_api_key_created_at'")
-        public_api_key_created_at_exists = cursor.fetchone()
-        cursor.fetchall()
-        if not public_api_key_created_at_exists:
-            logger.info(f"{log_prefix} Adding 'public_api_key_created_at' column to 'users' table.")
-            cursor.execute("ALTER TABLE users ADD COLUMN public_api_key_created_at TIMESTAMP NULL DEFAULT NULL AFTER public_api_key_last_four")
+        if legacy_key_col:
+            logger.info(f"{log_prefix} Dropping legacy public_api_key columns from 'users' table.")
+            for col in ['public_api_key_hash', 'public_api_key_last_four', 'public_api_key_created_at']:
+                try:
+                    cursor.execute(f"ALTER TABLE users DROP COLUMN {col}")
+                except MySQLError:
+                    pass
 
         cursor.execute("SHOW COLUMNS FROM users LIKE 'api_keys_encrypted'")
         api_keys_encrypted_exists = cursor.fetchone()

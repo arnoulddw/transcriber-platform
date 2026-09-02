@@ -55,3 +55,12 @@ def test_usage_minutes_are_decimal(app, clean_db):
         cursor.execute("SHOW COLUMNS FROM user_usage LIKE 'minutes'")
         column = cursor.fetchone()
         assert str(column['Type']).lower().startswith('decimal')
+
+
+def test_user_usage_date_is_date_type(app, clean_db):
+    with app.app_context():
+        cursor = get_cursor()
+        cursor.execute("SHOW COLUMNS FROM user_usage LIKE 'date'")
+        column = cursor.fetchone()
+        assert str(column['Type']).lower() == 'date'
+

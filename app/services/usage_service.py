@@ -23,11 +23,13 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
 
     today = datetime.now(timezone.utc)
     day_start, start_of_week, start_of_month = get_usage_period_starts(now=today)
-    today = day_start
+    today_date = day_start.date() if isinstance(day_start, datetime) else day_start
+    start_of_week_date = start_of_week.date() if isinstance(start_of_week, datetime) else start_of_week
+    start_of_month_date = start_of_month.date() if isinstance(start_of_month, datetime) else start_of_month
     # Use the earlier of the two boundaries so that weekly totals are correct
     # when the current week started in the previous month (e.g. today is the
     # 1st or 2nd of the month and Monday fell in the previous month).
-    earliest = min(start_of_week, start_of_month)
+    earliest_date = min(start_of_week_date, start_of_month_date)
 
     usage_stats = {
         'daily':   {'cost': 0.0, 'minutes': 0.0, 'workflows': 0, 'live_minutes': 0.0},
@@ -55,10 +57,10 @@ def get_user_usage(user_id: int) -> Dict[str, Any]:
             WHERE user_id = %s AND date >= %s
             """,
             (
-                today, today, today, today,
-                start_of_week, start_of_week, start_of_week, start_of_week,
-                start_of_month, start_of_month, start_of_month, start_of_month,
-                user_id, earliest,
+                today_date, today_date, today_date, today_date,
+                start_of_week_date, start_of_week_date, start_of_week_date, start_of_week_date,
+                start_of_month_date, start_of_month_date, start_of_month_date, start_of_month_date,
+                user_id, earliest_date,
             )
         )
         row = cursor.fetchone()

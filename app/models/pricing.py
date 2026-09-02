@@ -19,6 +19,7 @@ def init_db_command() -> None:
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 catalog_code VARCHAR(255) NOT NULL,
                 price DECIMAL(18, 8) NOT NULL,
+                billing_unit ENUM('per_minute', 'per_1k_tokens', 'per_execution') NOT NULL DEFAULT 'per_minute',
                 item_type ENUM('transcription', 'workflow', 'title_generation') NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uq_item_type_code (item_type, catalog_code),
@@ -28,6 +29,18 @@ def init_db_command() -> None:
         )
         get_db().commit()
         logging.debug(f"{log_prefix} 'pricing' table schema verified/initialized.")
+
+        cursor.execute("SHOW COLUMNS FROM pricing LIKE 'billing_unit'")
+        billing_unit_col = cursor.fetchone()
+        cursor.fetchall()
+        if not billing_unit_col:
+            logging.info(f"{log_prefix} Adding 'billing_unit' column to 'pricing' table.")
+            cursor.execute(
+                "ALTER TABLE pricing ADD COLUMN billing_unit ENUM('per_minute', 'per_1k_tokens', 'per_execution') NOT NULL DEFAULT 'per_minute' AFTER price"
+            )
+            cursor.execute(
+                "UPDATE pricing SET billing_unit = 'per_1k_tokens' WHERE item_type IN ('workflow', 'title_generation')"
+            )
 
         # Normalize legacy column/index names
         cursor.execute("SHOW COLUMNS FROM pricing LIKE 'item_key'")
@@ -104,7 +117,10 @@ def get_all_prices() -> Dict[str, Any]:
         pass
     return prices
 
-def update_prices(pricing_data: Dict[str, Dict[str, float]]) -> None:
+def update_prices(
+    pricing_data: Dict[str, Dict[str, float]],
+    billing_units: Optional[Dict[str, str]] = None,
+) -> None:
     """
     Updates or inserts prices in the database.
     """
@@ -119,6 +135,11 @@ def update_prices(pricing_data: Dict[str, Dict[str, float]]) -> None:
         for item_type, models in pricing_data.items():
             for item_key, price in models.items():
                 cursor.execute(sql, (item_type, str(item_key).strip(), price))
+                if billing_units and item_key in billing_units:
+                    cursor.execute(
+                        "UPDATE pricing SET billing_unit = %s WHERE item_type = %s AND catalog_code = %s",
+                        (billing_units[item_key], item_type, str(item_key).strip())
+                    )
         get_db().commit()
         logging.debug(f"{log_prefix} Database prices updated successfully.")
     except MySQLError as err:
@@ -128,3 +149,4 @@ def update_prices(pricing_data: Dict[str, Dict[str, float]]) -> None:
     finally:
         # The cursor is managed by the application context, so we don't close it here.
         pass
+
