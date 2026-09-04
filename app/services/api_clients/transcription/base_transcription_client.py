@@ -7,7 +7,7 @@ import time
 import concurrent.futures
 import threading
 from abc import ABC, abstractmethod
-from typing import Tuple, Optional, Callable, Dict, List, Any, Type
+from typing import Tuple, Optional, Callable, Dict, List, Any, Type, FrozenSet
 
 # Import project-specific services and config
 from app.services import file_service
@@ -39,6 +39,7 @@ class BaseTranscriptionClient(ABC):
     # The catalog model code this client represents (e.g. "whisper"). Used to
     # resolve the display name from the catalog instead of hardcoding labels.
     CATALOG_MODEL_CODE: str = ""
+    CATALOG_PROVIDER_CODE: str = ""
     RETURNS_DETECTED_LANGUAGE: bool = True
 
     def __init__(self, api_key: str, config: Dict[str, Any]) -> None:
@@ -62,6 +63,7 @@ class BaseTranscriptionClient(ABC):
         self.config = config # Store config
         self.client = None # Subclass initializer should set this
         self.logger = get_logger(__name__, component=self._get_api_name())
+        self.supported_audio_formats = self._resolve_supported_audio_formats()
         try:
             self._initialize_client(api_key) # Call abstract method for subclass setup
         except Exception as e:
@@ -239,6 +241,95 @@ class BaseTranscriptionClient(ABC):
         """
         pass
 
+    def _resolve_supported_audio_formats(self) -> Optional[FrozenSet[str]]:
+        """Cache optional catalog capabilities while a DB context is available."""
+        try:
+            from app.models import transcription_catalog as catalog_model
+
+            formats = catalog_model.get_supported_audio_formats(
+                self.CATALOG_MODEL_CODE,
+                provider_code=self.CATALOG_PROVIDER_CODE or None,
+                configured_metadata=self.config.get("TRANSCRIPTION_MODEL_METADATA"),
+            )
+            return frozenset(formats) if formats else None
+        except Exception as exc:
+            self.logger.debug(
+                "Could not resolve supported audio formats for '%s': %s",
+                self.CATALOG_MODEL_CODE,
+                exc,
+            )
+            return None
+
+    def _get_transcode_target(
+        self,
+        audio_file_path: str,
+        extra_options: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Return a compatible output format, or ``None`` when no conversion is needed."""
+        supported_audio_formats = self._get_request_supported_audio_formats(extra_options)
+        if supported_audio_formats is None:
+            return None
+
+        source_format = os.path.splitext(audio_file_path)[1].lower().lstrip(".")
+        if source_format in supported_audio_formats:
+            return None
+
+        compatible_targets = (
+            supported_audio_formats & file_service.TRANSCODE_TARGET_FORMATS
+        )
+        if "mp3" in compatible_targets:
+            return "mp3"
+        if compatible_targets:
+            return sorted(compatible_targets)[0]
+
+        supported = ", ".join(sorted(supported_audio_formats))
+        raise TranscriptionConfigurationError(
+            f"No local transcoder is available for the model's supported audio formats: {supported}.",
+            provider=self._get_api_name(),
+        )
+
+    def _get_request_supported_audio_formats(
+        self,
+        extra_options: Optional[Dict[str, Any]] = None,
+    ) -> Optional[FrozenSet[str]]:
+        """Resolve a model override from cached config without reopening the DB."""
+        effective_model = str((extra_options or {}).get("model") or "").strip()
+        if not effective_model or effective_model == self.CATALOG_MODEL_CODE:
+            return self.supported_audio_formats
+
+        from app.models import transcription_catalog as catalog_model
+
+        formats = catalog_model.get_configured_supported_audio_formats(
+            effective_model,
+            provider_code=self.CATALOG_PROVIDER_CODE or None,
+            configured_metadata=self.config.get("TRANSCRIPTION_MODEL_METADATA"),
+        )
+        return frozenset(formats) if formats else None
+
+    def _transcode_audio(
+        self,
+        audio_file_path: str,
+        target_format: str,
+        api_name: str,
+    ) -> str:
+        """Create one normalized working file or raise a processing error."""
+        source_dir = os.path.dirname(os.path.abspath(audio_file_path))
+        transcoded_path = file_service.transcode_audio_file(
+            audio_file_path,
+            source_dir,
+            target_format=target_format,
+            progress_callback=self._report_progress,
+            cancellation_check=lambda: bool(
+                self.cancel_event and self.cancel_event.is_set()
+            ),
+        )
+        if not transcoded_path:
+            raise TranscriptionProcessingError(
+                f"Failed to convert audio to the supported {target_format.upper()} format.",
+                provider=api_name,
+            )
+        return transcoded_path
+
     # --- Methods from Proposed Architecture (Placeholder Implementations) ---
     # These might be implemented here or within the main `transcribe` method logic.
     # For now, let's keep the core logic in `transcribe` and its helpers.
@@ -345,14 +436,30 @@ class BaseTranscriptionClient(ABC):
         self._report_progress("Starting transcription process...")
         transcription_text: Optional[str] = None
         final_detected_language: Optional[str] = None
+        transcoded_audio_path: Optional[str] = None
 
         try:
             # Validate file existence
             if not os.path.exists(audio_file_path):
                 raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
-            file_size = os.path.getsize(audio_file_path)
+            working_audio_path = audio_file_path
             duration_seconds = audio_length_seconds or 0
+
+            transcode_target = self._get_transcode_target(audio_file_path, extra_options)
+            if transcode_target:
+                self._report_progress(
+                    f"Audio format is not supported by this model. Converting to {transcode_target.upper()}..."
+                )
+                transcoded_audio_path = self._transcode_audio(
+                    audio_file_path, transcode_target, api_name
+                )
+                working_audio_path = transcoded_audio_path
+                measured_duration, _ = file_service.get_audio_duration(working_audio_path)
+                if measured_duration > 0:
+                    duration_seconds = measured_duration
+
+            file_size = os.path.getsize(working_audio_path)
 
             # Check if file needs splitting based on size OR duration
             should_split_by_size = file_size > self.SPLIT_THRESHOLD_BYTES
@@ -364,18 +471,18 @@ class BaseTranscriptionClient(ABC):
                     reason_parts.append(f"size ({file_size / 1024 / 1024:.2f}MB)")
                 if should_split_by_duration:
                     reason_parts.append(f"duration ({duration_seconds:.1f}s)")
-                
                 reason_text = " and ".join(reason_parts)
                 mode = "PARALLEL (no prompt)" if not context_prompt else "SEQUENTIAL (prompt provided)"
-                self._report_progress(f"File exceeds processing limit ({reason_text}). Starting {mode} chunked transcription.")
+                split_message = f"File exceeds processing limit ({reason_text})."
+                self._report_progress(f"{split_message} Starting {mode} chunked transcription.")
                 # Delegate to splitting method
-                return self._split_and_transcribe(audio_file_path, requested_language, context_prompt, display_filename, extra_options=extra_options)
+                return self._split_and_transcribe(working_audio_path, requested_language, context_prompt, display_filename, extra_options=extra_options)
             else:
                 # Process single file
                 self._report_progress(f"File size ({file_size / 1024 / 1024:.2f}MB) and duration ({duration_seconds:.1f}s) within limit. Processing as single file.")
 
                 # Validate file path is within allowed directory (security measure)
-                abs_path = os.path.abspath(audio_file_path)
+                abs_path = os.path.abspath(working_audio_path)
                 temp_dir = os.path.dirname(abs_path) # Assuming file is in a temp dir
                 if not file_service.validate_file_path(abs_path, temp_dir):
                     raise ValueError(f"Audio file path is not allowed: {abs_path}")
@@ -399,37 +506,59 @@ class BaseTranscriptionClient(ABC):
 
                 self._report_progress(f"Transcribing with {api_name}...")
 
-                for attempt in range(single_file_max_retries + 1):
+                api_attempt = 0
+                retry_count = 0
+                format_retry_used = transcoded_audio_path is not None
+                while True:
+                    api_attempt += 1
                     try:
-                        self.logger.debug(f"{log_prefix} Single file attempt {attempt+1}: preparing API call.")
+                        self.logger.debug(f"{log_prefix} Single file attempt {api_attempt}: preparing API call.")
                         self._report_progress("Checking cancellation before API call...") # Implicit check
                         start_time = time.time()
                         with open(abs_path, "rb") as audio_file:
                             raw_response = self._call_api(audio_file, api_params) # Can raise retryable errors
                         duration = time.time() - start_time
-                        self.logger.debug(f"{log_prefix} Single file attempt {attempt+1}: API call successful. Duration: {duration:.2f}s")
+                        self.logger.debug(f"{log_prefix} Single file attempt {api_attempt}: API call successful. Duration: {duration:.2f}s")
                         break
                     except Exception as exc:
-                        if (
+                        rejected_audio = (
                             isinstance(exc, TranscriptionProcessingError)
                             and "could not read this audio file" in str(exc).lower()
-                        ):
+                        )
+                        if rejected_audio and not format_retry_used:
+                            format_retry_used = True
                             self._report_progress(
                                 "The provider could not read the original audio. "
-                                "Converting it to a compatible format and retrying...",
+                                "Converting it to MP3 and retrying...",
                                 False,
                             )
-                            return self._split_and_transcribe(
-                                audio_file_path,
-                                requested_language,
-                                context_prompt,
-                                display_filename,
-                                extra_options=extra_options,
+                            transcoded_audio_path = self._transcode_audio(
+                                audio_file_path, "mp3", api_name
                             )
+                            abs_path = os.path.abspath(transcoded_audio_path)
+                            measured_duration, _ = file_service.get_audio_duration(abs_path)
+                            if measured_duration > 0:
+                                duration_seconds = measured_duration
+                            file_size = os.path.getsize(abs_path)
+                            should_split_by_size = file_size > self.SPLIT_THRESHOLD_BYTES
+                            should_split_by_duration = (
+                                self.SPLIT_THRESHOLD_SECONDS is not None
+                                and duration_seconds > self.SPLIT_THRESHOLD_SECONDS
+                            )
+                            if should_split_by_size or should_split_by_duration:
+                                return self._split_and_transcribe(
+                                    abs_path,
+                                    requested_language,
+                                    context_prompt,
+                                    display_filename,
+                                    extra_options=extra_options,
+                                )
+                            continue
                         if retryable_errors and isinstance(exc, retryable_errors):
-                            if attempt < single_file_max_retries:
-                                wait_time = self._get_retry_delay_seconds(attempt, is_chunk=False)
-                                retry_message = f"Retryable error on attempt {attempt+1}. Retrying in {wait_time}s... ({type(exc).__name__})"
+                            if retry_count < single_file_max_retries:
+                                wait_time = self._get_retry_delay_seconds(retry_count, is_chunk=False)
+                                retry_count += 1
+                                retry_message = f"Retryable error on attempt {api_attempt}. Retrying in {wait_time}s... ({type(exc).__name__})"
                                 self._report_progress(retry_message, False)
                                 self.logger.warning(f"{log_prefix} {retry_message}: {exc}")
                                 time.sleep(wait_time)
@@ -479,6 +608,9 @@ class BaseTranscriptionClient(ABC):
             self.logger.exception("Unexpected error detail:")
             raise TranscriptionProcessingError(f"Unexpected error during transcription: {e}", provider=api_name) from e
         finally:
+            if transcoded_audio_path:
+                self.logger.info("Cleaning up temporary transcoded audio.")
+                file_service.remove_files([transcoded_audio_path])
             # Reset instance variables after processing
             self.progress_callback = None
             self.cancel_event = None

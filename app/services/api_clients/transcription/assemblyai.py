@@ -38,6 +38,7 @@ class AssemblyAITranscriptionAPI(BaseTranscriptionClient):
     # The catalog code is set to the selected AssemblyAI model. ``universal``
     # is the compatibility default for older provider-wide callers.
     CATALOG_MODEL_CODE = "universal"
+    CATALOG_PROVIDER_CODE = "assemblyai"
 
     def __init__(
         self,

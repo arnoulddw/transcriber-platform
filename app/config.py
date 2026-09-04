@@ -115,6 +115,14 @@ class Config:
         for model in os.environ.get('OPENROUTER_LIVE_TRANSCRIPTION_MODELS', '').split(',')
         if model.strip()
     ]
+    # Optional capabilities for provider-local transcription models. The
+    # catalog persists these values when a model is registered; models absent
+    # from this map retain the legacy "unknown" capability behavior.
+    TRANSCRIPTION_MODEL_METADATA = {
+        'openrouter:microsoft/mai-transcribe-2': {
+            'supported_audio_formats': ['mp3', 'wav', 'flac'],
+        },
+    }
     # --- END NEW ---
 
     # --- Transcription Language Settings ---

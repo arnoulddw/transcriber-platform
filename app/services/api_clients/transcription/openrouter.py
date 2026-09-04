@@ -8,7 +8,16 @@ class OpenRouterTranscriptionClient(OpenAIBaseTranscriptionClient):
     # The catalog code is set to the selected vendor/model slug. The provider
     # name remains only as the compatibility default for older callers.
     CATALOG_MODEL_CODE = "openrouter"
+    CATALOG_PROVIDER_CODE = "openrouter"
     RETURNS_DETECTED_LANGUAGE = False
+
+    def _get_api_error_label(self) -> str:
+        """Use OpenRouter in messages raised by the shared OpenAI adapter."""
+        return "OpenRouter"
+
+    def _get_error_provider(self, api_name: str) -> str:
+        """Attribute shared-adapter errors to OpenRouter, not its model slug."""
+        return "OpenRouter"
 
     def __init__(
         self,

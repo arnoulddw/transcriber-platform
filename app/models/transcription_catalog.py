@@ -2,6 +2,7 @@
 # Centralized catalog for transcription models and supported languages.
 # Provides a single source of truth backed by MySQL tables.
 
+import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -22,6 +23,16 @@ LANGUAGES_TABLE = "transcription_languages_catalog"
 # longer clobber the transcription purpose of the same model identity.
 VALID_MODEL_PURPOSES = frozenset({"transcription", "live"})
 DEFAULT_MODEL_PURPOSE = "transcription"
+MODEL_METADATA_CONFIG_KEY = "TRANSCRIPTION_MODEL_METADATA"
+
+# Known provider/model capabilities are defaults for rows that are registered
+# from saved credentials. They are persisted into the catalog row so runtime
+# consumers do not need to carry provider-specific rules in client classes.
+_DEFAULT_MODEL_METADATA: Dict[str, Dict[str, Any]] = {
+    "openrouter:microsoft/mai-transcribe-2": {
+        "supported_audio_formats": ("mp3", "wav", "flac"),
+    },
+}
 
 
 def canonicalize_model_purposes(value: Any) -> str:
@@ -49,6 +60,49 @@ def canonicalize_model_purposes(value: Any) -> str:
     return ",".join(
         purpose for purpose in ("transcription", "live") if purpose in purposes
     )
+
+
+def canonicalize_supported_audio_formats(value: Any) -> Optional[str]:
+    """Return normalized supported audio extensions as a comma string.
+
+    Catalog storage uses text, matching the existing ``model_purposes`` set.
+    Reads also accept JSON arrays so a future writer can migrate to a native
+    JSON column without changing the public lookup contract.
+    """
+    if isinstance(value, dict):
+        value = value.get("supported_audio_formats")
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        raw_value = value.strip()
+        if not raw_value:
+            return None
+        if raw_value.startswith("["):
+            try:
+                return canonicalize_supported_audio_formats(json.loads(raw_value))
+            except (TypeError, ValueError):
+                # Treat malformed JSON as the existing text representation.
+                pass
+        raw_items = raw_value.split(",")
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        raw_items = value
+    else:
+        return None
+
+    formats: List[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        for item in str(raw_item or "").split(","):
+            normalized = item.strip().lower().lstrip(".")
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                formats.append(normalized)
+    return ",".join(formats) or None
+
+
+def _supported_audio_formats_as_list(value: Any) -> Optional[List[str]]:
+    canonical = canonicalize_supported_audio_formats(value)
+    return canonical.split(",") if canonical else None
 
 
 # Provider metadata is deliberately separate from selectable model rows. The
@@ -125,6 +179,50 @@ def split_model_reference(
     return provider_hint, value
 
 
+def _get_model_metadata(
+    provider_code: Optional[str],
+    model_code: Optional[str],
+    configured_metadata: Any = None,
+) -> Dict[str, Any]:
+    """Resolve optional model metadata from app config, then built-in defaults."""
+    provider = str(provider_code or "").strip().lower()
+    code = str(model_code or "").strip()
+    if not code:
+        return {}
+    if MODEL_KEY_SEPARATOR in code:
+        parsed_provider, parsed_code = split_model_reference(code, provider)
+        provider = parsed_provider or provider
+        code = parsed_code
+    model_key = make_model_key(provider, code)
+
+    configured: Any = configured_metadata
+    if configured is None:
+        try:
+            configured = current_app.config.get(MODEL_METADATA_CONFIG_KEY) or {}
+        except RuntimeError:
+            # Catalog helpers are also used by unit tests and startup fallbacks
+            # before a Flask application context exists.
+            configured = {}
+
+    if isinstance(configured, dict):
+        for candidate in (model_key, code):
+            if candidate in configured:
+                value = configured[candidate]
+                if isinstance(value, dict):
+                    return dict(value)
+                return {"supported_audio_formats": value}
+
+        provider_metadata = configured.get(provider)
+        if isinstance(provider_metadata, dict) and code in provider_metadata:
+            value = provider_metadata[code]
+            if isinstance(value, dict):
+                return dict(value)
+            return {"supported_audio_formats": value}
+
+    default_metadata = _DEFAULT_MODEL_METADATA.get(model_key)
+    return dict(default_metadata) if default_metadata else {}
+
+
 def _row_provider(row: Dict[str, Any]) -> str:
     return str(
         row.get("provider_code")
@@ -147,6 +245,9 @@ def _row_to_model(row: Dict[str, Any]) -> Dict[str, Any]:
         "is_default": bool(row.get("is_default", False)),
         "is_active": bool(row.get("is_active", True)),
         "model_purposes": canonicalize_model_purposes(row.get("model_purposes")),
+        "supported_audio_formats": _supported_audio_formats_as_list(
+            row.get("supported_audio_formats")
+        ),
     }
 
 
@@ -215,7 +316,8 @@ def get_active_models() -> List[Dict[str, Any]]:
             COALESCE(p.permission_key, m.permission_key) AS permission_key,
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
-            m.model_purposes
+            m.model_purposes,
+            m.supported_audio_formats
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -259,7 +361,8 @@ def get_all_active_models(
             COALESCE(p.permission_key, m.permission_key) AS permission_key,
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
-            m.model_purposes
+            m.model_purposes,
+            m.supported_audio_formats
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -291,7 +394,12 @@ def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[st
     live_models: List[Dict[str, Any]] = []
     seen_keys: set[str] = set()
 
-    def append_model(code: str, display_name: Optional[str] = None, provider: Optional[str] = None) -> None:
+    def append_model(
+        code: str,
+        display_name: Optional[str] = None,
+        provider: Optional[str] = None,
+        supported_audio_formats: Any = None,
+    ) -> None:
         normalized_code = str(code or "").strip()
         provider_code = str(provider or ("openrouter" if "/" in normalized_code else "openai")).strip().lower()
         if (
@@ -311,6 +419,9 @@ def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[st
             "provider": provider_code,
             "provider_code": provider_code,
             "required_api_key": provider_code,
+            "supported_audio_formats": _supported_audio_formats_as_list(
+                supported_audio_formats
+            ),
         })
 
     try:
@@ -320,6 +431,7 @@ def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[st
             SELECT
                 m.code,
                 m.display_name,
+                m.supported_audio_formats,
                 COALESCE(NULLIF(m.provider_code, ''), p.provider_code, m.required_api_key) AS provider_code,
                 COALESCE(p.required_api_key, m.required_api_key) AS required_api_key
             FROM {MODELS_TABLE} AS m
@@ -335,6 +447,7 @@ def get_live_models(key_status: Optional[Dict[str, Any]] = None) -> List[Dict[st
                 row["code"],
                 row["display_name"],
                 row.get("provider_code") or row.get("required_api_key"),
+                row.get("supported_audio_formats"),
             )
     except MySQLError as err:
         logger.warning("[Catalog] Failed to load live models from catalog: %s", err, exc_info=True)
@@ -577,7 +690,8 @@ def get_model_by_code(
             COALESCE(p.required_api_key, m.required_api_key) AS required_api_key,
             m.is_default,
             m.is_active,
-            m.model_purposes
+            m.model_purposes,
+            m.supported_audio_formats
         FROM {MODELS_TABLE} AS m
         LEFT JOIN {PROVIDERS_TABLE} AS p
             ON p.provider_code = COALESCE(NULLIF(m.provider_code, ''), m.required_api_key)
@@ -600,6 +714,59 @@ def get_model_by_code(
         )
         return None
     return _row_to_model(rows[0])
+
+
+def get_supported_audio_formats(
+    model_reference: str,
+    provider_code: Optional[str] = None,
+    configured_metadata: Any = None,
+) -> Optional[List[str]]:
+    """Return a model's supported audio extensions, or ``None`` if unknown.
+
+    The catalog row is authoritative. Configured model metadata is used as a
+    fallback for known models during rollout and when a model row has not yet
+    been registered. ``None`` deliberately means no capability claim, allowing
+    callers to preserve their existing provider behavior for legacy models.
+    """
+    provider, local_code = split_model_reference(model_reference, provider_code)
+    if not provider and "/" in local_code:
+        # Slash-qualified model names are the established OpenRouter fallback
+        # convention when no catalog provider hint is available.
+        provider = "openrouter"
+
+    try:
+        model = get_model_by_code(model_reference, provider_code=provider_code)
+    except Exception as err:
+        # Audio normalization is optional metadata; a catalog outage must not
+        # make an otherwise valid transcription request fail at this layer.
+        logger.debug(
+            "[Catalog] Could not read audio metadata for '%s': %s",
+            model_reference,
+            err,
+            exc_info=True,
+        )
+        model = None
+    if model:
+        formats = _supported_audio_formats_as_list(model.get("supported_audio_formats"))
+        if formats:
+            return formats
+
+    return get_configured_supported_audio_formats(
+        local_code, provider, configured_metadata
+    )
+
+
+def get_configured_supported_audio_formats(
+    model_reference: str,
+    provider_code: Optional[str] = None,
+    configured_metadata: Any = None,
+) -> Optional[List[str]]:
+    """Return configured/default formats without querying the database."""
+    provider, local_code = split_model_reference(model_reference, provider_code)
+    if not provider and "/" in local_code:
+        provider = "openrouter"
+    metadata = _get_model_metadata(provider, local_code, configured_metadata)
+    return _supported_audio_formats_as_list(metadata.get("supported_audio_formats"))
 
 
 def get_default_model_code() -> Optional[str]:
@@ -999,6 +1166,7 @@ def _ensure_models_table(cursor) -> None:
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
             model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription',
+            supported_audio_formats VARCHAR(255) DEFAULT NULL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY uq_transcription_provider_model (provider_code, code)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1040,6 +1208,22 @@ def _ensure_models_table(cursor) -> None:
             ALTER TABLE {MODELS_TABLE}
             ADD COLUMN model_purposes VARCHAR(64) NOT NULL DEFAULT 'transcription'
             AFTER is_default
+            """
+        )
+
+    cursor.execute(
+        f"SHOW COLUMNS FROM {MODELS_TABLE} LIKE 'supported_audio_formats'"
+    )
+    if cursor.fetchone() is None:
+        logger.info(
+            "[DB:Catalog] Adding 'supported_audio_formats' column to '%s'.",
+            MODELS_TABLE,
+        )
+        cursor.execute(
+            f"""
+            ALTER TABLE {MODELS_TABLE}
+            ADD COLUMN supported_audio_formats VARCHAR(255) DEFAULT NULL
+            AFTER model_purposes
             """
         )
 
@@ -1119,6 +1303,7 @@ def register_model_from_provider(
     code: str,
     display_name: Optional[str] = None,
     model_purpose: str = 'transcription',
+    supported_audio_formats: Any = None,
 ) -> None:
     """Register one real provider-local model in the shared catalog.
 
@@ -1162,14 +1347,38 @@ def register_model_from_provider(
         return
 
     metadata = _PROVIDER_METADATA[provider]
+    if supported_audio_formats is None:
+        supported_audio_formats = _get_model_metadata(provider, code).get(
+            "supported_audio_formats"
+        )
+    supported_audio_formats = canonicalize_supported_audio_formats(
+        supported_audio_formats
+    )
     purposes = canonicalize_model_purposes(requested_purposes)
     cursor = get_cursor()
+    audio_columns = ", supported_audio_formats" if supported_audio_formats else ""
+    audio_values = ", %s" if supported_audio_formats else ""
+    audio_update = (
+        ", supported_audio_formats = VALUES(supported_audio_formats)"
+        if supported_audio_formats
+        else ""
+    )
+    params = (
+        code,
+        provider,
+        _coerce_string(display_name) or code,
+        metadata.get("permission_key"),
+        metadata.get("required_api_key"),
+        purposes,
+    )
+    if supported_audio_formats:
+        params += (supported_audio_formats,)
     cursor.execute(
         f"""
         INSERT INTO {MODELS_TABLE} (
             code, provider_code, display_name, permission_key, required_api_key,
-            sort_order, is_active, is_default, model_purposes
-        ) VALUES (%s, %s, %s, %s, %s, 0, 1, 0, %s)
+            sort_order, is_active, is_default, model_purposes{audio_columns}
+        ) VALUES (%s, %s, %s, %s, %s, 0, 1, 0, %s{audio_values})
         ON DUPLICATE KEY UPDATE
             provider_code = VALUES(provider_code),
             permission_key = VALUES(permission_key),
@@ -1189,16 +1398,9 @@ def register_model_from_provider(
                     'live',
                     NULL
                 )
-            )
+            ){audio_update}
         """,
-        (
-            code,
-            provider,
-            _coerce_string(display_name) or code,
-            metadata.get("permission_key"),
-            metadata.get("required_api_key"),
-            purposes,
-        ),
+        params,
     )
     get_db().commit()
     logger.info("[Catalog] Registered model '%s' (provider '%s', purpose '%s').", code, provider, purposes)

@@ -9,15 +9,17 @@ import math
 import subprocess
 import json
 import glob
+import tempfile
 from typing import List, Callable, Optional, Tuple
 
 # --- Configuration Constants ---
-ALLOWED_EXTENSIONS = {'mp3', 'm4a', 'wav', 'ogg', 'webm', 'mpga', 'mpeg'}
+ALLOWED_EXTENSIONS = {'mp3', 'm4a', 'wav', 'flac', 'ogg', 'webm', 'mpga', 'mpeg'}
 DEFAULT_CHUNK_LENGTH_MS = 7 * 60 * 1000
 OPENAI_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024
 TARGET_CHUNK_SIZE_BYTES = 24 * 1024 * 1024
 CHUNK_AUDIO_BITRATE = "64k"
 CHUNK_AUDIO_SAMPLE_RATE = 16000
+TRANSCODE_TARGET_FORMATS = frozenset({"mp3"})
 IGNORE_FILES = {'.DS_Store', '.gitkeep'}
 
 # --- Helper Functions ---
@@ -177,6 +179,156 @@ def _segment_audio_ffmpeg(
             process.kill()
             process.wait(timeout=5)
         raise
+
+
+def _transcode_audio_ffmpeg(
+    source_path: str,
+    output_path: str,
+    target_format: str,
+    cancellation_check: Optional[Callable[[], bool]] = None,
+) -> None:
+    """Transcode one audio file in a controlled, cancellation-aware FFmpeg pass."""
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-i", source_path,
+        "-vn",
+        "-ac", "1",
+        "-ar", str(CHUNK_AUDIO_SAMPLE_RATE),
+        "-b:a", CHUNK_AUDIO_BITRATE,
+        "-f", target_format,
+        output_path,
+    ]
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        while process.poll() is None:
+            if cancellation_check and cancellation_check():
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                raise InterruptedError("Audio transcoding cancelled.")
+            time.sleep(0.25)
+
+        stdout, stderr = process.communicate()
+        if process.returncode:
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                command,
+                output=stdout,
+                stderr=stderr,
+            )
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        raise
+
+
+def transcode_audio_file(
+    file_path: str,
+    temp_dir: str,
+    target_format: str = "mp3",
+    progress_callback: Optional[Callable[[str, bool], None]] = None,
+    cancellation_check: Optional[Callable[[], bool]] = None,
+) -> Optional[str]:
+    """Transcode one source file to one temporary, provider-compatible file.
+
+    The source is never modified.  On success this returns the absolute path to
+    a non-empty output file in ``temp_dir``.  Validation or FFmpeg failures
+    return ``None`` after cleaning any partial output.  Cancellation is
+    signalled by propagating ``InterruptedError`` after the same cleanup.
+
+    Only formats listed in :data:`TRANSCODE_TARGET_FORMATS` are accepted.  The
+    output is encoded with the same mono, 16 kHz, 64 kbps settings used for
+    transcription chunks, but this helper never splits the source.
+    """
+    log_prefix = f"[SERVICE:File:Transcode:{os.path.basename(file_path)}]"
+    output_path: Optional[str] = None
+    succeeded = False
+
+    normalized_target = str(target_format or "").strip().lower().lstrip(".")
+    if normalized_target not in TRANSCODE_TARGET_FORMATS:
+        logging.error(
+            "%s Unsupported target audio format: %s",
+            log_prefix,
+            target_format,
+        )
+        return None
+
+    source_path = os.path.abspath(file_path)
+    output_dir = os.path.abspath(temp_dir)
+
+    try:
+        if not os.path.isdir(output_dir):
+            logging.error("%s Temporary directory does not exist: %s", log_prefix, output_dir)
+            return None
+        if not validate_file_path(source_path, output_dir):
+            logging.error("%s Input file path validation failed: %s", log_prefix, source_path)
+            return None
+        if not os.path.isfile(source_path):
+            logging.error("%s Input file does not exist: %s", log_prefix, source_path)
+            return None
+
+        if cancellation_check and cancellation_check():
+            raise InterruptedError("Audio transcoding cancelled before starting.")
+        if progress_callback:
+            try:
+                progress_callback("Checking cancellation before audio transcoding...", False)
+            except InterruptedError:
+                raise
+            except Exception as callback_error:
+                logging.error(
+                    "%s Error executing progress callback: %s",
+                    log_prefix,
+                    callback_error,
+                    exc_info=True,
+                )
+
+        source_stem = os.path.splitext(os.path.basename(source_path))[0]
+        output_fd, output_path = tempfile.mkstemp(
+            prefix=f"{source_stem}_transcoded_",
+            suffix=f".{normalized_target}",
+            dir=output_dir,
+        )
+        os.close(output_fd)
+        if not validate_file_path(output_path, output_dir):
+            raise ValueError(f"Output file path is not allowed: {output_path}")
+
+        logging.info("%s Transcoding source to %s.", log_prefix, normalized_target.upper())
+        _transcode_audio_ffmpeg(
+            source_path,
+            output_path,
+            normalized_target,
+            cancellation_check,
+        )
+
+        if cancellation_check and cancellation_check():
+            raise InterruptedError("Audio transcoding cancelled after completion.")
+        if not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
+            raise RuntimeError("FFmpeg completed without creating a non-empty output file.")
+
+        succeeded = True
+        logging.info("%s Finished transcoding to %s.", log_prefix, output_path)
+        return output_path
+    except InterruptedError:
+        logging.info("%s Cancellation detected during audio transcoding.", log_prefix)
+        raise
+    except Exception as error:
+        logging.error("%s Failed transcoding audio: %s", log_prefix, error, exc_info=True)
+        return None
+    finally:
+        if output_path and not succeeded:
+            remove_files([output_path])
 
 
 # --- Core File Operations ---

@@ -22,6 +22,7 @@ class OpenAIModelTranscriptionClient(OpenAIBaseTranscriptionClient):
 
     # Default when the class is used without a model code (should not happen).
     CATALOG_MODEL_CODE: str = ""
+    CATALOG_PROVIDER_CODE: str = "openai"
 
     def __init__(self, model_code: str, api_key: str, config: Dict[str, Any]) -> None:
         # Set BEFORE super().__init__(): the base ctor resolves/caches

@@ -31,6 +31,26 @@ class OpenAIBaseTranscriptionClient(BaseTranscriptionClient):
 
     DEFAULT_TIMEOUT_SECONDS = 120.0
 
+    def _get_api_error_label(self) -> str:
+        """Return the service name used in errors from this OpenAI-compatible client."""
+        return "OpenAI"
+
+    def _get_error_provider(self, api_name: str) -> str:
+        """Return the service provider while retaining OpenAI's model label."""
+        return api_name
+
+    @staticmethod
+    def _get_upstream_status_code(exc: Exception, default: int) -> int:
+        """Read an HTTP status from an SDK error, falling back when absent."""
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+        try:
+            return int(status_code)
+        except (TypeError, ValueError):
+            return default
+
     def _initialize_client(self, api_key: str) -> None:
         """
         Build the OpenAI client using shared configuration.
@@ -80,12 +100,14 @@ class OpenAIBaseTranscriptionClient(BaseTranscriptionClient):
         api_params_with_file["file"] = file_handle
 
         api_name = self._get_api_name()
+        error_label = self._get_api_error_label()
+        error_provider = self._get_error_provider(api_name)
         try:
             return self.client.audio.transcriptions.create(**api_params_with_file)
         except AuthenticationError as exc:
             self.logger.error("Authentication error: %s", exc)
             raise TranscriptionAuthenticationError(
-                f"OpenAI: {exc}", provider=api_name
+                f"{error_label}: {exc}", provider=error_provider
             ) from exc
         except RateLimitError as exc:
             error_body = getattr(exc, "body", {})
@@ -93,14 +115,15 @@ class OpenAIBaseTranscriptionClient(BaseTranscriptionClient):
             if error_type == "insufficient_quota":
                 self.logger.error("Insufficient quota error: %s", exc)
                 raise TranscriptionQuotaExceededError(
-                    f"OpenAI: {exc}", provider=api_name
+                    f"{error_label}: {exc}", provider=error_provider
                 ) from exc
             self.logger.warning("Rate limit error: %s", exc)
             raise TranscriptionRateLimitError(
-                f"OpenAI: {exc}", provider=api_name
+                f"{error_label}: {exc}", provider=error_provider
             ) from exc
         except BadRequestError as exc:
             error_body_str = str(exc)
+            status_code = self._get_upstream_status_code(exc, default=400)
             self.logger.error("API call failed with Bad Request: %s", error_body_str)
             if error_body_str.strip().startswith("<html>"):
                 message = (
@@ -108,15 +131,17 @@ class OpenAIBaseTranscriptionClient(BaseTranscriptionClient):
                     "(it may be silent or corrupted)."
                 )
                 raise TranscriptionProcessingError(
-                    message, provider=api_name
+                    message, status_code=status_code, provider=error_provider
                 ) from exc
             user_friendly_error = self._map_bad_request_to_user_message(error_body_str, api_name)
             if user_friendly_error:
                 raise TranscriptionProcessingError(
-                    user_friendly_error, provider=api_name
+                    user_friendly_error, status_code=status_code, provider=error_provider
                 ) from exc
             raise TranscriptionProcessingError(
-                f"OpenAI API Error: {error_body_str}", provider=api_name
+                f"{error_label} API Error: {error_body_str}",
+                status_code=status_code,
+                provider=error_provider,
             ) from exc
         except APIConnectionError as exc:
             self.logger.warning("API connection error: %s", exc)
@@ -124,12 +149,15 @@ class OpenAIBaseTranscriptionClient(BaseTranscriptionClient):
         except (APIError, OpenAIError) as exc:
             self.logger.error("API call failed: %s", exc)
             raise TranscriptionProcessingError(
-                f"OpenAI API Error: {exc}", provider=api_name
+                f"{error_label} API Error: {exc}",
+                status_code=self._get_upstream_status_code(exc, default=500),
+                provider=error_provider,
             ) from exc
         except Exception as exc:
             self.logger.error("Unexpected error during OpenAI API call: %s", exc, exc_info=True)
             raise TranscriptionProcessingError(
-                f"Unexpected error during OpenAI API call: {exc}", provider=api_name
+                f"Unexpected error during {error_label} API call: {exc}",
+                provider=error_provider,
             ) from exc
 
     def _get_retryable_errors(self) -> Tuple[Type[Exception], ...]:

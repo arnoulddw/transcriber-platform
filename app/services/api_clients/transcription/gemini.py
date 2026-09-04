@@ -48,6 +48,7 @@ class GeminiTranscriptionClient(BaseTranscriptionClient):
 
     # Default when the class is used without a model code.
     CATALOG_MODEL_CODE: str = "gemini-3.5-transcribe"
+    CATALOG_PROVIDER_CODE: str = "gemini"
 
     def __init__(
         self,

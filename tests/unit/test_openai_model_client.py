@@ -142,20 +142,33 @@ def test_reencodes_and_retries_audio_rejected_by_provider(tmp_path):
     client = _make_client("gpt-transcribe")
     audio_path = tmp_path / "recording.m4a"
     audio_path.write_bytes(b"placeholder audio")
-    client._call_api = Mock(side_effect=TranscriptionProcessingError(
-        "OpenAI GPT Transcribe could not read this audio file. It may be corrupted "
-        "or use an unsupported audio codec.",
-        provider="OpenAI GPT Transcribe",
-    ))
-    client._split_and_transcribe = Mock(return_value=("Recovered transcript", "en"))
+    transcoded_path = tmp_path / "recording_transcoded.mp3"
+    transcoded_path.write_bytes(b"transcoded audio")
+    client._call_api = Mock(side_effect=[
+        TranscriptionProcessingError(
+            "OpenAI GPT Transcribe could not read this audio file. It may be corrupted "
+            "or use an unsupported audio codec.",
+            provider="OpenAI GPT Transcribe",
+        ),
+        SimpleNamespace(text="Recovered transcript", languages=[]),
+    ])
+    client._split_and_transcribe = Mock()
 
-    result = client.transcribe(
-        str(audio_path), "en",
-        original_filename="recording.m4a",
-        audio_length_seconds=60,
-    )
+    with patch(
+        "app.services.api_clients.transcription.base_transcription_client.file_service.transcode_audio_file",
+        return_value=str(transcoded_path),
+    ) as transcode, patch(
+        "app.services.api_clients.transcription.base_transcription_client.file_service.get_audio_duration",
+        return_value=(60, 1),
+    ):
+        result = client.transcribe(
+            str(audio_path), "en",
+            original_filename="recording.m4a",
+            audio_length_seconds=60,
+        )
 
     assert result == ("Recovered transcript", "en")
-    client._split_and_transcribe.assert_called_once_with(
-        str(audio_path), "en", "", "recording.m4a", extra_options=None,
-    )
+    transcode.assert_called_once()
+    assert client._call_api.call_count == 2
+    client._split_and_transcribe.assert_not_called()
+    assert not transcoded_path.exists()
