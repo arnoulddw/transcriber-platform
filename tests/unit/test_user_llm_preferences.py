@@ -168,7 +168,6 @@ def test_title_generation_uses_user_auxiliary_model(llm_app_context):
         SECRET_KEY="test-secret",
         TITLE_GENERATION_LLM_PROVIDER="GEMINI",
         TITLE_GENERATION_LLM_MODEL="gemma-4-26b-a4b-it",
-        TITLE_GENERATION_FALLBACK_MODELS=[],
     )
     user = SimpleNamespace(
         enable_auto_title_generation=True,
@@ -195,7 +194,7 @@ def test_title_generation_uses_user_auxiliary_model(llm_app_context):
         title_generation.llm_operation_model,
         "create_llm_operation",
         return_value=77,
-    ), patch.object(
+    ) as create_operation, patch.object(
         title_generation.llm_operation_model, "update_llm_operation_status"
     ), patch.object(
         title_generation,
@@ -208,3 +207,5 @@ def test_title_generation_uses_user_auxiliary_model(llm_app_context):
 
     thread_args = create_thread.call_args.kwargs["args"]
     assert thread_args[-2:] == ("OPENAI", "gpt-4.1")
+    create_operation.assert_called_once()
+    created_thread.join.assert_called_once_with(timeout=50)

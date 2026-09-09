@@ -43,7 +43,7 @@ Live sessions can run for up to 120 minutes. The app reserves live minutes again
 - Users can choose separate defaults for file transcription, live transcription, title generation, and workflows.
 - Reusable workflows can summarize transcripts, extract decisions or action items, create notes, or run any custom prompt.
 - A workflow can be selected before upload, or run later from history. Workflow results can be edited or deleted.
-- Automatic title generation supports provider/model fallback and recovers cleanly from interrupted operations.
+- Automatic title generation uses the selected model and recovers cleanly from interrupted operations.
 
 ### History and user experience
 

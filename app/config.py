@@ -94,11 +94,6 @@ class Config:
 
     # --- MODIFIED: Add specific model configs and API provider map ---
     TITLE_GENERATION_LLM_MODEL = os.environ.get('TITLE_GENERATION_LLM_MODEL', 'gemma-4-26b-a4b-it')
-    TITLE_GENERATION_FALLBACK_MODELS = [
-        model.strip()
-        for model in os.environ.get('TITLE_GENERATION_FALLBACK_MODELS', 'gemini-3.0-flash').split(',')
-        if model.strip()
-    ]
     # The workflow default is the Gemini 3.7 Flash model exposed by the
     # configured OpenRouter catalog. Users may override it with an env var.
     WORKFLOW_LLM_MODEL = os.environ.get('WORKFLOW_LLM_MODEL', 'google/gemini-3.7-flash')
