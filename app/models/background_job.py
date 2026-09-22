@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from mysql.connector import Error as MySQLError
@@ -371,6 +372,24 @@ def get_job(job_id: int) -> Optional[Dict[str, Any]]:
     except MySQLError:
         logging.exception("Failed to retrieve background job %s.", job_id)
         return None
+
+
+def get_active_transcription_file_paths() -> set[str]:
+    """Return upload paths still needed by queued or running transcriptions."""
+    cursor = get_cursor()
+    cursor.execute(
+        """
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(payload, '$.args[2]')) AS file_path
+        FROM background_jobs
+        WHERE task_type = 'transcription'
+          AND status IN ('pending', 'running')
+        """
+    )
+    return {
+        os.path.abspath(row["file_path"])
+        for row in cursor.fetchall()
+        if row.get("file_path")
+    }
 
 
 def purge_terminal_jobs(retention_days: int, batch_size: int = 1000) -> int:

@@ -33,7 +33,6 @@ from app.services.api_clients.exceptions import TranscriptionApiError
 from app.core.decorators import check_permission
 from app.extensions import limiter, build_user_limit_key, csrf
 from app.tasks.transcription_queue import maybe_recover_abandoned_jobs, submit_transcription_job
-from mysql.connector import Error as MySQLError
 # --- ADDED: Import Optional ---
 from typing import Any, Dict, Optional, Tuple
 # --- END ADDED ---
@@ -120,6 +119,66 @@ def _submission_dependencies() -> transcription_submission_service.SubmissionDep
         transcription_processor=transcription_service.process_transcription,
         model_resolver=_resolve_catalog_model_parameters,
     )
+
+
+def _audio_upload():
+    """Validate the upload shared by the browser and public API routes."""
+    if 'audio_file' not in request.files:
+        return None, (jsonify({'error': _('We did not receive an audio file in your request.')}), 400)
+    file = request.files['audio_file']
+    if not file.filename:
+        return None, (jsonify({'error': _('Please choose a file before starting the transcription.')}), 400)
+    if not file_service.allowed_file(file.filename):
+        return None, (jsonify({'error': _('This file type is not supported for transcription.')}), 400)
+    return file, None
+
+
+def _save_audio_upload(file, job_id: str, log_prefix: str):
+    """Return shared upload metadata or the existing route error response."""
+    try:
+        upload = transcription_submission_service.save_uploaded_audio(
+            file,
+            upload_dir=current_app.config['TEMP_UPLOADS_DIR'],
+            job_id=job_id,
+            max_size_mb=current_app.config.get('MAX_FILE_SIZE_MB', 1024),
+            files=file_service,
+            log_prefix=log_prefix,
+        )
+        return upload, None
+    except transcription_submission_service.UploadTooLargeError as size_err:
+        return None, (jsonify({
+            'error': _('The file exceeds the size limit of %(size)sMB.', size=size_err.max_size_mb),
+            'code': 'SIZE_LIMIT_EXCEEDED',
+        }), 413)
+    except transcription_submission_service.UploadProcessingError:
+        return None, (jsonify({'error': _('We could not save or process the uploaded file. Please try again.')}), 500)
+
+
+def _prepare_audio_submission(dependencies, user, api_choice, model_lookup, submitted_model, upload, job_log_prefix):
+    """Reserve usage for either route, cleaning the upload on rejection."""
+    try:
+        preparation = transcription_submission_service.prepare_submission(
+            dependencies,
+            user=user,
+            user_id=user.id,
+            api_choice=api_choice,
+            model_lookup=model_lookup,
+            submitted_model=submitted_model,
+            audio_length_seconds=upload.audio_length_seconds,
+            audio_length_minutes=upload.audio_length_minutes,
+            commit=False,
+        )
+        return preparation, None
+    except transcription_submission_service.NoAssignedRoleError:
+        response = jsonify({'error': _('You do not have a role assigned.')}), 403
+    except transcription_submission_service.UsageLimitExceededError as usage_err:
+        logging.warning(f"{job_log_prefix} Usage limit check failed: {usage_err.reason}")
+        response = jsonify({'error': usage_err.reason, 'code': 'USAGE_LIMIT_EXCEEDED'}), 403
+    except Exception:
+        logging.exception(f"{job_log_prefix} Failed during submission preparation.")
+        response = jsonify({'error': _('We could not initialize the transcription job. Please try again.')}), 500
+    file_service.remove_files([upload.temp_filename])
+    return None, response
 
 
 def public_transcribe_rate_limit_key() -> str:
@@ -235,16 +294,9 @@ def transcribe_audio_public():
     active_language_codes = catalog_context.active_language_codes
     default_language_code = catalog_context.default_language_code
 
-    if 'audio_file' not in request.files:
-        logging.error(f"{log_prefix} No 'audio_file' part in the request.")
-        return jsonify({'error': _('We did not receive an audio file in your request.')}), 400
-    file = request.files['audio_file']
-    if file.filename == '':
-        logging.error(f"{log_prefix} No file selected for upload.")
-        return jsonify({'error': _('Please choose a file before starting the transcription.')}), 400
-    if not file_service.allowed_file(file.filename):
-        logging.error(f"{log_prefix} File type not allowed: {file.filename}")
-        return jsonify({'error': _('This file type is not supported for transcription.')}), 400
+    file, upload_error = _audio_upload()
+    if upload_error:
+        return upload_error
 
     api_choice = user.default_transcription_model or default_model_code
     if api_choice not in active_model_codes:
@@ -279,55 +331,19 @@ def transcribe_audio_public():
     short_job_id = job_id[:8]
     job_log_prefix = f"[JOB:{short_job_id}:User:{user_id}:Public]"
 
-    try:
-        upload = transcription_submission_service.save_uploaded_audio(
-            file,
-            upload_dir=current_app.config['TEMP_UPLOADS_DIR'],
-            job_id=job_id,
-            max_size_mb=current_app.config.get('MAX_FILE_SIZE_MB', 1024),
-            files=file_service,
-            log_prefix=job_log_prefix,
-        )
-    except transcription_submission_service.UploadTooLargeError as size_err:
-        return jsonify({
-            'error': _('The file exceeds the size limit of %(size)sMB.', size=size_err.max_size_mb),
-            'code': 'SIZE_LIMIT_EXCEEDED',
-        }), 413
-    except transcription_submission_service.UploadProcessingError:
-        return jsonify({'error': _('We could not save or process the uploaded file. Please try again.')}), 500
+    upload, upload_error = _save_audio_upload(file, job_id, job_log_prefix)
+    if upload_error:
+        return upload_error
 
     temp_filename = upload.temp_filename
-    audio_length_seconds = upload.audio_length_seconds
     audio_length_minutes = upload.audio_length_minutes
 
     dependencies = _submission_dependencies()
-    try:
-        preparation = transcription_submission_service.prepare_submission(
-            dependencies,
-            user=user,
-            user_id=user_id,
-            api_choice=api_choice,
-            model_lookup=model_lookup,
-            submitted_model=submitted_model,
-            audio_length_seconds=audio_length_seconds,
-            audio_length_minutes=audio_length_minutes,
-            commit=False,
-        )
-    except transcription_submission_service.NoAssignedRoleError:
-        file_service.remove_files([temp_filename])
-        return jsonify({'error': _('You do not have a role assigned.')}), 403
-    except transcription_submission_service.UsageLimitExceededError as usage_err:
-        logging.warning(f"{job_log_prefix} Usage limit check failed: {usage_err.reason}")
-        file_service.remove_files([temp_filename])
-        return jsonify({'error': usage_err.reason, 'code': 'USAGE_LIMIT_EXCEEDED'}), 403
-    except MySQLError as db_create_err:
-        logging.error(f"{job_log_prefix} Failed during submission preparation: {db_create_err}", exc_info=True)
-        file_service.remove_files([temp_filename])
-        return jsonify({'error': _('We could not initialize the transcription job. Please try again.')}), 500
-    except Exception as prep_err:
-        logging.error(f"{job_log_prefix} Unexpected error during submission preparation: {prep_err}", exc_info=True)
-        file_service.remove_files([temp_filename])
-        return jsonify({'error': _('We could not initialize the transcription job. Please try again.')}), 500
+    preparation, submission_error = _prepare_audio_submission(
+        dependencies, user, api_choice, model_lookup, submitted_model, upload, job_log_prefix
+    )
+    if submission_error:
+        return submission_error
 
     try:
         transcription_submission_service.create_and_schedule_job(
@@ -428,40 +444,19 @@ def transcribe_audio():
     active_language_codes = catalog_context.active_language_codes
     default_language_code = catalog_context.default_language_code
 
-    if 'audio_file' not in request.files:
-        logging.error(f"{log_prefix} No 'audio_file' part in the request.")
-        return jsonify({'error': _('We did not receive an audio file in your request.')}), 400
-    file = request.files['audio_file']
-    if file.filename == '':
-        logging.error(f"{log_prefix} No file selected for upload.")
-        return jsonify({'error': _('Please choose a file before starting the transcription.')}), 400
-    if not file_service.allowed_file(file.filename):
-        logging.error(f"{log_prefix} File type not allowed: {file.filename}")
-        return jsonify({'error': _('This file type is not supported for transcription.')}), 400
+    file, upload_error = _audio_upload()
+    if upload_error:
+        return upload_error
 
     job_id = str(uuid.uuid4())
     short_job_id = job_id[:8]
     job_log_prefix = f"[JOB:{short_job_id}:User:{user_id}]"
 
-    try:
-        upload = transcription_submission_service.save_uploaded_audio(
-            file,
-            upload_dir=current_app.config['TEMP_UPLOADS_DIR'],
-            job_id=job_id,
-            max_size_mb=current_app.config.get('MAX_FILE_SIZE_MB', 1024),
-            files=file_service,
-            log_prefix=job_log_prefix,
-        )
-    except transcription_submission_service.UploadTooLargeError as size_err:
-        return jsonify({
-            'error': _('The file exceeds the size limit of %(size)sMB.', size=size_err.max_size_mb),
-            'code': 'SIZE_LIMIT_EXCEEDED',
-        }), 413
-    except transcription_submission_service.UploadProcessingError:
-        return jsonify({'error': _('We could not save or process the uploaded file. Please try again.')}), 500
+    upload, upload_error = _save_audio_upload(file, job_id, job_log_prefix)
+    if upload_error:
+        return upload_error
 
     temp_filename = upload.temp_filename
-    audio_length_seconds = upload.audio_length_seconds
     audio_length_minutes = upload.audio_length_minutes
 
     try:
@@ -521,25 +516,11 @@ def transcribe_audio():
                 context_prompt = ""
 
         dependencies = _submission_dependencies()
-        try:
-            preparation = transcription_submission_service.prepare_submission(
-                dependencies,
-                user=user,
-                user_id=user_id,
-                api_choice=api_choice,
-                model_lookup=model_lookup,
-                submitted_model=submitted_model,
-                audio_length_seconds=audio_length_seconds,
-                audio_length_minutes=audio_length_minutes,
-                commit=False,
-            )
-        except transcription_submission_service.NoAssignedRoleError:
-            file_service.remove_files([temp_filename])
-            return jsonify({'error': _('You do not have a role assigned.')}), 403
-        except transcription_submission_service.UsageLimitExceededError as usage_err:
-            logging.warning(f"{job_log_prefix} Usage limit check failed: {usage_err.reason}")
-            file_service.remove_files([temp_filename])
-            return jsonify({'error': usage_err.reason, 'code': 'USAGE_LIMIT_EXCEEDED'}), 403
+        preparation, submission_error = _prepare_audio_submission(
+            dependencies, user, api_choice, model_lookup, submitted_model, upload, job_log_prefix
+        )
+        if submission_error:
+            return submission_error
         logging.debug(f"{job_log_prefix} Usage reserved transactionally.")
 
         transcription_submission_service.create_and_schedule_job(

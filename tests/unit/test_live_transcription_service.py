@@ -407,7 +407,7 @@ def test_openrouter_live_chunk_ignores_sse_comments_and_accumulates_text(live_ap
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "openrouter-live-job",
@@ -440,7 +440,7 @@ def test_openrouter_live_chunk_rejects_non_openrouter_session(live_app, monkeypa
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "provider": "openai",
@@ -479,7 +479,7 @@ def test_openrouter_live_chunk_applies_context_prompt(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "openrouter-live-job",
@@ -525,7 +525,7 @@ def test_openrouter_live_chunk_without_prompt_keeps_plain_instruction(live_app, 
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "openrouter-live-job",
@@ -589,7 +589,7 @@ def test_openrouter_duplicate_completed_chunk_replays_without_provider_call(
         OPENROUTER_API_KEY="server-only-openrouter-key",
         OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
     )
-    monkeypatch.setattr(service, "_decode_session_token", lambda _token: _openrouter_payload())
+    monkeypatch.setattr(service, "_decode_session_token", lambda _token, **_kwargs: _openrouter_payload())
     stream = MagicMock(
         return_value=_OpenRouterStreamResponse([
             'data: {"choices":[{"delta":{"content":"cached transcript"}}]}',
@@ -623,7 +623,7 @@ def test_openrouter_duplicate_in_flight_chunk_does_not_return_empty_transcript(
         "last_transcript": None,
         "hangup_completed_at": None,
     }
-    monkeypatch.setattr(service, "_decode_session_token", lambda _token: _openrouter_payload())
+    monkeypatch.setattr(service, "_decode_session_token", lambda _token, **_kwargs: _openrouter_payload())
     stream = MagicMock()
     monkeypatch.setattr(service.httpx, "stream", stream)
     audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
@@ -642,7 +642,7 @@ def test_openrouter_unexpected_provider_exception_releases_sequence_claim(
     live_app, monkeypatch, fake_live_session_store
 ):
     live_app.config["OPENROUTER_API_KEY"] = "server-only-openrouter-key"
-    monkeypatch.setattr(service, "_decode_session_token", lambda _token: _openrouter_payload())
+    monkeypatch.setattr(service, "_decode_session_token", lambda _token, **_kwargs: _openrouter_payload())
 
     class BrokenStreamResponse(_OpenRouterStreamResponse):
         def iter_lines(self):
@@ -704,7 +704,7 @@ def test_expired_live_session_tokens_are_rejected_for_all_transports(
             match="maximum duration",
         ):
             if transport == "openai-webrtc":
-                service.hangup_session(user, token)
+                service._decode_session_token(token)
             elif transport == "gemini-wss":
                 service.refresh_session_token(user, token)
             else:
@@ -715,6 +715,34 @@ def test_expired_live_session_tokens_are_rejected_for_all_transports(
                     "wav",
                     0,
                 )
+
+
+def test_expired_live_session_can_be_stopped_without_accepting_new_audio(
+    live_app, monkeypatch
+):
+    started_at = 1000.0
+    user = SimpleNamespace(id=42)
+    payload = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": user.id,
+        "transcription_id": "expired-live-job",
+        "started_at": started_at,
+        "language": "auto",
+        "context_prompt_used": False,
+        "model": "gpt-live-transcribe",
+        "provider": "openai",
+        "transport": "openai-webrtc",
+        "call_id": "rtc_expired_call",
+    }
+    post = MagicMock(return_value=SimpleNamespace(status_code=200))
+    monkeypatch.setattr(service.httpx, "post", post)
+    monkeypatch.setattr(service.time, "time", lambda: started_at + 120 * 60)
+
+    with live_app.app_context():
+        token = service._serializer().dumps(payload)
+        assert service.hangup_session(user, token) == {"stopped": True}
+
+    post.assert_called_once()
 
 
 @pytest.mark.parametrize("started_at", [None, "not-a-time", float("nan"), float("inf")])
@@ -745,7 +773,7 @@ def test_hangup_session_stops_the_openai_call(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "call_id": "rtc_test_call",
@@ -770,7 +798,7 @@ def test_hangup_retries_provider_stop_after_failed_first_attempt(
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "call_id": "rtc_retry_call",
@@ -884,7 +912,7 @@ def test_finalize_session_bills_only_minutes_beyond_reservation(live_app, monkey
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "over-reservation-live-job",
@@ -917,7 +945,7 @@ def test_finalize_session_short_bills_zero_extra_live_minutes(live_app, monkeypa
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
@@ -958,18 +986,17 @@ def test_finalize_session_caps_recorded_usage_at_120_minutes(
     live_app, monkeypatch
 ):
     user = SimpleNamespace(id=7, enable_auto_title_generation=False)
-    monkeypatch.setattr(
-        service,
-        "_decode_session_token",
-        lambda _token: {
-            "session_id": TEST_SESSION_ID,
-            "user_id": 7,
-            "transcription_id": "long-live-job",
-            "started_at": 1000.0,
-            "language": "en",
-            "context_prompt_used": False,
-        },
-    )
+    payload = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 7,
+        "transcription_id": "long-live-job",
+        "started_at": 1000.0,
+        "language": "en",
+        "context_prompt_used": False,
+        "model": "gpt-live-transcribe",
+        "provider": "openai",
+        "transport": "openai-webrtc",
+    }
     monkeypatch.setattr(service.time, "time", lambda: 1000.0 + (180 * 60))
     monkeypatch.setattr(
         service.transcription_model,
@@ -1001,7 +1028,8 @@ def test_finalize_session_caps_recorded_usage_at_120_minutes(
     monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: 0)
 
     with live_app.app_context():
-        service.finalize_session(user, "token", "Long transcript")
+        token = service._serializer().dumps(payload)
+        service.finalize_session(user, token, "Long transcript")
 
     assert create_job.call_args.args[5] == 120
 
@@ -1011,7 +1039,7 @@ def test_finalize_session_is_idempotent(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "existing-live-job",
@@ -1043,7 +1071,7 @@ def test_finalize_session_completes_existing_pending_record(live_app, monkeypatc
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "pending-live-job",
@@ -1148,7 +1176,7 @@ def test_finalize_session_dispatches_title_generation(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "titled-live-job",
@@ -1179,7 +1207,7 @@ def test_finalize_session_rejects_wrong_owner(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
@@ -1215,7 +1243,7 @@ def test_finalize_session_stores_detected_language(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
@@ -1247,7 +1275,7 @@ def test_finalize_session_stores_unknown_when_no_language_reported(live_app, mon
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
@@ -1359,7 +1387,7 @@ def test_finalize_session_records_actual_live_minutes(live_app, monkeypatch):
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
@@ -1589,7 +1617,7 @@ def test_refresh_session_token_rejects_non_gemini_sessions(live_app, monkeypatch
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "live-job",
@@ -1613,7 +1641,7 @@ def test_refresh_session_token_rejects_sessions_past_max_duration(live_app, monk
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "long-gemini-job",
@@ -1643,7 +1671,7 @@ def test_hangup_session_stops_gemini_websocket_sessions_without_http_call(
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "gemini-live-job",
@@ -1668,7 +1696,7 @@ def test_hangup_session_stops_openrouter_transport_without_http_call(live_app, m
     monkeypatch.setattr(
         service,
         "_decode_session_token",
-        lambda _token: {
+        lambda _token, **_kwargs: {
             "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "sse-live-job",

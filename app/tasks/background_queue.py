@@ -231,6 +231,7 @@ def dispatch_job(app, job: Mapping[str, Any]) -> Any:
             payload["llm_provider"],
             payload.get("llm_model"),
             raise_on_failure=True,
+            retry_pending=int(job.get("attempts") or 0) < int(job.get("max_attempts") or 1),
         )
         operation = llm_operation_model.get_llm_operation_by_id(
             payload["operation_id"],
@@ -271,6 +272,7 @@ def dispatch_job(app, job: Mapping[str, Any]) -> Any:
             payload["transcription_id"],
             payload["user_id"],
             raise_on_failure=True,
+            retry_pending=int(job.get("attempts") or 0) < int(job.get("max_attempts") or 1),
         )
         transcription = transcription_model.get_transcription_by_id(
             payload["transcription_id"],

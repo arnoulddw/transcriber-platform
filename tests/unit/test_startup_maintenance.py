@@ -2,6 +2,7 @@ import ast
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -36,7 +37,14 @@ def test_cleanup_once_runs_all_retention_stages(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cleanup.file_service,
         "cleanup_old_files",
-        lambda directory, threshold: calls.append(("files", directory, threshold)) or 2,
+        lambda directory, threshold, *, protected_paths: calls.append(
+            ("files", directory, threshold, protected_paths)
+        ) or 2,
+    )
+    monkeypatch.setattr(
+        cleanup.background_job_model,
+        "get_active_transcription_file_paths",
+        lambda: {"/uploads/queued.wav"},
     )
     monkeypatch.setattr(cleanup.user_model, "get_all_users", lambda: [])
     monkeypatch.setattr(
@@ -58,11 +66,29 @@ def test_cleanup_once_runs_all_retention_stages(monkeypatch, tmp_path):
     cleanup.run_cleanup_once(app)
 
     assert calls == [
-        ("files", str(tmp_path), 123),
+        ("files", str(tmp_path), 123, {"/uploads/queued.wav"}),
         ("hidden", 45),
         ("orphans", 45),
         ("live_sessions",),
     ]
+
+
+def test_file_cleanup_keeps_old_audio_needed_by_pending_job(tmp_path):
+    protected = tmp_path / "pending.wav"
+    orphan = tmp_path / "orphan.wav"
+    protected.write_bytes(b"pending")
+    orphan.write_bytes(b"orphan")
+    old_time = time.time() - 200
+    os.utime(protected, (old_time, old_time))
+    os.utime(orphan, (old_time, old_time))
+
+    deleted = cleanup.file_service.cleanup_old_files(
+        str(tmp_path), 100, protected_paths={str(protected)}
+    )
+
+    assert deleted == 1
+    assert protected.exists()
+    assert not orphan.exists()
 
 
 def test_web_factory_does_not_start_cleanup_thread():

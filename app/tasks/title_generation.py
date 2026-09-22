@@ -86,6 +86,7 @@ def generate_title_task(
     transcription_id: str,
     user_id: int,
     raise_on_failure: bool = False,
+    retry_pending: bool = False,
 ) -> Optional[str]:
     """
     Background task to generate a title for a completed transcription.
@@ -111,7 +112,14 @@ def generate_title_task(
             and existing_transcription.get("title_generation_status") == "success"
         ):
             return existing_transcription.get("generated_title")
-        if not transcription_model.update_title_generation_status(transcription_id, 'processing'):
+        if not existing_transcription:
+            logger.error(f"{log_prefix} Transcription no longer exists. Aborting.", extra=log_extra)
+            return
+
+        if (
+            existing_transcription.get('title_generation_status') != 'processing'
+            and not transcription_model.update_title_generation_status(transcription_id, 'processing')
+        ):
             logger.error(f"{log_prefix} Failed to update initial status to 'processing'. Aborting.", extra=log_extra)
             return
 
@@ -350,19 +358,23 @@ Generated Title:"""
         )
         logger.error(f"{log_prefix} Title generation failed due to LLM error ({error_reason}): {error_message}", extra={**log_extra, "duration_ms": int(duration * 1000), "success": False, "reason": error_reason, "error_message": error_message})
         final_status = 'failed'
-        with app.app_context():
-            transcription_model.update_title_generation_status(transcription_id, 'failed')
+        if not (raise_on_failure and retry_pending and retryable_failure):
+            with app.app_context():
+                transcription_model.update_title_generation_status(transcription_id, 'failed')
     except Exception as e:
         duration = time.time() - start_time
         error_reason = "unexpected_error"
         error_message = str(e)
         logger.error(f"{log_prefix} Unexpected error during title generation: {error_message}", exc_info=True, extra={**log_extra, "duration_ms": int(duration * 1000), "success": False, "reason": error_reason, "error_message": error_message})
         final_status = 'failed'
-        try:
-            with app.app_context():
-                transcription_model.update_title_generation_status(transcription_id, 'failed')
-        except Exception as db_err:
-             logging.error(f"{log_prefix} CRITICAL: Failed to update status to 'failed' after unexpected error: {db_err}")
+        if not (raise_on_failure and retry_pending):
+            try:
+                with app.app_context():
+                    transcription_model.update_title_generation_status(transcription_id, 'failed')
+            except Exception as db_err:
+                 logging.error(f"{log_prefix} CRITICAL: Failed to update status to 'failed' after unexpected error: {db_err}")
+        else:
+            retryable_failure = True
 
     logger.debug(f"{log_prefix} Title generation task finished with status: {final_status}", extra=log_extra)
     if raise_on_failure and final_status == 'failed':

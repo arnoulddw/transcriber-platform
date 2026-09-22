@@ -3,10 +3,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from flask import Flask
 
 from app.models import background_job
 from app.models import transcription as transcription_model
 from app.services.transcription_service import process_transcription
+from app.services import workflow_service
+from app.services.api_clients.exceptions import LlmRateLimitError
 from app.tasks import background_queue, worker, transcription_queue
 
 
@@ -366,3 +369,51 @@ def test_purge_terminal_jobs_targets_only_terminal_rows_in_a_bounded_batch():
     assert "LIMIT %s" in sql
     assert cursor.execute.call_args.args[1] == (30, 25)
     assert connection.commit.call_count == 1
+
+
+def test_active_transcription_paths_protect_pending_and_running_uploads():
+    cursor = Mock()
+    cursor.fetchall.return_value = [
+        {"file_path": "/uploads/pending.wav"},
+        {"file_path": "/uploads/running.wav"},
+        {"file_path": None},
+    ]
+    with patch.object(background_job, "get_cursor", return_value=cursor):
+        paths = background_job.get_active_transcription_file_paths()
+
+    assert paths == {"/uploads/pending.wav", "/uploads/running.wav"}
+    sql = cursor.execute.call_args.args[0]
+    assert "task_type = 'transcription'" in sql
+    assert "status IN ('pending', 'running')" in sql
+
+
+@pytest.mark.parametrize(
+    ("retry_pending", "expected_status"),
+    [(True, "processing"), (False, "error")],
+)
+def test_retryable_workflow_keeps_active_status_until_final_attempt(
+    retry_pending, expected_status
+):
+    app = Flask(__name__)
+    app.config.update(WORKFLOW_LLM_PROVIDER="GEMINI", WORKFLOW_LLM_MODEL="test-model")
+    with patch.object(
+        workflow_service.llm_operation_model,
+        "get_llm_operation_by_id",
+        return_value={"status": "pending"},
+    ), patch.object(
+        workflow_service.llm_operation_model,
+        "update_llm_operation_status",
+        return_value=True,
+    ) as update_status, patch.object(
+        workflow_service.llm_service,
+        "generate_text_via_llm",
+        side_effect=LlmRateLimitError("temporarily unavailable"),
+    ):
+        with pytest.raises(background_queue.RetryableBackgroundTaskFailure):
+            workflow_service.process_workflow_background(
+                app, 7, "transcription-1", 42, "Summarize", "Transcript",
+                "GEMINI", "test-model", raise_on_failure=True,
+                retry_pending=retry_pending,
+            )
+
+    assert update_status.call_args.kwargs["status"] == expected_status

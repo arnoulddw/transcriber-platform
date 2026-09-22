@@ -261,6 +261,37 @@ def test_process_transcription_api_error(
             mock_transcription_model.finalize_job_success.assert_not_called()
 
 
+def test_retryable_transcription_error_stays_active_until_final_attempt(
+    app: Flask, logged_in_client_with_permissions, mock_audio_file
+):
+    user = get_user_by_username('testuser_permissions')
+    job_id = str(uuid.uuid4())
+    with patch('app.services.transcription_service.get_transcription_client') as get_client, \
+         patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
+         patch('app.services.transcription_service.transcription_model') as transcription, \
+         patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'), \
+         patch('app.services.transcription_service.user_model.get_user_by_id', return_value=user):
+        get_client.return_value.transcribe.side_effect = TranscriptionProcessingError(
+            "Temporary provider failure", status_code=503
+        )
+
+        from app.tasks.background_queue import RetryableBackgroundTaskFailure
+
+        with pytest.raises(RetryableBackgroundTaskFailure, match="Temporary provider failure"):
+            transcription_service.process_transcription(
+                app=app,
+                job_id=job_id,
+                user_id=user.id,
+                temp_filename=mock_audio_file,
+                language_code='en',
+                api_choice='gpt-4o-transcribe',
+                original_filename='test.mp3',
+                preserve_input_on_retry=True,
+            )
+
+        transcription.set_job_error.assert_not_called()
+
+
 def test_process_transcription_cancellation(
     app: Flask, logged_in_client_with_permissions, mock_audio_file
 ):

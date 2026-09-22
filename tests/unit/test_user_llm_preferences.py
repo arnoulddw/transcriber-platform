@@ -7,6 +7,8 @@ from flask import Flask
 from app.services import workflow_service
 from app.services import llm_service
 from app.tasks import title_generation
+from app.services.api_clients.exceptions import LlmRateLimitError
+from app.tasks.background_queue import RetryableBackgroundTaskFailure
 
 
 @pytest.fixture
@@ -208,3 +210,49 @@ def test_title_generation_uses_user_auxiliary_model(llm_app_context):
 
     assert call_llm.call_args.args[-2:] == ("OPENAI", "gpt-4.1")
     create_operation.assert_called_once()
+
+
+@pytest.mark.parametrize("retry_pending", [True, False])
+def test_title_retry_is_not_shown_as_failed_before_last_attempt(retry_pending):
+    app = Flask(__name__)
+    app.config.update(TITLE_GENERATION_LLM_PROVIDER="GEMINI", TITLE_GENERATION_LLM_MODEL="test-model")
+    user = SimpleNamespace(
+        enable_auto_title_generation=True,
+        role=SimpleNamespace(default_title_generation_model=None),
+    )
+    with patch.object(title_generation.transcription_model, "update_title_generation_status", return_value=True) as update_title, patch.object(
+        title_generation.user_model, "get_user_by_id", return_value=user
+    ), patch.object(title_generation, "check_permission", return_value=True), patch.object(
+        title_generation.transcription_model,
+        "get_transcription_by_id",
+        return_value={"transcription_text": "Transcript text", "title_generation_status": "processing"},
+    ), patch.object(
+        title_generation.llm_service,
+        "resolve_user_model_preference",
+        return_value=("GEMINI", "test-model"),
+    ), patch.object(
+        title_generation.llm_catalog_model,
+        "get_default_title_generation_model_code",
+        return_value=None,
+    ), patch.object(
+        title_generation.llm_operation_model,
+        "create_llm_operation",
+        return_value=77,
+    ), patch.object(
+        title_generation.llm_operation_model, "update_llm_operation_status"
+    ), patch.object(
+        title_generation,
+        "limiter",
+        SimpleNamespace(limiter=SimpleNamespace(hit=Mock(return_value=True))),
+    ), patch.object(
+        title_generation, "_call_gemini_for_title",
+        side_effect=LlmRateLimitError("temporarily unavailable"),
+    ), patch.object(title_generation, "close_db"):
+        with pytest.raises(RetryableBackgroundTaskFailure):
+            title_generation.generate_title_task(
+                app, "transcription-2", 7,
+                raise_on_failure=True, retry_pending=retry_pending,
+            )
+
+    statuses = [call.args[1] for call in update_title.call_args_list]
+    assert statuses == ([] if retry_pending else ["failed"])

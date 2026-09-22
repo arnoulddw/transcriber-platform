@@ -421,9 +421,12 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             )
             log_level = "warning" if isinstance(api_err, TranscriptionRateLimitError) else "error"
             getattr(logger, log_level)(f"Transcription API error: {error_message}", exc_info=True)
-            _update_progress(app, job_id, error_message, is_error=True, user_id=user_id)
-            try: transcription_model.set_job_error(job_id, error_message)
-            except Exception as db_err: logger.error(f"CRITICAL: Failed to record API error in DB: {db_err}", exc_info=True)
+            if preserve_input_on_retry and retryable_failure:
+                _update_progress(app, job_id, "Temporary provider error; retrying transcription.", user_id=user_id)
+            else:
+                _update_progress(app, job_id, error_message, is_error=True, user_id=user_id)
+                try: transcription_model.set_job_error(job_id, error_message)
+                except Exception as db_err: logger.error(f"CRITICAL: Failed to record API error in DB: {db_err}", exc_info=True)
 
         except MySQLError as db_err:
             error_message = f"Database Error: {str(db_err)}"
@@ -431,8 +434,11 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             retryable_failure = not finalization_failed
             logger.error(f"Database error during transcription process: {error_message}", exc_info=True)
             try:
-                _update_progress(app, job_id, "ERROR: A database error occurred.", is_error=True, user_id=user_id)
-                transcription_model.set_job_error(job_id, "Internal database error.")
+                if preserve_input_on_retry and retryable_failure:
+                    _update_progress(app, job_id, "Temporary database error; retrying transcription.", user_id=user_id)
+                else:
+                    _update_progress(app, job_id, "ERROR: A database error occurred.", is_error=True, user_id=user_id)
+                    transcription_model.set_job_error(job_id, "Internal database error.")
             except Exception as final_db_err:
                  logger.critical(f"CRITICAL: Failed to record DB error status in DB itself: {final_db_err}", exc_info=True)
 
@@ -442,8 +448,11 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             retryable_failure = not finalization_failed
             logger.exception("Unexpected error during transcription process:")
             try:
-                _update_progress(app, job_id, "ERROR: An unexpected internal error occurred.", is_error=True, user_id=user_id)
-                transcription_model.set_job_error(job_id, "An unexpected internal error occurred.")
+                if preserve_input_on_retry and retryable_failure:
+                    _update_progress(app, job_id, "Temporary internal error; retrying transcription.", user_id=user_id)
+                else:
+                    _update_progress(app, job_id, "ERROR: An unexpected internal error occurred.", is_error=True, user_id=user_id)
+                    transcription_model.set_job_error(job_id, "An unexpected internal error occurred.")
             except Exception as final_err:
                  logger.critical(f"CRITICAL: Failed to record unexpected error status in DB: {final_err}", exc_info=True)
 

@@ -282,6 +282,7 @@ def process_workflow_background(
     llm_provider: str,
     llm_model: Optional[str],
     raise_on_failure: bool = False,
+    retry_pending: bool = False,
 ) -> Optional[str]:
     """
     The worker task that interacts with the LLM API via llm_service.
@@ -364,14 +365,21 @@ def process_workflow_background(
             final_status = 'error'
             retryable_failure = True
 
+        # A retry remains active for the user and for the concurrent-start
+        # guard. Only the last failed attempt becomes a terminal error.
+        visible_status = (
+            'processing'
+            if raise_on_failure and retry_pending and retryable_failure
+            else final_status
+        )
         try:
             llm_operation_model.update_llm_operation_status(
                 operation_id=operation_id,
-                status=final_status,
+                status=visible_status,
                 result=result_text,
                 error=error_message
             )
-            logger.debug(f"LLM Operation record {operation_id} updated to status '{final_status}'.")
+            logger.debug(f"LLM Operation record {operation_id} updated to status '{visible_status}'.")
         except Exception as db_update_err:
              logger.error(f"CRITICAL: Failed to update final LLM operation status in DB: {db_update_err}", exc_info=True)
 

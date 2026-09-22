@@ -623,7 +623,9 @@ def create_session(
     return {"answer_sdp": response.text, "session_token": token}
 
 
-def _decode_session_token(token: str) -> Dict[str, Any]:
+def _decode_session_token(
+    token: str, *, allow_expired_for_completion: bool = False
+) -> Dict[str, Any]:
     if not token:
         raise LiveTranscriptionValidationError(_("The live session token is missing."))
     try:
@@ -659,7 +661,12 @@ def _decode_session_token(token: str) -> Dict[str, Any]:
     now = time.time()
     if started_at > now + MAX_SESSION_CLOCK_SKEW_SECONDS:
         raise LiveTranscriptionValidationError(_("The live session token is invalid."))
-    if now - started_at >= MAX_SESSION_DURATION_MINUTES * 60:
+    max_age = MAX_SESSION_DURATION_MINUTES * 60
+    if allow_expired_for_completion:
+        # Stopping or saving must still work after the recording limit. These
+        # operations cannot submit more audio, and the durable row bounds replay.
+        max_age += live_session_model.LIVE_SESSION_RETENTION_SECONDS
+    if now - started_at >= max_age:
         raise LiveTranscriptionValidationError(
             _("The live session has reached its maximum duration.")
         )
@@ -838,7 +845,7 @@ def transcribe_openrouter_chunk(
 
 
 def hangup_session(user, session_token: str) -> Dict[str, bool]:
-    payload = _decode_session_token(session_token)
+    payload = _decode_session_token(session_token, allow_expired_for_completion=True)
     session = _require_live_session(
         payload,
         allow_closing=True,
@@ -978,7 +985,7 @@ def finalize_session(
     transcript: str,
     detected_language: Optional[str] = None,
 ) -> Dict[str, Any]:
-    payload = _decode_session_token(session_token)
+    payload = _decode_session_token(session_token, allow_expired_for_completion=True)
     session = _require_live_session(
         payload,
         allow_closing=True,

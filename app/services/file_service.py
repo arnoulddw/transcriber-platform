@@ -543,7 +543,9 @@ def remove_files(file_paths: List[str]) -> int:
         logging.debug(f"{log_prefix} Finished removal attempt. No files were removed.")
     return removed_count
 
-def cleanup_old_files(directory: str, threshold_seconds: int) -> int:
+def cleanup_old_files(
+    directory: str, threshold_seconds: int, protected_paths=None
+) -> int:
     """
     Periodically cleans up files older than threshold_seconds in the specified directory.
     Intended to be run as a background task. Skips files in IGNORE_FILES.
@@ -556,6 +558,7 @@ def cleanup_old_files(directory: str, threshold_seconds: int) -> int:
         The number of files successfully deleted during this run.
     """
     deleted_count = 0
+    protected_paths = protected_paths or set()
     log_prefix = "[SERVICE:File:CleanupTask]"
     if not os.path.isdir(directory):
         logging.error(f"{log_prefix} Cleanup directory not found or is not a directory: {directory}")
@@ -571,6 +574,8 @@ def cleanup_old_files(directory: str, threshold_seconds: int) -> int:
                 continue
 
             file_path = os.path.join(directory, filename)
+            if os.path.abspath(file_path) in protected_paths:
+                continue
 
             try:
                 if os.path.isfile(file_path):

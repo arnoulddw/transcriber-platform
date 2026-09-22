@@ -56,7 +56,12 @@ def run_cleanup_task(
                 threshold = config.get('DELETE_THRESHOLD', 24 * 60 * 60) # Default 24h
                 logger.debug(f"Running periodic file cleanup in '{upload_dir}' (threshold: {threshold}s).")
                 try:
-                    deleted_count = file_service.cleanup_old_files(upload_dir, threshold)
+                    # If queue state cannot be read, skip deletion rather than
+                    # remove an input that a delayed job still needs.
+                    protected_paths = background_job_model.get_active_transcription_file_paths()
+                    deleted_count = file_service.cleanup_old_files(
+                        upload_dir, threshold, protected_paths=protected_paths
+                    )
                     if deleted_count > 0:
                         logger.info(f"File cleanup finished. Deleted {deleted_count} old file(s).")
                     else:
