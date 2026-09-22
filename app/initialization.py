@@ -7,13 +7,17 @@ import os
 from flask import current_app, Flask
 from typing import Mapping, Any
 
+from app.database import get_cursor
+
 # Import necessary models and services
+from app.models import background_job as background_job_model
 from app.models import role as role_model
 from app.models import user as user_model
 from app.models import user_api_key as user_api_key_model
 from app.models import public_api_key as public_api_key_model
 from app.models import transcription as transcription_model
 from app.models import transcription_job_lease as transcription_job_lease_model
+from app.models import live_session as live_session_model
 from app.models import user_prompt as user_prompt_model
 from app.models import template_prompt as template_prompt_model
 # --- ADDED: Import llm_operation model ---
@@ -64,11 +68,42 @@ def create_initialization_marker(config: Mapping[str, Any]) -> None:
     except Exception as e:
         logger.error(f"[INIT] Failed to create initialization marker file '{marker_path}': {e}", exc_info=True)
 
+
+_BASELINE_SCHEMA_SENTINEL = "roles"
+
+
+def database_has_application_schema() -> bool:
+    """Return whether the database already has the application baseline.
+
+    ``roles`` is created first by the baseline initializer and is present in
+    every supported installation.  Checking one stable table keeps startup
+    from invoking model ``init_db_command`` repair code against an existing
+    database; ordered migrations are the only schema evolution path there.
+    """
+    cursor = get_cursor()
+    cursor.execute("SHOW TABLES LIKE %s", (_BASELINE_SCHEMA_SENTINEL,))
+    exists = cursor.fetchone() is not None
+    cursor.fetchall()
+    logger.debug(
+        "[INIT:Schema] Application schema sentinel '%s': %s.",
+        _BASELINE_SCHEMA_SENTINEL,
+        "present" if exists else "absent",
+    )
+    return exists
+
+
 def initialize_database_schema(create_roles: bool = True) -> None:
     """Initializes all database tables in the correct order."""
     log_prefix = "[INIT:Schema]"
     logger.info(f"{log_prefix} Starting database schema initialization...")
     try:
+        if database_has_application_schema():
+            logger.info(
+                f"{log_prefix} Existing application schema detected; skipping baseline model initialization. "
+                "Run ordered migrations for schema changes."
+            )
+            return
+
         logger.debug(f"{log_prefix} Initializing 'roles' table...")
         role_model.init_roles_table()
         logger.debug(f"{log_prefix} Initializing 'users' table...")
@@ -82,6 +117,10 @@ def initialize_database_schema(create_roles: bool = True) -> None:
         transcription_model.init_db_command()
         logger.debug(f"{log_prefix} Initializing transcription job leases...")
         transcription_job_lease_model.init_db_command()
+        logger.debug(f"{log_prefix} Initializing live transcription sessions...")
+        live_session_model.init_db_command()
+        logger.debug(f"{log_prefix} Initializing durable background jobs...")
+        background_job_model.init_db_command()
         logger.debug(f"{log_prefix} Initializing 'template_prompts' table...")
         template_prompt_model.init_db_command()
         logger.debug(f"{log_prefix} Initializing 'user_prompts' table...")

@@ -146,7 +146,7 @@ def stop_live_session():
         )
     except LiveTranscriptionValidationError as exc:
         return jsonify({"error": _(str(exc))}), 400
-    except LiveTranscriptionPermissionError as exc:
+    except (LiveTranscriptionPermissionError, MissingApiKeyError) as exc:
         return jsonify({"error": _(str(exc))}), 403
     except LiveTranscriptionUpstreamError as exc:
         return jsonify({"error": _(str(exc))}), 502

@@ -2,8 +2,6 @@
 
 import os
 import logging
-import threading
-import time
 import fcntl # For file locking
 import decimal
 import secrets
@@ -33,7 +31,6 @@ from app.models.user import User
 from app.models.role import Role
 from app.services import user_service, auth_service
 from app.services.auth_service import AuthServiceError
-from app.tasks.cleanup import run_cleanup_task
 # --- Import new initialization functions ---
 from app.initialization import (
     check_initialization_marker,
@@ -46,17 +43,17 @@ from app.cli import register_cli_commands
 from mysql.connector import Error as MySQLError
 
 
-# --- Background Task & Initialization Management (Using File Lock) ---
-_background_thread_started_in_process = False
+# --- One-time Initialization Management (Using File Lock) ---
+_resources_initialized_in_process = False
 _file_lock_handle = None
 
 def initialize_app_resources(app: Flask):
     """
-    Handles one-time application initialization (DB, roles, admin) and
-    starts background tasks (like cleanup) if not already done by another worker process.
+    Handles one-time application initialization (DB, roles, admin) if it is
+    explicitly invoked by an operator or startup process.
     Uses a non-blocking file lock (fcntl.flock) to ensure only one process succeeds.
     """
-    global _background_thread_started_in_process, _file_lock_handle
+    global _resources_initialized_in_process, _file_lock_handle
     logger = get_logger(__name__, component="System:Init")
 
     is_main_process_or_prod = not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
@@ -65,8 +62,8 @@ def initialize_app_resources(app: Flask):
         logger.debug("Skipping resource initialization in Flask debug reloader sub-process.")
         return
 
-    if _background_thread_started_in_process:
-        logger.debug("Background task already started in this process. Skipping.")
+    if _resources_initialized_in_process:
+        logger.debug("Application resources already initialized in this process. Skipping.")
         return
 
     lock_file_path = app.config.get('TASK_LOCK_FILE')
@@ -98,11 +95,8 @@ def initialize_app_resources(app: Flask):
                     initialization_done = True
 
             if initialization_done:
-                logger.debug("Proceeding to start background tasks...")
-                cleanup_thread = threading.Thread(target=run_cleanup_task, args=(app,), daemon=True)
-                cleanup_thread.start()
-                _background_thread_started_in_process = True
-                logger.debug("Background cleanup task thread initiated.")
+                _resources_initialized_in_process = True
+                logger.debug("Application resource initialization completed.")
             else:
                 logger.error("Initialization sequence failed. Background tasks will NOT start.")
                 fcntl.flock(_file_lock_handle.fileno(), fcntl.LOCK_UN)

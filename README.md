@@ -113,7 +113,7 @@ Add the global provider keys you need, such as `OPENAI_API_KEY`, `ASSEMBLYAI_API
 docker compose up -d --build
 ```
 
-Open [http://localhost:5004](http://localhost:5004). The application initializes the database, migrations, default roles, languages, and initial admin account on first startup.
+Open [http://localhost:5004](http://localhost:5004). The application initializes the database, migrations, default roles, languages, and initial admin account on first startup. Compose also starts a durable `transcriber-worker` for transcription, workflow, and title jobs, plus a `transcriber-cleanup` process that runs retention cleanup every six hours.
 
 Useful operational commands:
 
@@ -121,6 +121,12 @@ Useful operational commands:
 docker compose ps
 docker compose logs -f transcriber-platform
 docker compose down
+```
+
+The cleanup process can be run manually once when diagnosing retention behavior:
+
+```bash
+docker compose run --rm transcriber-cleanup flask cleanup-once
 ```
 
 MySQL data is kept in the `mysql_data` Docker volume. Uploaded temporary files, logs, and runtime markers are mounted from the repository directory.
@@ -169,9 +175,13 @@ Start from [`.env.example`](.env.example). These are the settings most deploymen
 | `TZ` | Time zone used for quota periods and display | `UTC` |
 | `TRANSCRIPTION_PROVIDERS` | Enabled built-in provider integrations | `assemblyai,openai,gemini,openrouter` |
 | `DEFAULT_TRANSCRIPTION_PROVIDER` | Fallback provider when no catalog default is available | `openai` |
+| `DEFAULT_LLM_PROVIDER` | Fallback provider for direct LLM operations (`LLM_PROVIDER` remains a legacy alias) | `GEMINI` |
 | `DEFAULT_LANGUAGE` | Default content language or `auto` | `auto` |
 | `SUPPORTED_LANGUAGE_CODES` | Languages seeded into the active language catalog | `en,nl,fr,es` |
 | `TRANSCRIPTION_MAX_CONCURRENT_JOBS` | System-wide jobs allowed to process simultaneously | `2` |
+| `BACKGROUND_WORKER_CONCURRENCY` | Concurrent jobs in the dedicated worker | `2` |
+| `BACKGROUND_JOB_MAX_ATTEMPTS` | Maximum attempts for a durable background job | `3` |
+| `BACKGROUND_JOB_STALE_SECONDS` | Age at which an abandoned worker claim is recovered | `300` |
 | `TRANSCRIPTION_WORKERS` | Parallel workers used for a split transcription | `4` |
 | `WORKFLOW_MAX_OUTPUT_TOKENS` | Maximum generated tokens for a workflow result | `1024` |
 | `WORKFLOW_RATE_LIMIT` | Per-user workflow endpoint limit | `10 per hour` |
@@ -281,8 +291,11 @@ flask init-db
 flask create-roles
 flask create-admin
 flask db-migrate
+flask cleanup-once
 flask bootstrap
 ```
+
+`flask cleanup-loop` is the long-running command used by the Compose cleanup service. If you deploy the image outside Compose, run that command as a separate supervised process (or schedule `flask cleanup-once`); cleanup is deliberately not started inside the web application factory.
 
 Run JavaScript tests:
 

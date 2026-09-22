@@ -18,7 +18,9 @@ def create_transcription_job(job_id: str, user_id: int, filename: str, api_used:
                              pending_workflow_prompt_color: Optional[str] = None,
                              pending_workflow_origin_prompt_id: Optional[int] = None,
                              public_api_invocation: bool = False,
-                             api_model: Optional[str] = None
+                             api_model: Optional[str] = None,
+                             *,
+                             commit: bool = True,
                              ) -> None:
 # --- END MODIFIED ---
     """
@@ -55,7 +57,8 @@ def create_transcription_job(job_id: str, user_id: int, filename: str, api_used:
             None # cost
         ))
         # --- END MODIFIED ---
-        get_db().commit()
+        if commit:
+            get_db().commit()
         # --- MODIFIED: Updated log message ---
         pending_wf_log = "No"
         if pending_workflow_prompt_text or pending_workflow_origin_prompt_id:
@@ -64,7 +67,8 @@ def create_transcription_job(job_id: str, user_id: int, filename: str, api_used:
         # --- END MODIFIED ---
     except MySQLError as err:
         logger.error(f"Error creating job record: {err}", exc_info=True)
-        get_db().rollback()
+        if commit:
+            get_db().rollback()
         raise  # Re-raise the exception
     finally:
         # The cursor is managed by the application context, so we don't close it here.

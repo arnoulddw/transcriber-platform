@@ -85,9 +85,13 @@ class Config:
         "assemblyai,openai,gemini,openrouter",
     ).split(',')
     LLM_PROVIDERS = ["GEMINI", "OPENAI", "OPENROUTER"]
-    # Default providers
+    # Default providers. DEFAULT_LLM_PROVIDER is the documented/container
+    # setting; retain LLM_PROVIDER as a backwards-compatible alias.
     DEFAULT_TRANSCRIPTION_PROVIDER = os.environ.get('DEFAULT_TRANSCRIPTION_PROVIDER', 'openai')
-    LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'GEMINI').upper()
+    DEFAULT_LLM_PROVIDER = os.environ.get(
+        'DEFAULT_LLM_PROVIDER', os.environ.get('LLM_PROVIDER', 'GEMINI')
+    ).strip().upper()
+    LLM_PROVIDER = DEFAULT_LLM_PROVIDER
     LLM_MODEL = os.environ.get('LLM_MODEL')
     TITLE_GENERATION_LLM_PROVIDER = os.environ.get('TITLE_GENERATION_LLM_PROVIDER', 'GEMINI').upper()
     WORKFLOW_LLM_PROVIDER = os.environ.get('WORKFLOW_LLM_PROVIDER', 'OPENROUTER').upper()
@@ -167,12 +171,11 @@ class Config:
     # --- Logging ---
     LOG_DIR = os.path.join(BASE_DIR, 'logs')
     LOG_FILE = os.path.join(LOG_DIR, 'app.log')
-    # Default to DEBUG if FLASK_ENV is 'development', else default to INFO
+    # Default to DEBUG if FLASK_ENV is 'development', else default to INFO.
+    # LOG_LEVEL takes precedence when explicitly configured.
     flask_env = os.environ.get('FLASK_ENV', 'production').lower()
-    if flask_env == 'development':
-        LOG_LEVEL = 'DEBUG'
-    else:
-        LOG_LEVEL = 'INFO'
+    default_log_level = 'DEBUG' if flask_env == 'development' else 'INFO'
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', default_log_level).strip().upper()
     if LOG_LEVEL not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
         raise ValueError(f"Invalid LOG_LEVEL: '{LOG_LEVEL}'. Must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL.")
 
@@ -264,15 +267,45 @@ class Config:
         'openrouter': {'duration_s': None, 'size_mb': 25},
     }
 
-    # --- Transcription Workers ---
-    # Total transcription jobs allowed to run concurrently across all Gunicorn
-    # workers. MySQL advisory locks enforce this process-safe limit.
+    # --- Durable Background Worker ---
+    # Web processes only enqueue rows. A separately supervised worker owns
+    # these bounded concurrent calls and can recover claims after a restart.
     TRANSCRIPTION_MAX_CONCURRENT_JOBS = int(os.environ.get('TRANSCRIPTION_MAX_CONCURRENT_JOBS', 2))
     if TRANSCRIPTION_MAX_CONCURRENT_JOBS <= 0:
         raise ValueError("TRANSCRIPTION_MAX_CONCURRENT_JOBS must be a positive integer.")
-    TRANSCRIPTION_SLOT_POLL_SECONDS = float(os.environ.get('TRANSCRIPTION_SLOT_POLL_SECONDS', 2))
-    if TRANSCRIPTION_SLOT_POLL_SECONDS <= 0:
-        raise ValueError("TRANSCRIPTION_SLOT_POLL_SECONDS must be positive.")
+    BACKGROUND_WORKER_CONCURRENCY = int(
+        os.environ.get('BACKGROUND_WORKER_CONCURRENCY', TRANSCRIPTION_MAX_CONCURRENT_JOBS)
+    )
+    if BACKGROUND_WORKER_CONCURRENCY <= 0:
+        raise ValueError("BACKGROUND_WORKER_CONCURRENCY must be a positive integer.")
+    BACKGROUND_JOB_POLL_SECONDS = float(os.environ.get('BACKGROUND_JOB_POLL_SECONDS', 1))
+    if BACKGROUND_JOB_POLL_SECONDS <= 0:
+        raise ValueError("BACKGROUND_JOB_POLL_SECONDS must be positive.")
+    BACKGROUND_JOB_MAX_ATTEMPTS = int(os.environ.get('BACKGROUND_JOB_MAX_ATTEMPTS', 3))
+    if BACKGROUND_JOB_MAX_ATTEMPTS <= 0:
+        raise ValueError("BACKGROUND_JOB_MAX_ATTEMPTS must be a positive integer.")
+    BACKGROUND_JOB_RETRY_DELAY_MAX_SECONDS = int(
+        os.environ.get('BACKGROUND_JOB_RETRY_DELAY_MAX_SECONDS', 300)
+    )
+    if BACKGROUND_JOB_RETRY_DELAY_MAX_SECONDS <= 0:
+        raise ValueError("BACKGROUND_JOB_RETRY_DELAY_MAX_SECONDS must be positive.")
+    BACKGROUND_JOB_STALE_SECONDS = int(
+        os.environ.get('BACKGROUND_JOB_STALE_SECONDS', 300)
+    )
+    if BACKGROUND_JOB_STALE_SECONDS <= 0:
+        raise ValueError("BACKGROUND_JOB_STALE_SECONDS must be positive.")
+    BACKGROUND_JOB_RETENTION_DAYS = int(
+        os.environ.get('BACKGROUND_JOB_RETENTION_DAYS', 30)
+    )
+    if BACKGROUND_JOB_RETENTION_DAYS < 0:
+        raise ValueError("BACKGROUND_JOB_RETENTION_DAYS cannot be negative.")
+    BACKGROUND_JOB_PURGE_BATCH_SIZE = int(
+        os.environ.get('BACKGROUND_JOB_PURGE_BATCH_SIZE', 1000)
+    )
+    if BACKGROUND_JOB_PURGE_BATCH_SIZE <= 0:
+        raise ValueError("BACKGROUND_JOB_PURGE_BATCH_SIZE must be positive.")
+    # Legacy names remain available for older deployments and API diagnostics.
+    TRANSCRIPTION_SLOT_POLL_SECONDS = BACKGROUND_JOB_POLL_SECONDS
     TRANSCRIPTION_ABANDONED_JOB_SECONDS = int(os.environ.get('TRANSCRIPTION_ABANDONED_JOB_SECONDS', 300))
     if TRANSCRIPTION_ABANDONED_JOB_SECONDS <= 0:
         raise ValueError("TRANSCRIPTION_ABANDONED_JOB_SECONDS must be positive.")

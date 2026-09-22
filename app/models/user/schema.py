@@ -165,12 +165,8 @@ def init_db_command() -> None:
             logger.info(f"{log_prefix} Adding 'language' column to 'users' table.")
             cursor.execute("ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT NULL AFTER default_transcription_model")
 
-        cursor.execute("SHOW COLUMNS FROM users LIKE 'api_keys_encrypted'")
-        api_keys_encrypted_exists = cursor.fetchone()
-        cursor.fetchall()
-        if api_keys_encrypted_exists:
-            logger.info(f"{log_prefix} Dropping deprecated 'api_keys_encrypted' column from 'users' table.")
-            cursor.execute("ALTER TABLE users DROP COLUMN api_keys_encrypted")
+        # Legacy API-key removal is owned by the ordered migration
+        # V20251122_0005__migrate_user_api_keys.py, not by bootstrap repair.
 
         # Normalize timestamp-like columns to avoid invalid zero dates while preserving existing data
         timestamp_columns = {

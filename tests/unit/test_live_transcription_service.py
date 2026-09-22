@@ -9,6 +9,9 @@ from flask_babel import Babel
 from app.services import live_transcription_service as service
 
 
+TEST_SESSION_ID = "0123456789abcdef0123456789abcdef"
+
+
 @pytest.fixture
 def live_app():
     app = Flask(__name__)
@@ -33,6 +36,162 @@ def allow_live_reservation(monkeypatch):
         "reserve_usage_if_allowed",
         MagicMock(return_value=(True, "")),
     )
+
+
+@pytest.fixture(autouse=True)
+def fake_live_session_store(monkeypatch):
+    """Keep service tests database-free while exercising session transitions."""
+    sessions = {}
+    missing = set()
+
+    def ensure(session_id):
+        if session_id in missing:
+            return None
+        return sessions.setdefault(
+            session_id,
+            {
+                "session_id": session_id,
+                "status": "active",
+                "last_sequence": -1,
+                "last_transcript": None,
+                "hangup_completed_at": None,
+            },
+        )
+
+    def create_session(session_id, user_id, transcription_id, provider, model, transport, started_at):
+        sessions[session_id] = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "transcription_id": transcription_id,
+            "provider": provider,
+            "model": model,
+            "transport": transport,
+            "started_at": started_at,
+            "status": "active",
+            "last_sequence": -1,
+            "last_transcript": None,
+            "hangup_completed_at": None,
+        }
+
+    def get_session(session_id):
+        return ensure(session_id)
+
+    def claim_chunk_sequence(session_id, sequence):
+        session = ensure(session_id)
+        if session is None:
+            return {"claimed": False, "missing": True}
+        if session["status"] != "active":
+            return {"claimed": False, "status": session["status"]}
+        if session["last_sequence"] == sequence:
+            return {
+                "claimed": False,
+                "duplicate": True,
+                "in_progress": session["last_transcript"] is None,
+                "transcript": session["last_transcript"],
+            }
+        if session["last_sequence"] != sequence - 1:
+            return {"claimed": False, "out_of_order": True}
+        session["last_sequence"] = sequence
+        session["last_transcript"] = None
+        return {"claimed": True, "duplicate": False}
+
+    def record_chunk_result(session_id, sequence, transcript):
+        session = ensure(session_id)
+        if (
+            session is None
+            or session["status"] not in {"active", "closing"}
+            or session["last_sequence"] != sequence
+        ):
+            return False
+        session["last_transcript"] = transcript
+        return True
+
+    def release_chunk_sequence(session_id, sequence):
+        session = ensure(session_id)
+        if (
+            session is None
+            or session["status"] not in {"active", "closing"}
+            or session["last_sequence"] != sequence
+        ):
+            return False
+        session["last_sequence"] = sequence - 1
+        session["last_transcript"] = None
+        return True
+
+    def begin_finalize(session_id):
+        session = ensure(session_id)
+        if session is None:
+            return "missing"
+        if session["status"] in {"active", "closing"}:
+            if session["last_sequence"] >= 0 and session["last_transcript"] is None:
+                return session["status"]
+            session["status"] = "finalizing"
+            return "claimed"
+        return {
+            "finalizing": "in_progress",
+            "finalized": "finalized",
+            "revoked": "revoked",
+        }.get(session["status"], session["status"])
+
+    def complete_finalize(session_id):
+        session = ensure(session_id)
+        if session is None or session["status"] != "finalizing":
+            return False
+        session["status"] = "finalized"
+        return True
+
+    def release_finalize(session_id):
+        session = ensure(session_id)
+        if session is None or session["status"] != "finalizing":
+            return False
+        session["status"] = "closing" if session.get("hangup_at") else "active"
+        return True
+
+    def mark_hangup(session_id):
+        session = ensure(session_id)
+        if session is None:
+            return {"found": False, "transitioned": False}
+        if session["status"] == "active":
+            session["status"] = "closing"
+            session["hangup_at"] = True
+            return {
+                "found": True,
+                "transitioned": True,
+                "status": "closing",
+                "hangup_completed_at": None,
+            }
+        return {
+            "found": True,
+            "transitioned": False,
+            "status": session["status"],
+            "hangup_completed_at": session.get("hangup_completed_at"),
+        }
+
+    def mark_hangup_complete(session_id):
+        session = ensure(session_id)
+        if session is None or session.get("status") not in {
+            "closing",
+            "finalizing",
+            "finalized",
+        }:
+            return False
+        if session.get("hangup_completed_at") is not None:
+            return False
+        session["hangup_completed_at"] = True
+        return True
+
+    monkeypatch.setattr(service.live_session_model, "create_session", create_session)
+    monkeypatch.setattr(service.live_session_model, "get_session", get_session)
+    monkeypatch.setattr(service.live_session_model, "claim_chunk_sequence", claim_chunk_sequence)
+    monkeypatch.setattr(service.live_session_model, "record_chunk_result", record_chunk_result)
+    monkeypatch.setattr(service.live_session_model, "release_chunk_sequence", release_chunk_sequence)
+    monkeypatch.setattr(service.live_session_model, "begin_finalize", begin_finalize)
+    monkeypatch.setattr(service.live_session_model, "complete_finalize", complete_finalize)
+    monkeypatch.setattr(service.live_session_model, "release_finalize", release_finalize)
+    monkeypatch.setattr(service.live_session_model, "mark_hangup", mark_hangup)
+    monkeypatch.setattr(service.live_session_model, "mark_hangup_complete", mark_hangup_complete)
+    monkeypatch.setattr(service.live_session_model, "revoke_session", lambda session_id: False)
+    return {"sessions": sessions, "missing": missing}
 
 
 def test_openrouter_model_slugs_default_to_openrouter_transport(live_app):
@@ -109,6 +268,32 @@ def test_create_session_routes_openrouter_to_sse_without_webrtc(live_app, monkey
     assert result["transport"] == "openrouter-sse"
     assert result["answer_sdp"] == ""
     post.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("model", "provider", "permission_key"),
+    [
+        ("gpt-live-transcribe", "openai", "use_api_openai"),
+        ("gemini-3.5-transcribe-live", "gemini", "use_api_google_gemini"),
+        ("openai/whisper-1", "openrouter", "use_api_openrouter"),
+    ],
+)
+def test_create_session_enforces_resolved_provider_permission(
+    live_app, monkeypatch, model, provider, permission_key
+):
+    live_app.config["DEPLOYMENT_MODE"] = "multi"
+    user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
+    monkeypatch.setattr(service, "_validate_settings", lambda *_: ("auto", ""))
+    monkeypatch.setattr(service, "_resolve_live_model", lambda *_: model)
+    monkeypatch.setattr(service, "check_permission", MagicMock(return_value=False))
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionPermissionError,
+        match="permission to use this transcription provider",
+    ):
+        service.create_session(user, "offer-sdp", "auto", "", requested_model=model)
+
+    service.check_permission.assert_called_once_with(user, permission_key)
 
 
 def test_create_session_openrouter_token_carries_context_prompt(live_app, monkeypatch):
@@ -223,6 +408,7 @@ def test_openrouter_live_chunk_ignores_sse_comments_and_accumulates_text(live_ap
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "openrouter-live-job",
             "started_at": 1000.0,
@@ -238,10 +424,10 @@ def test_openrouter_live_chunk_ignores_sse_comments_and_accumulates_text(live_ap
 
     with live_app.app_context():
         result = service.transcribe_openrouter_chunk(
-            SimpleNamespace(id=42), "signed-token", audio, "wav", 3
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
         )
 
-    assert result == {"sequence": 3, "transcript": "Hello world"}
+    assert result == {"sequence": 0, "transcript": "Hello world"}
     assert stream.call_args.args[:2] == (
         "POST",
         "https://openrouter.ai/api/v1/chat/completions",
@@ -255,6 +441,7 @@ def test_openrouter_live_chunk_rejects_non_openrouter_session(live_app, monkeypa
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "provider": "openai",
             "model": "gpt-live-transcribe",
@@ -293,6 +480,7 @@ def test_openrouter_live_chunk_applies_context_prompt(live_app, monkeypatch):
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "openrouter-live-job",
             "started_at": 1000.0,
@@ -338,6 +526,7 @@ def test_openrouter_live_chunk_without_prompt_keeps_plain_instruction(live_app, 
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "openrouter-live-job",
             "started_at": 1000.0,
@@ -362,12 +551,202 @@ def test_openrouter_live_chunk_without_prompt_keeps_plain_instruction(live_app, 
     )
 
 
+def _openrouter_payload(**overrides):
+    payload = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 42,
+        "transcription_id": "openrouter-live-job",
+        "started_at": 1000.0,
+        "context_prompt_used": False,
+        "provider": "openrouter",
+        "model": "openai/whisper-1",
+        "language": "auto",
+    }
+    payload.update(overrides)
+    return payload
+
+
+class _OpenRouterStreamResponse:
+    status_code = 200
+
+    def __init__(self, lines):
+        self._lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def iter_lines(self):
+        return self._lines
+
+
+def test_openrouter_duplicate_completed_chunk_replays_without_provider_call(
+    live_app, monkeypatch
+):
+    live_app.config.update(
+        OPENROUTER_API_KEY="server-only-openrouter-key",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+    )
+    monkeypatch.setattr(service, "_decode_session_token", lambda _token: _openrouter_payload())
+    stream = MagicMock(
+        return_value=_OpenRouterStreamResponse([
+            'data: {"choices":[{"delta":{"content":"cached transcript"}}]}',
+            "",
+            "data: [DONE]",
+        ])
+    )
+    monkeypatch.setattr(service.httpx, "stream", stream)
+    audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
+
+    with live_app.app_context():
+        first = service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
+        )
+        replay = service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
+        )
+
+    assert first == replay == {"sequence": 0, "transcript": "cached transcript"}
+    stream.assert_called_once()
+
+
+def test_openrouter_duplicate_in_flight_chunk_does_not_return_empty_transcript(
+    live_app, monkeypatch, fake_live_session_store
+):
+    live_app.config["OPENROUTER_API_KEY"] = "server-only-openrouter-key"
+    fake_live_session_store["sessions"][TEST_SESSION_ID] = {
+        **_openrouter_payload(),
+        "status": "active",
+        "last_sequence": 0,
+        "last_transcript": None,
+        "hangup_completed_at": None,
+    }
+    monkeypatch.setattr(service, "_decode_session_token", lambda _token: _openrouter_payload())
+    stream = MagicMock()
+    monkeypatch.setattr(service.httpx, "stream", stream)
+    audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionValidationError, match="already being processed"
+    ):
+        service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
+        )
+
+    stream.assert_not_called()
+
+
+def test_openrouter_unexpected_provider_exception_releases_sequence_claim(
+    live_app, monkeypatch, fake_live_session_store
+):
+    live_app.config["OPENROUTER_API_KEY"] = "server-only-openrouter-key"
+    monkeypatch.setattr(service, "_decode_session_token", lambda _token: _openrouter_payload())
+
+    class BrokenStreamResponse(_OpenRouterStreamResponse):
+        def iter_lines(self):
+            raise RuntimeError("unexpected parser failure")
+
+    monkeypatch.setattr(
+        service.httpx,
+        "stream",
+        MagicMock(return_value=BrokenStreamResponse([])),
+    )
+    audio = base64.b64encode(b"RIFF-test-wav").decode("ascii")
+
+    with live_app.app_context(), pytest.raises(RuntimeError, match="unexpected parser"):
+        service.transcribe_openrouter_chunk(
+            SimpleNamespace(id=42), "signed-token", audio, "wav", 0
+        )
+
+    session = fake_live_session_store["sessions"][TEST_SESSION_ID]
+    assert session["last_sequence"] == -1
+    assert session["last_transcript"] is None
+
+
+@pytest.mark.parametrize(
+    ("provider", "transport"),
+    [
+        ("openai", "openai-webrtc"),
+        ("gemini", "gemini-wss"),
+        ("openrouter", "openrouter-sse"),
+    ],
+)
+def test_expired_live_session_tokens_are_rejected_for_all_transports(
+    live_app, monkeypatch, provider, transport
+):
+    started_at = 1000.0
+    user = SimpleNamespace(id=42)
+    payload = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": user.id,
+        "transcription_id": "expired-live-job",
+        "started_at": started_at,
+        "language": "auto",
+        "context_prompt_used": False,
+        "model": "gpt-live-transcribe",
+        "provider": provider,
+        "transport": transport,
+        "call_id": "rtc_expired_call",
+    }
+
+    with live_app.app_context():
+        token = service._serializer().dumps(payload)
+        monkeypatch.setattr(
+            service.time,
+            "time",
+            lambda: started_at + (service.MAX_SESSION_DURATION_MINUTES * 60),
+        )
+
+        with pytest.raises(
+            service.LiveTranscriptionValidationError,
+            match="maximum duration",
+        ):
+            if transport == "openai-webrtc":
+                service.hangup_session(user, token)
+            elif transport == "gemini-wss":
+                service.refresh_session_token(user, token)
+            else:
+                service.transcribe_openrouter_chunk(
+                    user,
+                    token,
+                    base64.b64encode(b"RIFF-test-wav").decode("ascii"),
+                    "wav",
+                    0,
+                )
+
+
+@pytest.mark.parametrize("started_at", [None, "not-a-time", float("nan"), float("inf")])
+def test_decode_session_token_rejects_invalid_start_times(live_app, started_at):
+    payload = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 42,
+        "transcription_id": "invalid-live-job",
+        "started_at": started_at,
+        "language": "auto",
+        "context_prompt_used": False,
+        "model": "gpt-live-transcribe",
+        "provider": "openai",
+        "transport": "openai-webrtc",
+    }
+
+    with live_app.app_context():
+        token = service._serializer().dumps(payload)
+        with pytest.raises(
+            service.LiveTranscriptionValidationError,
+            match="live session token is invalid",
+        ):
+            service._decode_session_token(token)
+
+
 def test_hangup_session_stops_the_openai_call(live_app, monkeypatch):
     user = SimpleNamespace(id=7)
     monkeypatch.setattr(
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "call_id": "rtc_test_call",
         },
@@ -382,6 +761,112 @@ def test_hangup_session_stops_the_openai_call(live_app, monkeypatch):
     assert post.call_args.args[0].endswith(
         "/v1/realtime/calls/rtc_test_call/hangup"
     )
+
+
+def test_hangup_retries_provider_stop_after_failed_first_attempt(
+    live_app, monkeypatch, fake_live_session_store
+):
+    user = SimpleNamespace(id=7)
+    monkeypatch.setattr(
+        service,
+        "_decode_session_token",
+        lambda _token: {
+            "session_id": TEST_SESSION_ID,
+            "user_id": 7,
+            "call_id": "rtc_retry_call",
+        },
+    )
+    post = MagicMock(
+        side_effect=[
+            service.httpx.ConnectError("offline"),
+            SimpleNamespace(status_code=200),
+        ]
+    )
+    monkeypatch.setattr(service.httpx, "post", post)
+
+    with live_app.app_context():
+        with pytest.raises(service.LiveTranscriptionUpstreamError):
+            service.hangup_session(user, "token")
+        result = service.hangup_session(user, "token")
+
+    assert result == {"stopped": True}
+    assert post.call_count == 2
+    assert fake_live_session_store["sessions"][TEST_SESSION_ID][
+        "hangup_completed_at"
+    ] is True
+
+
+def test_live_session_row_identity_must_match_signed_payload(
+    live_app, fake_live_session_store
+):
+    fake_live_session_store["sessions"][TEST_SESSION_ID] = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 42,
+        "transcription_id": "row-job",
+        "provider": "gemini",
+        "model": "gemini-live",
+        "transport": "gemini-wss",
+        "status": "active",
+        "last_sequence": -1,
+        "last_transcript": None,
+        "hangup_completed_at": None,
+    }
+    payload = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 42,
+        "transcription_id": "token-job",
+        "provider": "gemini",
+        "model": "gemini-live",
+        "transport": "gemini-wss",
+    }
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionValidationError, match="token is invalid"
+    ):
+        service._require_live_session(payload)
+
+
+def test_live_session_row_user_must_match_signed_payload(
+    live_app, fake_live_session_store
+):
+    fake_live_session_store["sessions"][TEST_SESSION_ID] = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 42,
+        "status": "active",
+        "last_sequence": -1,
+        "last_transcript": None,
+    }
+    payload = {"session_id": TEST_SESSION_ID, "user_id": 7}
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionValidationError, match="token is invalid"
+    ):
+        service._require_live_session(payload)
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        ("revoked", "no longer available"),
+        ("finalized", "already been finalized"),
+    ],
+)
+def test_live_session_operations_reject_terminal_state(
+    live_app, fake_live_session_store, status, message
+):
+    fake_live_session_store["sessions"][TEST_SESSION_ID] = {
+        "session_id": TEST_SESSION_ID,
+        "user_id": 42,
+        "status": status,
+        "last_sequence": -1,
+        "last_transcript": None,
+    }
+    payload = {"session_id": TEST_SESSION_ID, "user_id": 42}
+
+    with live_app.app_context(), pytest.raises(
+        service.LiveTranscriptionValidationError, match=message
+    ):
+        service._require_live_session(payload)
 
 
 def test_call_id_is_read_from_openai_location_header():
@@ -400,6 +885,7 @@ def test_finalize_session_bills_only_minutes_beyond_reservation(live_app, monkey
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "over-reservation-live-job",
             "started_at": 1000.0,
@@ -432,6 +918,7 @@ def test_finalize_session_short_bills_zero_extra_live_minutes(live_app, monkeypa
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
             "started_at": 1000.0,
@@ -475,6 +962,7 @@ def test_finalize_session_caps_recorded_usage_at_120_minutes(
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "long-live-job",
             "started_at": 1000.0,
@@ -524,6 +1012,7 @@ def test_finalize_session_is_idempotent(live_app, monkeypatch):
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "existing-live-job",
             "started_at": 1000.0,
@@ -555,6 +1044,7 @@ def test_finalize_session_completes_existing_pending_record(live_app, monkeypatc
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "pending-live-job",
             "started_at": 1000.0,
@@ -659,6 +1149,7 @@ def test_finalize_session_dispatches_title_generation(live_app, monkeypatch):
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "titled-live-job",
             "started_at": 1000.0,
@@ -674,15 +1165,13 @@ def test_finalize_session_dispatches_title_generation(live_app, monkeypatch):
     monkeypatch.setattr(service.transcription_model, "finalize_job_success", MagicMock())
     monkeypatch.setattr(service.role_model, "increment_usage", MagicMock())
     monkeypatch.setattr(service.pricing_service, "get_price", lambda *_: 0)
-    thread = MagicMock()
-    monkeypatch.setattr(service.threading, "Thread", thread)
+    enqueue_title = MagicMock()
+    monkeypatch.setattr(service, "enqueue_title_generation", enqueue_title)
 
     with live_app.app_context():
         service.finalize_session(user, "token", "Title this transcript")
 
-    thread.assert_called_once()
-    assert thread.call_args.kwargs["target"] is service.generate_title_task
-    thread.return_value.start.assert_called_once()
+    enqueue_title.assert_called_once_with(live_app.config, "titled-live-job", user.id)
 
 
 def test_finalize_session_rejects_wrong_owner(live_app, monkeypatch):
@@ -691,6 +1180,7 @@ def test_finalize_session_rejects_wrong_owner(live_app, monkeypatch):
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
             "started_at": 1000.0,
@@ -726,6 +1216,7 @@ def test_finalize_session_stores_detected_language(live_app, monkeypatch):
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
             "started_at": 1000.0,
@@ -757,6 +1248,7 @@ def test_finalize_session_stores_unknown_when_no_language_reported(live_app, mon
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
             "started_at": 1000.0,
@@ -868,6 +1360,7 @@ def test_finalize_session_records_actual_live_minutes(live_app, monkeypatch):
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "live-job",
             "started_at": 1000.0,
@@ -1060,7 +1553,7 @@ def test_create_session_gemini_wraps_client_construction_failures(live_app, monk
 
 
 def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
-    live_app, monkeypatch
+    live_app, monkeypatch, fake_live_session_store
 ):
     live_app.config.update(**GEMINI_LIVE_CONFIG)
     user = SimpleNamespace(id=42, role=SimpleNamespace(name="member"))
@@ -1077,6 +1570,7 @@ def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
             "Falcon budget",
             requested_model="gemini-3.5-transcribe-live",
         )
+        session_id = service._serializer().loads(created["session_token"])["session_id"]
         refreshed = service.refresh_session_token(user, created["session_token"])
 
     assert refreshed == {
@@ -1087,6 +1581,8 @@ def test_refresh_session_token_mints_fresh_gemini_token_without_new_reservation(
     assert reserve.call_count == 1
     assert gemini_client.call_count == 2
     assert fake_client.close.call_count == 2
+    assert set(fake_live_session_store["sessions"]) == {session_id}
+    assert fake_live_session_store["sessions"][session_id]["status"] == "active"
 
 
 def test_refresh_session_token_rejects_non_gemini_sessions(live_app, monkeypatch):
@@ -1094,6 +1590,7 @@ def test_refresh_session_token_rejects_non_gemini_sessions(live_app, monkeypatch
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "live-job",
             "started_at": service.time.time(),
@@ -1117,6 +1614,7 @@ def test_refresh_session_token_rejects_sessions_past_max_duration(live_app, monk
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 42,
             "transcription_id": "long-gemini-job",
             "started_at": started_at,
@@ -1146,6 +1644,7 @@ def test_hangup_session_stops_gemini_websocket_sessions_without_http_call(
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "gemini-live-job",
             "started_at": 1000.0,
@@ -1170,6 +1669,7 @@ def test_hangup_session_stops_openrouter_transport_without_http_call(live_app, m
         service,
         "_decode_session_token",
         lambda _token: {
+            "session_id": TEST_SESSION_ID,
             "user_id": 7,
             "transcription_id": "sse-live-job",
             "started_at": 1000.0,

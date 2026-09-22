@@ -180,9 +180,14 @@ def create_llm_operation(
     prompt_id: Optional[int] = None,
     status: str = 'pending',
     model: Optional[str] = None,
+    commit: bool = True,
 ) -> Optional[int]:
     """
     Creates an initial record for an LLM operation.
+
+    Args:
+        commit: Whether this function should commit its insert. Pass ``False``
+            when the insert is part of a larger transaction.
 
     Returns:
         The ID of the newly created operation, or None on failure.
@@ -206,11 +211,13 @@ def create_llm_operation(
             user_id, provider, model, operation_type, input_text, transcription_id,
             prompt_id, status
         ))
-        get_db().commit()
+        if commit:
+            get_db().commit()
         operation_id = cursor.lastrowid
         logging.info(f"{log_prefix} Created LLM operation record ID {operation_id} (Type: {operation_type}, Provider: {provider}, Status: {status}).")
     except MySQLError as err:
-        get_db().rollback()
+        if commit:
+            get_db().rollback()
         logging.error(f"{log_prefix} Error creating LLM operation record: {err}", exc_info=True)
     finally:
         # The cursor is managed by the application context, so we don't close it here.

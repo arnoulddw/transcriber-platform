@@ -2,7 +2,6 @@
 # Contains business logic for AI-powered workflow analysis on transcripts.
 
 from app.logging_config import get_logger
-import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
@@ -20,7 +19,14 @@ from app.models import llm_catalog as llm_catalog_model
 from app.models.user import User  # For type hinting
 
 from app.services import llm_service
-from app.services.api_clients.exceptions import LlmApiError, LlmConfigurationError, LlmGenerationError, LlmSafetyError, LlmRateLimitError
+from app.services.api_clients.exceptions import (
+    LlmApiError,
+    LlmAuthenticationError,
+    LlmConfigurationError,
+    LlmGenerationError,
+    LlmSafetyError,
+    LlmRateLimitError,
+)
 
 # Import permission checking helpers
 from app.core.decorators import check_permission
@@ -30,6 +36,7 @@ from mysql.connector import Error as MySQLError
 
 # Import centralized DB functions (needed for direct updates if any remain)
 from app.database import get_db, get_cursor
+from app.tasks.background_queue import enqueue_workflow_job
 
 # --- Custom Exceptions ---
 class WorkflowError(Exception):
@@ -64,7 +71,7 @@ class WorkflowInProgressError(WorkflowError):
 
 def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], prompt_id: Optional[int] = None) -> int:
     """
-    Validates request and initiates the background workflow process.
+    Validates request and enqueues a durable workflow job.
     Creates an LLMOperation record to track the task.
     If prompt text is not provided but prompt_id is, it attempts to fetch the prompt from the user's collection.
 
@@ -89,6 +96,7 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
     logger.debug(f"Workflow initiation request received. Prompt Text Provided: {bool(prompt)}, Prompt ID: {prompt_id}")
     operation_id: Optional[int] = None
     resolved_prompt_text: Optional[str] = prompt.strip() if prompt else None
+    transaction_open = False
 
     with current_app.app_context():
         user = user_model.get_user_by_id(user_id)
@@ -106,24 +114,6 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
         if transcription.get('status') != 'finished':
             logger.warning(f"Cannot run workflow on non-finished transcription (status: {transcription.get('status')}).")
             raise WorkflowError("Workflows can only be run on finished transcriptions.")
-
-        # Serialize concurrent starts on the transcription row: the second
-        # request blocks here until the first one's INSERT commits, then sees
-        # its pending operation below instead of racing past the check.
-        cursor = get_cursor()
-        cursor.execute(
-            "SELECT id FROM transcriptions WHERE id = %s FOR UPDATE",
-            (transcription_id,)
-        )
-        cursor.fetchall()
-        cursor.execute(
-            "SELECT id FROM llm_operations WHERE transcription_id = %s AND status IN ('pending', 'processing')",
-            (transcription_id,)
-        )
-        existing_op = cursor.fetchone()
-        if existing_op:
-             logger.warning(f"An LLM operation (ID: {existing_op['id']}) is already pending/processing for this transcription.")
-             raise WorkflowInProgressError("A workflow is already processing for this transcription.")
 
         transcript_text = transcription.get('transcription_text')
         if not transcript_text:
@@ -153,14 +143,6 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
         role_obj = user.role
         if role_obj is None:
             raise PermissionDeniedError("You do not have a role assigned.")
-        logger.debug("Transactionally reserving workflow quota.")
-        allowed, reason = role_model.reserve_usage_if_allowed(
-            user_id, role_obj, workflows_to_add=1
-        )
-        if not allowed:
-            logger.warning(f"Workflow usage limit check failed: {reason}")
-            raise UsageLimitExceededError(reason)
-        logger.debug("Workflow quota reserved.")
 
         user_provider_override: Optional[str] = None
         user_model_override: Optional[str] = None
@@ -205,7 +187,41 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
         else:
             logger.info(f"Using configured workflow LLM provider: {llm_provider} ({llm_model})")
 
+        # Acquire the transcription lock only after validation and model
+        # resolution. The reservation and operation insert below deliberately
+        # share this transaction so the lock cannot be released between the
+        # active-operation check and creation of the pending operation.
         try:
+            cursor = get_cursor()
+            transaction_open = True
+            cursor.execute(
+                "SELECT id FROM transcriptions WHERE id = %s AND user_id = %s FOR UPDATE",
+                (transcription_id, user_id)
+            )
+            locked_transcription = cursor.fetchone()
+            cursor.fetchall()
+            if not locked_transcription:
+                raise TranscriptionNotFoundError("Transcription not found or access denied.")
+
+            cursor.execute(
+                "SELECT id FROM llm_operations WHERE transcription_id = %s AND status IN ('pending', 'processing')",
+                (transcription_id,)
+            )
+            existing_op = cursor.fetchone()
+            cursor.fetchall()
+            if existing_op:
+                logger.warning(f"An LLM operation (ID: {existing_op['id']}) is already pending/processing for this transcription.")
+                raise WorkflowInProgressError("A workflow is already processing for this transcription.")
+
+            logger.debug("Transactionally reserving workflow quota.")
+            allowed, reason = role_model.reserve_usage_if_allowed(
+                user_id, role_obj, workflows_to_add=1, commit=False
+            )
+            if not allowed:
+                logger.warning(f"Workflow usage limit check failed: {reason}")
+                raise UsageLimitExceededError(reason)
+            logger.debug("Workflow quota reserved.")
+
             operation_id = llm_operation_model.create_llm_operation(
                 user_id=user_id,
                 provider=llm_provider,
@@ -215,27 +231,37 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
                 prompt_id=prompt_id,
                 status='pending',
                 model=llm_model,
+                commit=False,
             )
             if not operation_id:
                 raise WorkflowError("Failed to create workflow operation record in database.")
             logger.info(f"Created LLM Operation record ID: {operation_id}", extra={'llm_op_id': operation_id})
 
-            app_instance = current_app._get_current_object()
-
-            thread = threading.Thread(
-                target=process_workflow_background,
-                args=(
-                    app_instance, user_id, transcription_id, operation_id,
-                    resolved_prompt_text, transcript_text, llm_provider, llm_model
-                ),
-                daemon=True
+            enqueue_workflow_job(
+                current_app.config,
+                user_id,
+                transcription_id,
+                operation_id,
+                resolved_prompt_text,
+                transcript_text,
+                llm_provider,
+                llm_model,
+                commit=False,
             )
-            thread.start()
-            logger.debug("Background workflow thread initiated.")
+            logger.debug("Queued workflow job in the same transaction as its quota and operation.")
+
+            get_db().commit()
+            transaction_open = False
+            logger.debug("Workflow job committed for the dedicated worker.")
             return operation_id
 
         except Exception as e:
-            logger.error(f"Failed to start background workflow thread: {e}", exc_info=True)
+            if transaction_open:
+                get_db().rollback()
+                transaction_open = False
+            if isinstance(e, (WorkflowInProgressError, UsageLimitExceededError, TranscriptionNotFoundError)):
+                raise
+            logger.error(f"Failed to enqueue workflow job: {e}", exc_info=True)
             if operation_id:
                 try:
                     llm_operation_model.update_llm_operation_status(
@@ -243,7 +269,7 @@ def start_workflow(user_id: int, transcription_id: str, prompt: Optional[str], p
                     )
                 except Exception as db_err:
                      logger.error(f"CRITICAL: Failed to update LLM operation status after startup error: {db_err}", extra={'llm_op_id': operation_id})
-            raise WorkflowError("Failed to start workflow process.")
+            raise WorkflowError("Failed to enqueue workflow process.")
 
 
 def process_workflow_background(
@@ -254,10 +280,11 @@ def process_workflow_background(
     prompt: str,
     transcript_text: str,
     llm_provider: str,
-    llm_model: Optional[str]
-) -> None:
+    llm_model: Optional[str],
+    raise_on_failure: bool = False,
+) -> Optional[str]:
     """
-    The background task that interacts with the LLM API via llm_service.
+    The worker task that interacts with the LLM API via llm_service.
     Updates the LLMOperation record with status and results.
     Establishes its own application context.
 
@@ -273,6 +300,7 @@ def process_workflow_background(
     result_text: Optional[str] = None
     error_message: Optional[str] = None
     final_status: str = 'error'
+    retryable_failure = False
 
     with app.app_context():
         effective_provider = llm_provider or current_app.config.get('WORKFLOW_LLM_PROVIDER', current_app.config.get('LLM_PROVIDER', 'GEMINI'))
@@ -280,6 +308,12 @@ def process_workflow_background(
         logger.info(f"Background workflow process started using {effective_provider} ({effective_model}).")
 
         try:
+            existing_operation = llm_operation_model.get_llm_operation_by_id(
+                operation_id,
+                user_id,
+            )
+            if existing_operation and existing_operation.get('status') == 'finished':
+                return existing_operation.get('result')
             update_success = llm_operation_model.update_llm_operation_status(operation_id, status='processing')
             if not update_success:
                 logger.warning("Failed to update LLM operation status to 'processing'. Record might be missing.")
@@ -317,10 +351,18 @@ def process_workflow_background(
             logger.error(f"Error during LLM processing: {e}", exc_info=True)
             error_message = str(e)
             final_status = 'error'
+            retryable_failure = isinstance(
+                e,
+                (LlmApiError, llm_service.LlmServiceError),
+            ) and not isinstance(
+                e,
+                (LlmAuthenticationError, LlmConfigurationError, LlmSafetyError),
+            )
         except Exception as e:
             logger.error(f"Unexpected error during background workflow processing: {e}", exc_info=True)
             error_message = f"An unexpected error occurred: {e}"
             final_status = 'error'
+            retryable_failure = True
 
         try:
             llm_operation_model.update_llm_operation_status(
@@ -334,6 +376,14 @@ def process_workflow_background(
              logger.error(f"CRITICAL: Failed to update final LLM operation status in DB: {db_update_err}", exc_info=True)
 
         logger.debug("Background workflow process finished.")
+        if raise_on_failure and final_status != 'finished':
+            if retryable_failure:
+                from app.tasks.background_queue import RetryableBackgroundTaskFailure
+
+                raise RetryableBackgroundTaskFailure(error_message or "Workflow processing failed.")
+            from app.tasks.background_queue import TerminalBackgroundTaskFailure
+
+            raise TerminalBackgroundTaskFailure(error_message or "Workflow processing failed.")
 
 
 def edit_workflow_result(user_id: int, operation_id: int, new_result: str) -> None:

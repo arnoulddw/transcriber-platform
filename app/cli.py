@@ -14,8 +14,9 @@ from app.initialization import (
     create_initialization_marker,
 )
 from migrations.runner import run_migrations
-from app.models.llm_operation import mark_stale_operations_interrupted
+from app.tasks.cleanup import run_cleanup_once, run_cleanup_task
 from app.tasks.transcription_queue import recover_abandoned_jobs
+from app.tasks.worker import run_worker
 
 
 @click.command("init-db")
@@ -86,6 +87,51 @@ def db_migrate_command_cli():
     logging.info(f"{log_prefix} Completed successfully.")
 
 
+@click.command("cleanup-once")
+@with_appcontext
+def cleanup_once_command_cli():
+    """Run one file and retention cleanup cycle."""
+    log_prefix = "[CLI:cleanup-once]"
+    logging.info(f"{log_prefix} Requested cleanup run.")
+    click.echo("Running cleanup cycle...")
+    try:
+        run_cleanup_once(current_app._get_current_object())
+    except Exception as exc:
+        click.echo(click.style(f"Cleanup error: {exc}", fg="red"), err=True)
+        logging.error(f"{log_prefix} Failed: {exc}", exc_info=True)
+        raise SystemExit(1) from exc
+    click.echo(click.style("Cleanup cycle completed successfully.", fg="green"))
+    logging.info(f"{log_prefix} Completed successfully.")
+
+
+@click.command("cleanup-loop")
+@with_appcontext
+def cleanup_loop_command_cli():
+    """Run cleanup continuously in a dedicated foreground process."""
+    log_prefix = "[CLI:cleanup-loop]"
+    logging.info(f"{log_prefix} Starting dedicated cleanup process.")
+    try:
+        run_cleanup_task(current_app._get_current_object())
+    except Exception as exc:
+        click.echo(click.style(f"Cleanup process error: {exc}", fg="red"), err=True)
+        logging.error(f"{log_prefix} Failed: {exc}", exc_info=True)
+        raise SystemExit(1) from exc
+
+
+@click.command("worker")
+@with_appcontext
+def worker_command_cli():
+    """Run the durable background-job worker in the foreground."""
+    log_prefix = "[CLI:worker]"
+    logging.info(f"{log_prefix} Starting dedicated background worker.")
+    try:
+        run_worker(current_app._get_current_object())
+    except Exception as exc:
+        click.echo(click.style(f"Background worker error: {exc}", fg="red"), err=True)
+        logging.error(f"{log_prefix} Failed: {exc}", exc_info=True)
+        raise SystemExit(1) from exc
+
+
 @click.command("bootstrap")
 @with_appcontext
 def bootstrap_command_cli():
@@ -99,11 +145,6 @@ def bootstrap_command_cli():
         interrupted_count = recover_abandoned_jobs(current_app._get_current_object())
         if interrupted_count:
             click.echo(f"Marked {interrupted_count} abandoned transcription job(s) as interrupted.")
-        # No background thread survives a restart, so every pending/processing
-        # LLM operation at bootstrap time is abandoned; sweep them all.
-        llm_interrupted_count = mark_stale_operations_interrupted(stale_seconds=None)
-        if llm_interrupted_count:
-            click.echo(f"Marked {llm_interrupted_count} stuck LLM operation(s) as interrupted.")
         create_initialization_marker(current_app.config)
     except Exception as exc:
         click.echo(click.style(f"Bootstrap error: {exc}", fg="red"), err=True)
@@ -119,7 +160,10 @@ def register_cli_commands(app):
     app.cli.add_command(create_roles_command_cli)
     app.cli.add_command(create_admin_command_cli)
     app.cli.add_command(db_migrate_command_cli)
+    app.cli.add_command(cleanup_once_command_cli)
+    app.cli.add_command(cleanup_loop_command_cli)
+    app.cli.add_command(worker_command_cli)
     app.cli.add_command(bootstrap_command_cli)
     logging.info(
-        "[SYSTEM] Registered CLI commands: init-db, create-roles, create-admin, db-migrate, bootstrap."
+        "[SYSTEM] Registered CLI commands: init-db, create-roles, create-admin, db-migrate, cleanup-once, cleanup-loop, worker, bootstrap."
     )

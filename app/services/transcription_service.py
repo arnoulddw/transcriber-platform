@@ -42,7 +42,7 @@ from app.core.decorators import check_permission
 # Import MySQL error class
 from mysql.connector import Error as MySQLError
 
-from app.tasks.title_generation import generate_title_task
+from app.tasks.background_queue import enqueue_title_generation
 from app.database import close_db
 
 
@@ -104,14 +104,15 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                           pending_workflow_prompt_color: Optional[str] = None,
                           pending_workflow_origin_prompt_id: Optional[int] = None,
                           speaker_diarization_enabled: bool = False,
-                          api_model: Optional[str] = None
+                          api_model: Optional[str] = None,
+                          preserve_input_on_retry: bool = False,
                           ) -> None:
     """
-    Handles the audio transcription process in a background thread.
+    Handles one durable transcription job in a dedicated worker thread.
     Requires Flask app context to interact with database (MySQL) and config.
     Includes checks for cancellation requests. Calculates and stores duration in minutes.
     Uses the appropriate Transcription API client.
-    Spawns a title generation task upon successful completion.
+    Enqueues a title-generation task upon successful completion.
     If pending_workflow_prompt_text or pending_workflow_origin_prompt_id is provided,
     starts a workflow after successful transcription.
     """
@@ -123,6 +124,9 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
     user: Optional[user_model.User] = None
     api_client: Optional[BaseTranscriptionClient] = None
     job_finalized_successfully = False
+    retryable_failure = False
+    failure_message = "Transcription failed."
+    finalization_failed = False
 
     with app.app_context():
         api_display_name = _get_api_display_name(api_choice)
@@ -228,7 +232,8 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 context_prompt = ""
                 _update_progress(app, job_id, "Warning: Context prompt ignored due to lack of permission.", is_error=False, user_id=user_id)
 
-            price = get_pricing_service_price(item_type='transcription', item_key=api_choice)
+            pricing_key = api_model if provider_code == 'openrouter' and api_model else api_choice
+            price = get_pricing_service_price(item_type='transcription', item_key=pricing_key)
             cost_to_add = 0.0
             if price is not None:
                 cost_to_add = price * (audio_length_minutes if audio_length_minutes >= 1 else audio_length_seconds / 60)
@@ -370,14 +375,19 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
             has_transcription_warning = getattr(api_client, "has_transcription_warning", False) is True
             if has_transcription_warning:
                 logger.warning("Transcription completed with chunk warnings; saving warning state.")
-                transcription_model.finalize_job_success(
+                finalization_result = transcription_model.finalize_job_success(
                     job_id,
                     transcription_text,
                     final_language,
                     has_transcription_warning=True,
                 )
             else:
-                transcription_model.finalize_job_success(job_id, transcription_text, final_language)
+                finalization_result = transcription_model.finalize_job_success(
+                    job_id, transcription_text, final_language
+                )
+            if finalization_result is False:
+                finalization_failed = True
+                raise RuntimeError("Failed to persist final transcription results.")
             job_finalized_successfully = True
             logger.debug("Job finalized successfully in database.")
 
@@ -387,6 +397,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
         except (PermissionError, FileNotFoundError, ValueError) as setup_err:
             error_message = f"ERROR: {str(setup_err)}"
+            failure_message = error_message
             logger.error(f"Transcription setup failed: {error_message}", exc_info=isinstance(setup_err, ValueError))
             _update_progress(app, job_id, error_message, is_error=True, user_id=user_id)
             try: transcription_model.set_job_error(job_id, error_message)
@@ -395,6 +406,7 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
         except TranscriptionQuotaExceededError as quota_err:
             provider_name = quota_err.provider or api_display_name
             error_message = f"ERROR: {provider_name} API quota exceeded. Please check your plan/billing with {provider_name}."
+            failure_message = error_message
             logger.error(f"Transcription failed due to quota limit: {quota_err}", exc_info=True)
             _update_progress(app, job_id, error_message, is_error=True, user_id=user_id)
             try: transcription_model.set_job_error(job_id, error_message)
@@ -402,6 +414,11 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
         except (TranscriptionAuthenticationError, TranscriptionRateLimitError, TranscriptionProcessingError, TranscriptionConfigurationError) as api_err:
             error_message = f"ERROR: {str(api_err)}"
+            failure_message = error_message
+            retryable_failure = isinstance(api_err, TranscriptionRateLimitError) or (
+                isinstance(api_err, TranscriptionProcessingError)
+                and getattr(api_err, "status_code", 500) >= 500
+            )
             log_level = "warning" if isinstance(api_err, TranscriptionRateLimitError) else "error"
             getattr(logger, log_level)(f"Transcription API error: {error_message}", exc_info=True)
             _update_progress(app, job_id, error_message, is_error=True, user_id=user_id)
@@ -410,6 +427,8 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
         except MySQLError as db_err:
             error_message = f"Database Error: {str(db_err)}"
+            failure_message = error_message
+            retryable_failure = not finalization_failed
             logger.error(f"Database error during transcription process: {error_message}", exc_info=True)
             try:
                 _update_progress(app, job_id, "ERROR: A database error occurred.", is_error=True, user_id=user_id)
@@ -419,6 +438,8 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
 
         except Exception as e:
             error_message = f"An unexpected error occurred: {str(e)}"
+            failure_message = error_message
+            retryable_failure = not finalization_failed
             logger.exception("Unexpected error during transcription process:")
             try:
                 _update_progress(app, job_id, "ERROR: An unexpected internal error occurred.", is_error=True, user_id=user_id)
@@ -442,7 +463,12 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                 except Exception as cancel_db_err:
                     logger.error(f"Failed to update job status to 'cancelled' in DB: {cancel_db_err}", exc_info=True)
 
-            if os.path.exists(temp_filename):
+            retain_for_retry = (
+                preserve_input_on_retry
+                and retryable_failure
+                and not job_finalized_successfully
+            )
+            if os.path.exists(temp_filename) and not retain_for_retry:
                 logger.debug(f"Attempting cleanup of temp file: {temp_filename}")
                 removed_count = file_service.remove_files([temp_filename])
                 if removed_count > 0:
@@ -459,23 +485,29 @@ def process_transcription(app: Flask, job_id: str, user_id: int, temp_filename: 
                          _update_progress(app, job_id, f"Warning: Failed to clean up temporary file {original_filename}.", is_error=False, user_id=user_id)
                      except Exception: pass
             else:
-                logger.debug(f"Temp file already removed or never existed: {temp_filename}")
+                if retain_for_retry:
+                    logger.info(
+                        "Retaining temporary input for a retryable transcription failure: %s",
+                        temp_filename,
+                    )
+                else:
+                    logger.debug(f"Temp file already removed or never existed: {temp_filename}")
 
             logger.debug("Background process finished.")
 
+        if preserve_input_on_retry and retryable_failure and not job_finalized_successfully:
+            from app.tasks.background_queue import RetryableBackgroundTaskFailure
+
+            raise RetryableBackgroundTaskFailure(failure_message)
+
         if job_finalized_successfully:
             if user and user.enable_auto_title_generation and user.has_permission('allow_auto_title_generation'):
-                logger.debug(f"Spawning title generation task for job {job_id} (user enabled & permitted).")
+                logger.debug(f"Queueing title generation task for job {job_id} (user enabled & permitted).")
                 try:
-                    title_thread = threading.Thread(
-                        target=generate_title_task,
-                        args=(app, job_id, user_id),
-                        daemon=True
-                    )
-                    title_thread.start()
-                    logger.debug("Title generation thread initiated.")
-                except Exception as title_spawn_err:
-                    logger.error(f"Failed to spawn title generation thread: {title_spawn_err}", exc_info=True)
+                    enqueue_title_generation(app.config, job_id, user_id)
+                    logger.debug("Title generation job committed to the durable queue.")
+                except Exception as title_enqueue_err:
+                    logger.error(f"Failed to enqueue title generation job: {title_enqueue_err}", exc_info=True)
             else:
                 reason = "user preference disabled" if not (user and user.enable_auto_title_generation) else "permission denied"
                 logger.debug(f"Skipping title generation task for job {job_id} ({reason}).")

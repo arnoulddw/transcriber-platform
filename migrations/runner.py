@@ -78,6 +78,9 @@ def run_migrations():
 
     except Exception as e:
         logging.critical(f"{log_prefix} A critical error occurred during the migration process: {e}", exc_info=True)
+        # A migration failure must abort the caller. In particular, bootstrap
+        # must not create its initialized marker after a partial migration.
+        raise
     finally:
         # The close_db function will be called on app context teardown
         pass

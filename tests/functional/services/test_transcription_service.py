@@ -45,7 +45,7 @@ def test_process_transcription_success(
          patch('app.services.transcription_service.close_db') as mock_close_db, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)) as mock_get_duration, \
          patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
-         patch('app.services.transcription_service.generate_title_task') as mock_title_task, \
+         patch('app.services.transcription_service.enqueue_title_generation') as mock_title_task, \
          patch('app.services.transcription_service.file_service.remove_files', return_value=1) as mock_remove_files, \
          patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'):
 
@@ -114,11 +114,11 @@ def test_process_transcription_forwards_openrouter_model(tmp_path):
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
          patch('app.services.transcription_service.transcription_model') as mock_transcription_model, \
-         patch('app.services.transcription_service.generate_title_task'), \
+         patch('app.services.transcription_service.enqueue_title_generation'), \
          patch('app.services.transcription_service.file_service.remove_files', return_value=1), \
          patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'), \
          patch('app.services.transcription_service.check_permission', return_value=True), \
-         patch('app.services.transcription_service.get_pricing_service_price', return_value=None), \
+         patch('app.services.transcription_service.get_pricing_service_price', return_value=0.42) as mock_pricing, \
          patch(
              'app.services.transcription_service.transcription_catalog_model.get_model_by_code',
              return_value={'display_name': 'OpenRouter', 'permission_key': 'use_api_openrouter'},
@@ -141,6 +141,7 @@ def test_process_transcription_forwards_openrouter_model(tmp_path):
             )
 
         mock_get_client.assert_called_once()
+        mock_pricing.assert_called_once_with(item_type='transcription', item_key=model_slug)
         mock_client.transcribe.assert_called_once()
         assert mock_client.transcribe.call_args.kwargs['extra_options'] == {'model': model_slug}
 
@@ -196,7 +197,7 @@ def test_process_transcription_with_speaker_diarization(
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(45.0, 0.75)), \
          patch('app.services.transcription_service.transcription_model'), \
-         patch('app.services.transcription_service.generate_title_task'), \
+         patch('app.services.transcription_service.enqueue_title_generation'), \
          patch('app.services.transcription_service.file_service.remove_files', return_value=1), \
          patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'):
 
@@ -341,7 +342,7 @@ def test_process_transcription_with_pending_workflow(
     with patch('app.services.transcription_service.get_transcription_client') as mock_get_client, \
          patch('app.services.transcription_service.file_service.get_audio_duration', return_value=(60.0, 1.0)), \
          patch('app.services.transcription_service.transcription_model'), \
-         patch('app.services.transcription_service.generate_title_task'), \
+         patch('app.services.transcription_service.enqueue_title_generation'), \
          patch('app.services.transcription_service.workflow_service.start_workflow') as mock_start_workflow, \
          patch('app.services.transcription_service.get_decrypted_api_key', return_value='fake_api_key'):
 

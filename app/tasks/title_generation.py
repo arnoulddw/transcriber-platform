@@ -2,10 +2,9 @@
 # Defines the background task for generating transcription titles using an LLM.
 
 import logging
-import threading
 import time
 from flask import Flask, current_app # Added current_app
-from typing import Dict, Optional
+from typing import Optional
 
 # Import models
 from app.models import user as user_model
@@ -21,7 +20,12 @@ from app.services import llm_service
 
 # Import exceptions
 from app.services.api_clients.exceptions import (
-    LlmApiError, LlmConfigurationError, LlmGenerationError, LlmSafetyError, LlmRateLimitError
+    LlmApiError,
+    LlmAuthenticationError,
+    LlmConfigurationError,
+    LlmGenerationError,
+    LlmSafetyError,
+    LlmRateLimitError,
 )
 from app.services.user_service import MissingApiKeyError
 
@@ -32,7 +36,6 @@ from limits import parse # Import the parse function from the limits library
 
 # --- Constants ---
 TITLE_GENERATION_RATE_LIMIT = "10 per minute" # Example rate limit
-TITLE_GENERATION_TIMEOUT_SECONDS = 50 # Timeout for the LLM call
 
 # Utils
 from app.utils.title_utils import (
@@ -78,7 +81,12 @@ def _call_gemini_for_title(app: Flask, user_id: int, prompt: str, operation_id: 
 
 
 # --- Background Task ---
-def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None:
+def generate_title_task(
+    app: Flask,
+    transcription_id: str,
+    user_id: int,
+    raise_on_failure: bool = False,
+) -> Optional[str]:
     """
     Background task to generate a title for a completed transcription.
 
@@ -94,6 +102,15 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
     logger.debug(f"{log_prefix} Starting title generation task.", extra=log_extra)
 
     with app.app_context():
+        existing_transcription = transcription_model.get_transcription_by_id(
+            transcription_id,
+            user_id,
+        )
+        if (
+            existing_transcription
+            and existing_transcription.get("title_generation_status") == "success"
+        ):
+            return existing_transcription.get("generated_title")
         if not transcription_model.update_title_generation_status(transcription_id, 'processing'):
             logger.error(f"{log_prefix} Failed to update initial status to 'processing'. Aborting.", extra=log_extra)
             return
@@ -104,6 +121,7 @@ def generate_title_task(app: Flask, transcription_id: str, user_id: int) -> None
     duration = 0.0
     error_reason = "unknown_error"
     error_message = ""
+    retryable_failure = False
 
     try:
         with app.app_context():
@@ -246,58 +264,28 @@ Generated Title:"""
                 transcription_model.update_title_generation_status(transcription_id, 'failed')
                 return
 
-            # The outer task context does not need its pooled connection
-            # while it waits for the provider thread.
+            # Release the setup connection before the remote call. The worker
+            # thread has a bounded slot, so a nested untracked thread is not
+            # needed and could outlive the durable queue claim.
             close_db()
-
-            result_container: Dict[str, str] = {}
-            exception_container: Dict[str, Exception] = {}
-
-            def llm_call_wrapper(
-                flask_app: Flask,
-                current_user_id: int,
-                op_id: int,
-                op_type: str,
-                provider_override: str,
-                model_override: Optional[str],
-            ):
-                with flask_app.app_context():
-                    try:
-                        result_container['title'] = _call_gemini_for_title(flask_app, current_user_id, prompt, op_id, op_type, provider_override, model_override)
-                    except Exception as e:
-                        exception_container['error'] = e
-
-            llm_thread = threading.Thread(
-                target=llm_call_wrapper,
-                args=(
+            try:
+                generated_title = _call_gemini_for_title(
                     app,
                     user_id,
+                    prompt,
                     operation_id,
                     'title_generation',
                     provider_config,
                     model_name,
-                ),
-            )
-            # --- END MODIFIED ---
-            llm_thread.start()
-            llm_thread.join(timeout=TITLE_GENERATION_TIMEOUT_SECONDS)
-
-            if llm_thread.is_alive():
-                error_reason = "timeout"
-                llm_operation_model.update_llm_operation_status(
-                    operation_id, 'error', error=f"Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds."
                 )
-                logger.error(f"{log_prefix} Title generation timed out after {TITLE_GENERATION_TIMEOUT_SECONDS} seconds.", extra=log_extra)
-            elif 'error' in exception_container:
-                llm_error = exception_container['error']
-                llm_operation_model.update_llm_operation_status(operation_id, 'error', error=str(llm_error))
-                raise llm_error
-            elif 'title' in result_container:
-                generated_title = result_container['title']
                 logger.debug(f"{log_prefix} Received title from LLM: '{generated_title}'", extra=log_extra)
-            else:
-                error_reason = "unknown_llm_issue"
-                logger.error(f"{log_prefix} LLM thread finished but no result or exception captured.", extra=log_extra)
+            except Exception as llm_error:
+                llm_operation_model.update_llm_operation_status(
+                    operation_id,
+                    'error',
+                    error=str(llm_error),
+                )
+                raise
 
             if generated_title is not None:
                 duration = time.time() - start_time
@@ -353,6 +341,13 @@ Generated Title:"""
         elif isinstance(llm_err, LlmConfigurationError): error_reason = "llm_config"
         else: error_reason = "llm_api_error"
         error_message = str(llm_err)
+        retryable_failure = isinstance(
+            llm_err,
+            (LlmRateLimitError, LlmGenerationError, LlmApiError),
+        ) and not isinstance(
+            llm_err,
+            (LlmAuthenticationError, LlmConfigurationError, LlmSafetyError),
+        )
         logger.error(f"{log_prefix} Title generation failed due to LLM error ({error_reason}): {error_message}", extra={**log_extra, "duration_ms": int(duration * 1000), "success": False, "reason": error_reason, "error_message": error_message})
         final_status = 'failed'
         with app.app_context():
@@ -370,3 +365,14 @@ Generated Title:"""
              logging.error(f"{log_prefix} CRITICAL: Failed to update status to 'failed' after unexpected error: {db_err}")
 
     logger.debug(f"{log_prefix} Title generation task finished with status: {final_status}", extra=log_extra)
+    if raise_on_failure and final_status == 'failed':
+        if retryable_failure:
+            from app.tasks.background_queue import RetryableBackgroundTaskFailure
+
+            raise RetryableBackgroundTaskFailure(
+                error_message or "Title generation failed."
+            )
+        from app.tasks.background_queue import TerminalBackgroundTaskFailure
+
+        raise TerminalBackgroundTaskFailure(error_message or "Title generation failed.")
+    return generated_title

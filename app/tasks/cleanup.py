@@ -1,45 +1,45 @@
 # app/tasks/cleanup.py
 # Defines the background task for cleaning up old files and purging user history.
 
-import os
 import time
-import logging
-import threading # For potential future use if task logic becomes complex
-from datetime import datetime, timezone
-from typing import Optional, Any # Keep this import for Role type hint
+from typing import Optional
 from app.logging_config import get_logger
 
 # Import necessary services and models
 from app.services import file_service
-# <<< MODIFIED: Import both transcription and transcription_utils >>>
-from app.models import transcription as transcription_model
-from app.models import transcription_utils # Import the new utils file
-# <<< END MODIFIED >>>
-from app.models import user as user_model # Uses MySQL now
+from app.models import transcription_utils
+from app.models import user as user_model
 from app.models import llm_operation as llm_operation_model
-from app.models.role import Role # Import Role for type hint
+from app.models import live_session as live_session_model
+from app.models import background_job as background_job_model
+from app.models.role import Role
 
-# Import Flask type hint
 from flask import Flask
 
-# Import MySQL error class for potential specific checks if needed
 from mysql.connector import Error as MySQLError
 
-# Modify function signature to accept the Flask app object
-def run_cleanup_task(app: Flask) -> None:
+def run_cleanup_task(
+    app: Flask,
+    *,
+    run_once: bool = False,
+) -> None:
     """
-    The main function for the background cleanup task.
+    The cleanup task. In production this runs in a dedicated process rather
+    than inside a web worker.
     Periodically cleans old uploaded files and purges user transcription history based on role limits.
-    This function is intended to run in a separate thread and requires the Flask app instance.
+    The one-shot mode is used by cron and the explicit Flask CLI command.
 
     Args:
         app: The Flask application instance.
     """
     logger = get_logger(__name__, component="Task:Cleanup")
-    initial_wait_seconds = 20
-    logger.debug(f"Cleanup thread started (PID: {os.getpid()}). Waiting {initial_wait_seconds}s for app startup...")
-    time.sleep(initial_wait_seconds)
-    logger.debug("Initial wait complete. Starting periodic cleanup loop.")
+    initial_wait_seconds = 0 if run_once else 20
+    if initial_wait_seconds:
+        logger.debug(
+            f"Cleanup process started. Waiting {initial_wait_seconds}s for app startup..."
+        )
+        time.sleep(initial_wait_seconds)
+        logger.debug("Initial wait complete. Starting periodic cleanup loop.")
 
     sleep_interval_seconds = 6 * 60 * 60
 
@@ -143,11 +143,76 @@ def run_cleanup_task(app: Flask) -> None:
                 except Exception as orphan_err:
                     logger.error(f"Error during orphaned LLM operation cleanup: {orphan_err}", exc_info=True)
 
+                # --- 5. Durable Live Session Retention ---
+                # Keep replay/idempotency state for a bounded period, then
+                # remove terminal and abandoned rows (including stale claims).
+                logger.debug("Running live-session retention cleanup.")
+                try:
+                    live_sessions_deleted = live_session_model.purge_expired_sessions()
+                    if live_sessions_deleted > 0:
+                        logger.info(
+                            "Deleted %s expired live-session record(s).",
+                            live_sessions_deleted,
+                        )
+                except MySQLError as live_session_db_err:
+                    logger.error(
+                        "DB error during live-session retention cleanup: %s",
+                        live_session_db_err,
+                        exc_info=True,
+                    )
+                except Exception as live_session_err:
+                    logger.error(
+                        "Error during live-session retention cleanup: %s",
+                        live_session_err,
+                        exc_info=True,
+                    )
+
+                # --- 6. Durable Background Job Retention ---
+                # Keep terminal rows long enough to diagnose failures, then
+                # remove them so the queue table cannot grow without bound.
+                background_job_retention_days = config.get(
+                    'BACKGROUND_JOB_RETENTION_DAYS', 30
+                )
+                background_job_purge_batch_size = config.get(
+                    'BACKGROUND_JOB_PURGE_BATCH_SIZE', 1000
+                )
+                logger.debug(
+                    "Running terminal background-job cleanup (older than %s days).",
+                    background_job_retention_days,
+                )
+                try:
+                    jobs_deleted = background_job_model.purge_terminal_jobs(
+                        background_job_retention_days,
+                        background_job_purge_batch_size,
+                    )
+                    if jobs_deleted > 0:
+                        logger.info(
+                            "Deleted %s retained terminal background job record(s).",
+                            jobs_deleted,
+                        )
+                except MySQLError as background_job_db_err:
+                    logger.error(
+                        "DB error during terminal background-job cleanup: %s",
+                        background_job_db_err,
+                        exc_info=True,
+                    )
+                except Exception as background_job_err:
+                    logger.error(
+                        "Error during terminal background-job cleanup: %s",
+                        background_job_err,
+                        exc_info=True,
+                    )
+
         except Exception as cycle_err:
             try:
                 logger.error(f"Error during cleanup task cycle: {cycle_err}", exc_info=True)
             except Exception:
                 print(f"CRITICAL [Task:Cleanup]: Logging failed during cleanup task error: {cycle_err}", flush=True)
+            if run_once:
+                raise
+
+        if run_once:
+            return
 
         # --- Sleep until the next cycle ---
         try:
@@ -156,3 +221,8 @@ def run_cleanup_task(app: Flask) -> None:
             print("INFO [Task:Cleanup]: Cleanup cycle finished. Sleeping...", flush=True)
 
         time.sleep(sleep_interval_seconds)
+
+
+def run_cleanup_once(app: Flask) -> None:
+    """Run one cleanup cycle for cron, containers, or manual operation."""
+    run_cleanup_task(app, run_once=True)
