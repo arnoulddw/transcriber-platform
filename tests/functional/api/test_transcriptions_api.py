@@ -248,6 +248,15 @@ def test_delete_transcription_success(app, logged_in_client_with_permissions):
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
     job_id = _create_transcription(app, user.id)
+    with app.app_context():
+        operation_id = llm_operation_model.create_llm_operation(
+            user_id=user.id,
+            provider="GEMINI",
+            operation_type="workflow",
+            input_text="Summarize this",
+            transcription_id=job_id,
+            status="finished",
+        )
 
     response = logged_in_client_with_permissions.delete(f"/api/transcriptions/{job_id}")
 
@@ -257,6 +266,7 @@ def test_delete_transcription_success(app, logged_in_client_with_permissions):
         assert job is not None
         assert job["is_hidden_from_user"] is True
         assert job["hidden_reason"] == "USER_DELETED"
+        assert llm_operation_model.get_llm_operation_by_id(operation_id, user.id) is not None
 
 
 def test_delete_transcription_not_found(logged_in_client_with_permissions):
@@ -270,6 +280,15 @@ def test_restore_transcription_success(app, logged_in_client_with_permissions):
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
     job_id = _create_transcription(app, user.id)
+    with app.app_context():
+        operation_id = llm_operation_model.create_llm_operation(
+            user_id=user.id,
+            provider="GEMINI",
+            operation_type="workflow",
+            input_text="Summarize this",
+            transcription_id=job_id,
+            status="finished",
+        )
 
     delete_response = logged_in_client_with_permissions.delete(
         f"/api/transcriptions/{job_id}"
@@ -286,6 +305,7 @@ def test_restore_transcription_success(app, logged_in_client_with_permissions):
         assert job is not None
         assert job["is_hidden_from_user"] is False
         assert job["hidden_reason"] is None
+        assert llm_operation_model.get_llm_operation_by_id(operation_id, user.id) is not None
 
 
 def test_restore_transcription_already_visible(app, logged_in_client_with_permissions):
@@ -315,8 +335,19 @@ def test_restore_transcription_not_found(logged_in_client_with_permissions):
 def test_clear_transcriptions(app, logged_in_client_with_permissions):
     with app.app_context():
         user = get_user_by_username("testuser_permissions")
-    _create_transcription(app, user.id)
-    _create_transcription(app, user.id)
+    job_ids = [_create_transcription(app, user.id), _create_transcription(app, user.id)]
+    with app.app_context():
+        operation_ids = [
+            llm_operation_model.create_llm_operation(
+                user_id=user.id,
+                provider="GEMINI",
+                operation_type="workflow",
+                input_text="Summarize this",
+                transcription_id=job_id,
+                status="finished",
+            )
+            for job_id in job_ids
+        ]
 
     response = logged_in_client_with_permissions.delete(
         "/api/transcriptions/clear"
@@ -326,6 +357,10 @@ def test_clear_transcriptions(app, logged_in_client_with_permissions):
     with app.app_context():
         transcriptions = transcription_model.get_all_transcriptions(user.id)
         assert transcriptions == []
+        assert all(
+            llm_operation_model.get_llm_operation_by_id(operation_id, user.id) is not None
+            for operation_id in operation_ids
+        )
 
 
 def test_log_download_requires_permission(app, logged_in_client):

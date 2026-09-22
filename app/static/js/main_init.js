@@ -380,13 +380,27 @@ async function checkTranscribeButtonState() {
         if (statusSpan) {
             const isApiKeyError = disableReason.toLowerCase().includes('api key not configured');
             if (!isPermissionError && !isApiKeyError) {
-                let translatedReason = { message: window.escapeHtml(disableReason), iconColorClass: 'text-red-600' };
+                let translatedReason = { message: disableReason, messageText: disableReason, iconColorClass: 'text-red-600' };
                 if (typeof window.translateBackendErrorMessage === 'function') {
                     translatedReason = window.translateBackendErrorMessage(disableReason, 0, 0, '', '');
                 } else {
                     initLogger.warn("translateBackendErrorMessage function not found.");
                 }
-                statusSpan.innerHTML = translatedReason.message;
+                statusSpan.textContent = translatedReason.messageText || translatedReason.message || '';
+                if (translatedReason.action) {
+                    const actionButton = document.createElement('button');
+                    actionButton.type = 'button';
+                    actionButton.dataset.transcriptionErrorAction = translatedReason.action.action;
+                    actionButton.className = 'ml-1 underline font-medium';
+                    actionButton.textContent = translatedReason.action.label;
+                    actionButton.addEventListener('click', event => {
+                        event.preventDefault();
+                        if (typeof window.openApiKeyModal === 'function') {
+                            window.openApiKeyModal(event);
+                        }
+                    });
+                    statusSpan.appendChild(actionButton);
+                }
                 statusSpan.className = `mt-2 text-xs ${translatedReason.iconColorClass || 'text-red-600'} text-center`;
             } else {
                 statusSpan.innerHTML = '';
@@ -450,13 +464,31 @@ function updateApiKeyNotificationVisibility(keyStatus, permissions) {
     if (shouldShow) {
         if (!notificationElement) {
             initLogger.info("Showing API key needed notification.");
-            const guidance = normalizedPermissions.allow_api_key_management === true
-                ? 'Please go to <a href="#" data-transcription-error-action="manage-key" class="underline text-blue-600 hover:text-blue-800">Manage API Keys</a> to use all features.'
-                : 'Contact your administrator to configure the required API key.';
-            window.showNotification(
-                `API key needed. ${guidance}`,
-                'warning', 0, true, 'api-key-notification'
-            );
+            const canManageKeys = normalizedPermissions.allow_api_key_management === true;
+            if (canManageKeys && typeof window.showNotificationWithAction === 'function') {
+                window.showNotificationWithAction(
+                    'API key needed. Add a key to use all features:',
+                    {
+                        label: 'Manage API Keys',
+                        className: 'ml-3 underline font-medium',
+                        onClick: event => {
+                            event.preventDefault();
+                            if (typeof window.openApiKeyModal === 'function') {
+                                window.openApiKeyModal(event);
+                            }
+                        },
+                    },
+                    'warning', 0, true, 'api-key-notification'
+                );
+            } else {
+                const guidance = canManageKeys
+                    ? 'Please go to Manage API Keys to use all features.'
+                    : 'Contact your administrator to configure the required API key.';
+                window.showNotification(
+                    `API key needed. ${guidance}`,
+                    'warning', 0, true, 'api-key-notification'
+                );
+            }
         } else {
             initLogger.debug("API key notification should be shown, but it already exists.");
         }

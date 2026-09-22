@@ -70,7 +70,7 @@ window.handleSaveTemplateWorkflow = async function() { // MODIFIED: Attached to 
 
     } catch (error) {
         window.logger.error(logPrefix, "Error saving template workflow:", error);
-        window.showNotification(`Error: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error: ${error.message}`, 'error', 6000, false);
         saveButton.disabled = false;
         saveButton.innerHTML = originalButtonHtml;
     }
@@ -130,7 +130,7 @@ function handleDeleteUser(userId, username) {
     })
     .catch(error => {
         window.logger.error(logPrefix, `Error deleting user:`, error);
-        window.showNotification(`Error deleting user: ${escapeHtml(error.message)}`, 'error', 5000, false);
+        window.showNotification(`Error deleting user: ${error.message}`, 'error', 5000, false);
         if (deleteButton) {
             deleteButton.disabled = false;
             deleteButton.innerHTML = originalButtonHtml;
@@ -311,7 +311,7 @@ function updateUserRole(userId, newRoleId, roleSelect, roleSpan, originalRoleId)
     })
     .catch(error => {
         window.logger.error(logPrefix, "Error updating role:", error);
-        window.showNotification(`Error: ${escapeHtml(error.message)}`, 'error', 5000, false);
+        window.showNotification(`Error: ${error.message}`, 'error', 5000, false);
         roleSelect.value = originalRoleId;
         roleSelect.classList.add('hidden');
         roleSpan.classList.remove('hidden');

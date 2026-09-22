@@ -30,6 +30,7 @@ def test_gemini_live_model_resolves_to_gemini_and_serves_websocket_session(monke
     fake_client = MagicMock()
     fake_client.auth_tokens.create.return_value.name = "tokens/gemini-ephemeral"
     monkeypatch.setattr(service, "_gemini_client", lambda _api_key: fake_client)
+    monkeypatch.setattr(service.live_session_model, "create_session", MagicMock())
     post = MagicMock()
     monkeypatch.setattr(service.httpx, "post", post)
 

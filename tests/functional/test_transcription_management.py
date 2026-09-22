@@ -172,6 +172,38 @@ class TestTranscriptionManagement:
         assert response.status_code == 202
         mock_submit_transcription_job.assert_called_once()
 
+    def test_diarization_permission_failure_cleans_uploaded_file(
+        self, app, logged_in_client_with_permissions, tmp_path, monkeypatch
+    ):
+        """A rejected post-upload permission check must not leak the temp file."""
+        app.config["TEMP_UPLOADS_DIR"] = str(tmp_path)
+
+        def allow_everything_except_diarization(_user, permission):
+            return permission != "allow_speaker_diarization"
+
+        monkeypatch.setattr(
+            "app.api.transcriptions.check_permission",
+            allow_everything_except_diarization,
+        )
+        monkeypatch.setattr(
+            "app.api.transcriptions.file_service.get_audio_duration",
+            lambda _path: (60.0, 1.0),
+        )
+
+        response = logged_in_client_with_permissions.post(
+            url_for("transcriptions.transcribe_audio"),
+            data={
+                "api_choice": "universal",
+                "language_code": "en",
+                "speaker_diarization": "true",
+                "audio_file": (io.BytesIO(b"test audio data"), SUCCESS_TEST_FILENAME),
+            },
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 403
+        assert list(tmp_path.iterdir()) == []
+
     def test_openrouter_upload_forwards_model_to_job_and_queue(
         self, app, logged_in_client_with_permissions, tmp_path
     ):
@@ -202,7 +234,7 @@ class TestTranscriptionManagement:
         ), patch(
             "app.api.transcriptions.pricing_service.get_price",
             return_value=None,
-        ), patch(
+        ) as mock_pricing, patch(
             "app.api.transcriptions.role_model.reserve_usage_if_allowed",
             return_value=(True, ""),
         ), patch(
@@ -222,6 +254,7 @@ class TestTranscriptionManagement:
             )
 
         assert response.status_code == 202
+        mock_pricing.assert_called_once_with(item_type='transcription', item_key=model_slug)
         mock_create_job.assert_called_once()
         assert mock_create_job.call_args.kwargs["api_used"] == f"openrouter:{model_slug}"
         assert mock_create_job.call_args.kwargs["api_model"] == model_slug

@@ -52,6 +52,8 @@ def clean_db(app):
         cursor.execute("TRUNCATE TABLE user_prompts")
         cursor.execute("TRUNCATE TABLE template_prompts")
         cursor.execute("TRUNCATE TABLE llm_operations")
+        cursor.execute("TRUNCATE TABLE background_jobs")
+        cursor.execute("TRUNCATE TABLE live_transcription_sessions")
         cursor.execute("TRUNCATE TABLE transcriptions")
         cursor.execute("TRUNCATE TABLE user_usage")
         cursor.execute("TRUNCATE TABLE public_api_keys")
@@ -232,7 +234,7 @@ def app():
         # Drop all tables first to ensure clean state
         cursor = get_db().cursor()
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcription_job_leases, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
+        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, background_jobs, live_transcription_sessions, transcription_job_leases, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         get_db().commit()
         
@@ -250,7 +252,7 @@ def app():
         from app.services.admin_metrics_service import invalidate_metrics_cache
         cursor = get_db().cursor()
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, transcription_job_leases, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
+        cursor.execute("DROP TABLE IF EXISTS user_prompts, template_prompts, llm_operations, background_jobs, live_transcription_sessions, transcription_job_leases, transcriptions, user_usage, public_api_keys, user_api_keys, users, roles;")
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         get_db().commit()
         # Clear in-memory caches to prevent bleed into the next test's app instance.

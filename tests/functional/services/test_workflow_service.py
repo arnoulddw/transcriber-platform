@@ -74,15 +74,14 @@ def test_start_workflow_success(app, workflow_user):
         "app.services.workflow_service.llm_operation_model.create_llm_operation",
         return_value=55,
     ) as mock_create, patch(
-        "app.services.workflow_service.threading.Thread"
-    ) as mock_thread, patch(
+        "app.services.workflow_service.enqueue_workflow_job"
+    ) as mock_enqueue, patch(
         "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
-    ), patch(
+    ) as mock_reserve, patch(
         "app.services.workflow_service.check_permission",
         return_value=True,
     ):
-        mock_thread.return_value = MagicMock()
         operation_id = workflow_service.start_workflow(
             workflow_user.id, transcription_id, "Summarize this transcript."
         )
@@ -97,9 +96,13 @@ def test_start_workflow_success(app, workflow_user):
         prompt_id=None,
         status="pending",
         model="gemini-3.0-flash",
+        commit=False,
     )
-    mock_thread.assert_called_once()
-    mock_thread.return_value.start.assert_called_once()
+    mock_reserve.assert_called_once_with(
+        workflow_user.id, workflow_user.role, workflows_to_add=1, commit=False
+    )
+    mock_enqueue.assert_called_once()
+    assert mock_enqueue.call_args.kwargs["commit"] is False
 
 
 def test_start_workflow_uses_saved_prompt(app, workflow_user):
@@ -116,15 +119,14 @@ def test_start_workflow_uses_saved_prompt(app, workflow_user):
         "app.services.workflow_service.llm_operation_model.create_llm_operation",
         return_value=88,
     ) as mock_create, patch(
-        "app.services.workflow_service.threading.Thread"
-    ) as mock_thread, patch(
+        "app.services.workflow_service.enqueue_workflow_job"
+    ) as mock_enqueue, patch(
         "app.services.workflow_service.role_model.reserve_usage_if_allowed",
         return_value=(True, ""),
     ), patch(
         "app.services.workflow_service.check_permission",
         return_value=True,
     ):
-        mock_thread.return_value = MagicMock()
         operation_id = workflow_service.start_workflow(
             workflow_user.id,
             transcription_id,
@@ -136,7 +138,8 @@ def test_start_workflow_uses_saved_prompt(app, workflow_user):
     args, kwargs = mock_create.call_args
     assert kwargs["input_text"] == "Use my saved prompt"
     assert kwargs["prompt_id"] == saved_prompt.id
-    mock_thread.return_value.start.assert_called_once()
+    mock_enqueue.assert_called_once()
+    assert mock_enqueue.call_args.kwargs["commit"] is False
 
 
 def test_start_workflow_invalid_prompt_id(app, workflow_user):

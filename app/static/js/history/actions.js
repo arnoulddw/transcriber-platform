@@ -81,7 +81,7 @@ function handleUndoRestore(transcriptionId, undoData, notification, undoButton, 
         deletedTranscriptionUndoData.delete(transcriptionId);
 
         if (notification) {
-            const messageEl = notification.querySelector('span.flex-grow');
+            const messageEl = notification.querySelector('.alert-content p');
             if (messageEl) {
                 messageEl.textContent = data.message || 'Transcription restored.';
             }
@@ -99,7 +99,7 @@ function handleUndoRestore(transcriptionId, undoData, notification, undoButton, 
             undoButton.textContent = window.i18n?.undo || 'Undo';
         }
         window.logger.error(logPrefix, 'Error restoring transcription during undo:', error);
-        window.showNotification(`Error restoring transcription: ${window.escapeHtml(error?.message || 'Unknown error')}`, 'error', 5000, false);
+        window.showNotification(`Error restoring transcription: ${error?.message || 'Unknown error'}`, 'error', 5000, false);
     });
 }
 
@@ -139,7 +139,7 @@ function handleClearAll() {
         })
         .catch(error => { 
             window.logger.error(historyLogPrefix, 'Error clearing transcriptions:', error); 
-            window.showNotification(`Error clearing history: ${window.escapeHtml(error.message)}`, 'error', 5000, false);
+            window.showNotification(`Error clearing history: ${error.message}`, 'error', 5000, false);
         });
     } else { window.logger.debug(historyLogPrefix, "Clear All cancelled by user."); }
 }
@@ -210,18 +210,26 @@ function deleteTranscription(transcriptionId, transcriptionItemElement) {
             updateHistoryEmptyState();
         });
 
-        const undoButtonHtml = `<button type="button" class="undo-delete-action inline-flex items-center px-3 py-1 ml-3 rounded-md border border-current text-current text-sm font-semibold bg-white/10 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-current transition-colors">${window.i18n?.undo || 'Undo'}</button>`;
-        const message = `${window.escapeHtml(data.message || 'Transcription deleted.')} ${undoButtonHtml}`;
-        const notification = window.showNotification(message, 'success', UNDO_NOTIFICATION_DURATION_MS, false);
+        let undoButton = null;
+        const notification = window.showNotificationWithAction(
+            data.message || 'Transcription deleted.',
+            {
+                label: window.i18n?.undo || 'Undo',
+                className: 'undo-delete-action inline-flex items-center px-3 py-1 ml-3 rounded-md border border-current text-current text-sm font-semibold bg-white/10 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-current transition-colors',
+                onClick: event => {
+                    event.preventDefault();
+                    handleUndoRestore(transcriptionId, undoData, notification, undoButton, logPrefix);
+                },
+            },
+            'success',
+            UNDO_NOTIFICATION_DURATION_MS,
+            false,
+        );
         undoData.notification = notification;
 
         if (notification) {
-            const undoButton = notification.querySelector('.undo-delete-action');
+            undoButton = notification.querySelector('.undo-delete-action');
             if (undoButton) {
-                undoButton.addEventListener('click', event => {
-                    event.preventDefault();
-                    handleUndoRestore(transcriptionId, undoData, notification, undoButton, logPrefix);
-                });
                 undoData.expiryTimer = setTimeout(() => {
                     if (undoButton) {
                         undoButton.disabled = true;
@@ -242,7 +250,7 @@ function deleteTranscription(transcriptionId, transcriptionItemElement) {
     })
     .catch(error => {
         window.logger.error(historyLogPrefix, 'Error deleting transcription:', error);
-        window.showNotification(`Error deleting: ${window.escapeHtml(error?.message || 'Unknown error')}`, 'error', 5000, false);
+        window.showNotification(`Error deleting: ${error?.message || 'Unknown error'}`, 'error', 5000, false);
         if (deleteButton) {
             deleteButton.disabled = false;
             deleteButton.removeAttribute('aria-disabled');
@@ -292,7 +300,7 @@ function togglePin(transcriptionId, transcriptionItemElement) {
             pinButton.classList.remove('opacity-60', 'pointer-events-none', 'cursor-not-allowed');
         }
         window.showNotification(
-            `Error: ${window.escapeHtml(error?.message || 'Unknown error')}`,
+            `Error: ${error?.message || 'Unknown error'}`,
             'error', 5000, false
         );
     });

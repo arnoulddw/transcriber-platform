@@ -117,6 +117,62 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5004/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # Durable transcription, workflow, and title jobs run outside Gunicorn so
+  # web-worker restarts do not lose accepted work.
+  transcriber-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: transcriber-platform-worker
+    command: ["/app/.local/bin/flask", "worker"]
+    env_file:
+      - .env
+    environment:
+      FLASK_APP: app
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+    volumes:
+      - ./app:/app/app
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./runtime:/app/runtime
+    depends_on:
+      mysql:
+        condition: service_healthy
+      transcriber-platform:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Retention runs as one visible process instead of being tied to a Gunicorn
+  # worker. It shares the upload, log, and runtime volumes with the web app.
+  transcriber-cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: transcriber-platform-cleanup
+    command: ["/app/.local/bin/flask", "cleanup-loop"]
+    env_file:
+      - .env
+    environment:
+      FLASK_APP: app
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./runtime:/app/runtime
+    depends_on:
+      mysql:
+        condition: service_healthy
+      transcriber-platform:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

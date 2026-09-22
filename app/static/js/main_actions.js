@@ -198,7 +198,7 @@ async function handleTranscribeSubmit() {
         // If there's a specific error message under the button (e.g., word count), show it.
         // Otherwise, show a generic message. The API key error is now handled by the main banner.
         if (statusText) {
-            window.showNotification(window.escapeHtml(statusText), 'warning', 4000, false);
+            window.showNotification(statusText, 'warning', 4000, false);
         } else {
             // This case now primarily covers the API key missing scenario, where the banner is already visible.
             // We can show a less intrusive, short-lived toast to prompt the user to look at the banner.
@@ -254,7 +254,7 @@ async function handleTranscribeSubmit() {
     jobApiName = window.API_NAME_MAP_FRONTEND[apiSelect.value] || apiSelect.value;
 
     if (typeof window.updateProgressActivity === 'function') {
-        window.updateProgressActivity('cloud_upload', `Uploading audio for ${window.escapeHtml(jobApiName)}...`);
+        window.updateProgressActivity('cloud_upload', `Uploading audio for ${jobApiName}...`);
     } else {
         actionsLogger.error("updateProgressActivity function not found.");
     }
@@ -315,12 +315,12 @@ async function handleTranscribeSubmit() {
         const errorCode = error.cause?.code;
 
         if (errorCode === 'SIZE_LIMIT_EXCEEDED' || errorCode === 'COUNT_LIMIT_EXCEEDED' || errorCode === 'TIME_LIMIT_EXCEEDED') {
-            window.showNotification(window.escapeHtml(errorMessage), 'error', 6000, true);
+            window.showNotification(errorMessage, 'error', 6000, true);
         } else if (errorCode !== 'PERMISSION_DENIED') {
-            window.showNotification(`Error: ${window.escapeHtml(errorMessage)}`, 'error', 8000, false);
+            window.showNotification(`Error: ${errorMessage}`, 'error', 8000, false);
         }
 
-        let translatedError = { message: `Error: ${window.escapeHtml(errorMessage)}`, icon: 'error', iconColorClass: 'text-red-600' };
+        let translatedError = { message: `Error: ${errorMessage}`, messageText: `Error: ${errorMessage}`, icon: 'error', iconColorClass: 'text-red-600' };
         if (typeof window.renderActionableError === 'function') {
             translatedError = window.renderActionableError(errorMessage, {
                 status: 'error',
@@ -333,7 +333,7 @@ async function handleTranscribeSubmit() {
             actionsLogger.warn("Error presentation helpers not found.");
         }
         if (typeof window.updateProgressActivity === 'function') {
-             window.updateProgressActivity(translatedError.icon, translatedError.message, translatedError.iconColorClass);
+             window.updateProgressActivity(translatedError.icon, translatedError, translatedError.iconColorClass);
         }
 
         if (typeof window.setJobFinishedOrErrored === 'function') {
@@ -439,7 +439,7 @@ async function handleStopTranscription() {
             let errorMsg = `Failed to request cancellation (Status: ${response.status})`;
             try { const errData = await response.json(); errorMsg = errData.error || errorMsg; } catch (e) {}
             stopLogger.error("Cancellation request failed.", { jobId: jobIdToCancel, error: errorMsg });
-            window.showNotification(`Error: ${window.escapeHtml(errorMsg)}`, 'error', 5000, false);
+            window.showNotification(`Error: ${errorMsg}`, 'error', 5000, false);
             stopBtn.disabled = false;
             stopBtn.innerHTML = 'STOP <i class="material-icons right">cancel</i>';
         }

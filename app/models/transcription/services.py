@@ -193,13 +193,14 @@ def finalize_job_success(
     transcription_text: str,
     detected_language: str,
     has_transcription_warning: bool = False,
-) -> None:
+) -> bool:
     """
     Updates a job record upon successful completion. Sets status to 'finished',
     saves the transcription text and detected language, and clears any previous error message.
     Also adds a success message to the progress log.
     """
     logger = get_logger(__name__, job_id=job_id, component="DB:Job")
+    success = False
 
     try:
         update_job_progress(job_id, "Transcription successful and saved.")
@@ -230,6 +231,7 @@ def finalize_job_success(
         get_db().commit()
         if cursor.rowcount > 0:
             logger.info("Finalized job successfully in DB.")
+            success = True
         else:
              logger.warning("Attempted to finalize non-existent job.")
     except MySQLError as err:
@@ -242,6 +244,7 @@ def finalize_job_success(
     finally:
         # The cursor is managed by the application context, so we don't close it here.
         pass
+    return success
 
 
 def update_title_generation_status(transcription_id: str, status: str) -> bool:

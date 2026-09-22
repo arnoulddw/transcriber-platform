@@ -673,8 +673,14 @@ def reserve_usage_if_allowed(
     minutes_to_add: float = 0.0,
     workflows_to_add: int = 0,
     live_minutes_to_add: float = 0.0,
+    commit: bool = True,
 ) -> Tuple[bool, str]:
-    """Atomically check role quotas and reserve usage under a per-user usage lock."""
+    """Atomically check role quotas and reserve usage under a per-user usage lock.
+
+    By default this function owns its transaction for existing callers. Callers
+    that need to combine the reservation with another write can pass
+    ``commit=False`` and commit or roll back the shared connection themselves.
+    """
     now = datetime.now(timezone.utc)
     day_start = now.date()
     week_start = day_start - timedelta(days=day_start.weekday())
@@ -738,7 +744,8 @@ def reserve_usage_if_allowed(
             (role.limit_monthly_live_minutes, float(usage.get("monthly_live_minutes") or 0) + live_minutes_to_add),
         )
         if any(limit > 0 and projected > limit for limit, projected in checks):
-            connection.rollback()
+            if commit:
+                connection.rollback()
             return False, "You have reached your fair use limit."
 
         cursor.execute(
@@ -753,10 +760,12 @@ def reserve_usage_if_allowed(
             """,
             (user_id, day_start, cost_to_add, minutes_to_add, workflows_to_add, live_minutes_to_add),
         )
-        connection.commit()
+        if commit:
+            connection.commit()
         return True, "Usage reserved."
     except Exception as exc:
-        connection.rollback()
+        if commit:
+            connection.rollback()
         logging.exception("[DB:Usage:Reserve:User:%s] Atomic usage reservation failed.", user_id)
         raise UsageReservationError("Unable to verify usage limits right now.") from exc
     finally:

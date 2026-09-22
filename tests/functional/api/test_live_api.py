@@ -169,3 +169,21 @@ def test_live_stop_endpoint_hangs_up_remote_session(
     assert response.status_code == 200
     assert response.get_json() == {"stopped": True}
     assert hangup.call_args.args[1] == "signed-token"
+
+
+def test_live_stop_endpoint_maps_missing_api_key_to_forbidden(
+    logged_in_client_with_permissions,
+):
+    from app.services.user_service import MissingApiKeyError
+
+    with patch(
+        "app.api.live.live_transcription_service.hangup_session",
+        side_effect=MissingApiKeyError("OpenAI API key is not configured."),
+    ):
+        response = logged_in_client_with_permissions.post(
+            "/api/live/stop",
+            json={"session_token": "signed-token"},
+        )
+
+    assert response.status_code == 403
+    assert response.get_json() == {"error": "OpenAI API key is not configured."}
