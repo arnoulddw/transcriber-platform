@@ -2,7 +2,7 @@
 # Defines the Docker image build process
 
 # Use an official Python runtime as base image.
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
