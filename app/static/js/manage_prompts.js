@@ -358,10 +358,10 @@ async function loadUserPrompts() {
     } catch (error) {
         window.logger.error(logPrefix, 'Error loading user prompts:', error);
         promptsList.innerHTML = ''; // Clear list on error
-        placeholder.textContent = `Error loading workflows: ${escapeHtml(error.message)}`;
+        placeholder.textContent = `Error loading workflows: ${error.message}`;
         promptsList.appendChild(placeholder); // Show error in placeholder
         placeholder.style.display = 'block';
-        window.showNotification(`Error loading workflows: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error loading workflows: ${error.message}`, 'error', 6000, false);
     }
 }
 window.loadUserPrompts = loadUserPrompts;
@@ -493,7 +493,7 @@ async function handleAddPrompt(event) {
         }
     } catch (error) {
         window.logger.error(logPrefix, "Error adding workflow:", error);
-        window.showNotification(`Error: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error: ${error.message}`, 'error', 6000, false);
     } finally {
         submitButton.disabled = false;
         submitButton.innerHTML = originalButtonHtml;
@@ -607,7 +607,7 @@ async function handleSaveEditPrompt(event) {
         loadUserPrompts();
     } catch (error) {
         window.logger.error(logPrefix, "Error updating workflow:", error);
-        window.showNotification(`Error: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error: ${error.message}`, 'error', 6000, false);
     } finally {
         saveButton.disabled = false;
         saveButton.innerHTML = originalButtonHtml;
@@ -651,7 +651,7 @@ async function handleDeletePrompt(promptId, promptTitle, listItemElement) {
         }
     } catch (error) {
         window.logger.error(logPrefix, "Error deleting workflow:", error);
-        window.showNotification(`Error: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error: ${error.message}`, 'error', 6000, false);
         if (deleteButton) deleteButton.disabled = false;
     }
 }

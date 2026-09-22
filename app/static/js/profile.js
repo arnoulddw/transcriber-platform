@@ -313,7 +313,7 @@ async function loadProfileData() {
 
     } catch (error) {
         window.logger.error(profileLogPrefix, 'Error fetching profile data:', error);
-        window.showNotification(`Error loading profile: ${escapeHtmlProfile(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error loading profile: ${error.message}`, 'error', 6000, false);
     }
 }
 
@@ -385,7 +385,7 @@ async function handleProfileSave(event) {
         }
     } catch (error) {
         window.logger.error(logPrefix, 'Error saving profile:', error);
-        window.showNotification(`Error saving profile: ${escapeHtmlProfile(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error saving profile: ${error.message}`, 'error', 6000, false);
         displayProfileErrors({ general: error.message });
     } finally {
         if (submitButton) {
@@ -453,7 +453,7 @@ async function handlePasswordChange(event) {
         }
     } catch (error) {
         window.logger.error(logPrefix, 'Error changing password:', error);
-        window.showNotification(`Error changing password: ${escapeHtmlProfile(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error changing password: ${error.message}`, 'error', 6000, false);
         displayPasswordErrors({ general: error.message });
     } finally {
         submitButton.disabled = false;

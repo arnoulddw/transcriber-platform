@@ -112,8 +112,7 @@ async function _handleDeleteWorkflowResult(transcriptionId, transcriptionItem) {
     if (contentContainer) contentContainer.classList.remove("has-active-workflow");
   } catch (error) {
     window.logger.error(delLog, "Error deleting workflow result:", error);
-    const escapedError = typeof window.escapeHtml === 'function' ? window.escapeHtml(error.message) : error.message;
-    window.Workflow.showToast(`Error: ${escapedError}`, "error");
+    window.Workflow.showToast(`Error: ${error.message}`, "error");
     if (deleteButton) deleteButton.disabled = false;
   }
 }
@@ -149,8 +148,7 @@ async function _handleSaveWorkflowEdit(operationId, workflowPanel) {
     _handleCancelWorkflowEdit(workflowPanel, newResult); // Call local version
   } catch (error) {
     window.logger.error(saveLog, "Error saving workflow edit:", error);
-    const escapedError = typeof window.escapeHtml === 'function' ? window.escapeHtml(error.message) : error.message;
-    window.Workflow.showToast(`Error: ${escapedError}`, "error");
+    window.Workflow.showToast(`Error: ${error.message}`, "error");
     saveButton.disabled = false;
     saveButton.innerHTML = '<i class="material-icons text-base">save</i>';
   }

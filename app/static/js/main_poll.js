@@ -66,9 +66,8 @@ function formatSecondsForDisplay(seconds) {
 
 /**
  * Updates the progress activity display (icon and message).
- * Allows HTML content in the message for links (e.g., API key modal link).
  * @param {string} icon - Material Icons name (e.g., 'hourglass_empty', 'check_circle').
- * @param {string} message - The message text (can include HTML).
+ * @param {string|object} message - Plain text or a structured actionable error.
  * @param {string} [iconColorClass=''] - Optional Tailwind color class for the icon (e.g., 'text-green-600').
  */
 function updateProgressActivity(icon, message, iconColorClass = '') {
@@ -84,8 +83,33 @@ function updateProgressActivity(icon, message, iconColorClass = '') {
             progressContainer.classList.toggle('bg-blue-50', !isError);
             progressContainer.classList.toggle('border-blue-200', !isError);
         }
-        // Use innerHTML to allow the structured error content, but escape the icon.
-        progressElement.innerHTML = `<i class="material-icons tiny ${iconColorClass} mr-3 mt-0.5 shrink-0">${escapeHtml(icon)}</i><div class="min-w-0 flex-1">${message}</div>`;
+
+        const iconElement = document.createElement('i');
+        iconElement.className = `material-icons tiny ${iconColorClass} mr-3 mt-0.5 shrink-0`;
+        iconElement.textContent = icon === undefined || icon === null ? '' : String(icon);
+
+        const messageElement = document.createElement('div');
+        messageElement.className = 'min-w-0 flex-1';
+        if (message && typeof message === 'object' && message.kind === 'actionable-error') {
+            renderActionableErrorContent(message, messageElement);
+        } else {
+            const text = message && typeof message === 'object'
+                ? (message.messageText ?? message.message ?? '')
+                : message;
+            messageElement.textContent = text === undefined || text === null ? '' : String(text);
+            if (message && typeof message === 'object' && message.action) {
+                const actionButton = document.createElement('button');
+                actionButton.type = 'button';
+                actionButton.dataset.transcriptionErrorAction = message.action.action;
+                actionButton.className = 'ml-2 underline font-medium';
+                actionButton.textContent = message.action.label;
+                messageElement.appendChild(actionButton);
+            }
+        }
+
+        progressElement.textContent = '';
+        progressElement.appendChild(iconElement);
+        progressElement.appendChild(messageElement);
     }
 }
 
@@ -100,11 +124,15 @@ function updateProgressActivity(icon, message, iconColorClass = '') {
 function translateBackendErrorMessage(backendMessage) {
     const lowerMessage = backendMessage ? backendMessage.toLowerCase() : "";
     let message = backendMessage || "An unknown error occurred."; // Default message
+    let messageText = null;
+    let action = null;
     let icon = 'error'; // Default error icon
     let iconColorClass = 'text-red-600'; // Default error color (Tailwind)
-    const keyAction = window.USER_PERMISSIONS?.allow_api_key_management
+    const canManageKeys = window.USER_PERMISSIONS?.allow_api_key_management;
+    const keyAction = canManageKeys
         ? '<a href="#!" data-transcription-error-action="manage-key" class="text-primary hover:text-primary-dark underline">Manage API Keys</a>'
         : 'contact your administrator';
+    const keyActionText = canManageKeys ? 'Manage API Keys' : 'contact your administrator';
 
     if (lowerMessage.startsWith('error:')) {
         const errorContent = backendMessage.substring(6).trim();
@@ -112,6 +140,8 @@ function translateBackendErrorMessage(backendMessage) {
 
         if (lowerErrorContent.includes('no api keys configured')) {
             message = `No API Keys configured. Please ${keyAction}.`;
+            messageText = `No API Keys configured. Please ${keyActionText}.`;
+            action = canManageKeys ? { action: 'manage-key', label: 'Manage API Keys' } : null;
             icon = 'vpn_key_off';
         } else if (lowerErrorContent.includes('api key not configured')) {
             let serviceNameGuess = 'The required';
@@ -119,23 +149,42 @@ function translateBackendErrorMessage(backendMessage) {
             else if (lowerErrorContent.includes('assemblyai')) serviceNameGuess = 'AssemblyAI';
             else if (lowerErrorContent.includes('gemini')) serviceNameGuess = 'Gemini';
             message = `${serviceNameGuess} API key is not configured. Please ${keyAction}.`;
+            messageText = `${serviceNameGuess} API key is not configured. Please ${keyActionText}.`;
+            action = canManageKeys ? { action: 'manage-key', label: 'Manage API Keys' } : null;
             icon = 'vpn_key_off';
         } else if (lowerErrorContent.includes('permission denied')) {
             const permissionMatch = errorContent.match(/Permission denied(?::\s*(.*))?/i);
-            message = permissionMatch && permissionMatch[1] ? `Permission denied: ${escapeHtml(permissionMatch[1].trim())}` : "Permission denied to perform this action.";
+            const permissionDetail = permissionMatch && permissionMatch[1]
+                ? permissionMatch[1].trim()
+                : '';
+            messageText = permissionDetail
+                ? `Permission denied: ${permissionDetail}`
+                : "Permission denied to perform this action.";
+            message = permissionDetail
+                ? `Permission denied: ${escapeHtml(permissionDetail)}`
+                : messageText;
             icon = 'lock_outline';
         } else if (lowerErrorContent.includes('usage limit exceeded')) {
             const limitMatch = errorContent.match(/Usage limit exceeded(?::\s*(.*))?/i);
-            message = limitMatch && limitMatch[1] ? `Usage limit exceeded: ${escapeHtml(limitMatch[1].trim())}` : "Usage limit exceeded.";
+            const limitDetail = limitMatch && limitMatch[1] ? limitMatch[1].trim() : '';
+            messageText = limitDetail
+                ? `Usage limit exceeded: ${limitDetail}`
+                : "Usage limit exceeded.";
+            message = limitDetail
+                ? `Usage limit exceeded: ${escapeHtml(limitDetail)}`
+                : messageText;
             icon = 'block';
         } else if (lowerErrorContent.includes('api quota exceeded')) {
             const providerMatch = errorContent.match(/^(.*?)\s+API quota exceeded/i);
-            const providerName = providerMatch ? escapeHtml(providerMatch[1]) : 'The API provider';
-            message = `${providerName} quota exceeded. Please check your plan/billing with the provider.`;
+            const providerName = providerMatch ? providerMatch[1] : 'The API provider';
+            messageText = `${providerName} quota exceeded. Please check your plan/billing with the provider.`;
+            message = `${escapeHtml(providerName)} quota exceeded. Please check your plan/billing with the provider.`;
             icon = 'account_balance_wallet';
             iconColorClass = 'text-orange-500'; // Tailwind orange
         } else if (lowerErrorContent.includes('authentication failed') || lowerErrorContent.includes('invalid api key') || lowerErrorContent.includes('incorrect api key')) {
             message = `The provider rejected your API key. Please ${keyAction}.`;
+            messageText = `The provider rejected your API key. Please ${keyActionText}.`;
+            action = canManageKeys ? { action: 'manage-key', label: 'Manage API Keys' } : null;
             icon = 'error';
         } else if (lowerErrorContent.includes('rate limit exceeded') || lowerErrorContent.includes('rate limit hit')) {
              message = "API rate limit hit. Please wait and try again later.";
@@ -174,6 +223,7 @@ function translateBackendErrorMessage(backendMessage) {
             message = "Context Prompt is too long (max 120 words).";
             icon = 'warning'; iconColorClass = 'text-red-600';
         } else { 
+            messageText = `An unexpected error occurred: ${errorContent}`;
             message = `An unexpected error occurred: ${escapeHtml(errorContent)}`;
             window.logger.warn(mainPollLogPrefix, "Unhandled backend error message:", backendMessage);
         }
@@ -187,11 +237,12 @@ function translateBackendErrorMessage(backendMessage) {
         icon = 'check_circle'; iconColorClass = 'text-green-600'; // Tailwind green
     }
     else {
-        message = backendMessage;
+        messageText = backendMessage || "An unknown error occurred.";
+        message = escapeHtml(messageText);
         icon = 'info_outline'; iconColorClass = 'text-blue-600'; // Tailwind info blue
     }
 
-    return { message, icon, iconColorClass };
+    return { message, messageText: messageText ?? message, action, icon, iconColorClass };
 }
 window.translateBackendErrorMessage = translateBackendErrorMessage;
 
@@ -265,31 +316,81 @@ function renderActionableError(errorMessage, jobData = {}) {
         captured_at: new Date().toISOString(),
     };
 
-    const actionButton = (action, label, primary = false) => (
-        `<button type="button" data-transcription-error-action="${action}" class="inline-flex min-h-[40px] w-full sm:w-auto items-center justify-center rounded-md border px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 ${primary ? 'border-red-700 bg-red-700 text-white hover:bg-red-800 focus:ring-red-600' : 'border-red-300 bg-white text-red-800 hover:bg-red-100 focus:ring-red-500'}">${label}</button>`
-    );
     const actions = [];
     if (diagnosticCode === 'INVALID_AUDIO') {
-        actions.push(actionButton('select-file', 'Choose another file', true));
-        actions.push(actionButton('provider', 'Change provider'));
+        actions.push({ action: 'select-file', label: 'Choose another file', primary: true });
+        actions.push({ action: 'provider', label: 'Change provider', primary: false });
     } else {
         if (document.getElementById('audioFile')?.files?.length) {
-            actions.push(actionButton('retry', 'Retry', true));
+            actions.push({ action: 'retry', label: 'Retry', primary: true });
         }
-        actions.push(actionButton('provider', 'Change provider'));
+        actions.push({ action: 'provider', label: 'Change provider', primary: false });
     }
     if (['MISSING_API_KEY', 'PROVIDER_AUTH'].includes(diagnosticCode)
         && window.USER_PERMISSIONS?.allow_api_key_management
         && typeof window.openApiKeyModal === 'function') {
-        actions.push(actionButton('manage-key', 'Update API key', actions.length === 0));
+        actions.push({ action: 'manage-key', label: 'Update API key', primary: actions.length === 0 });
     }
-    actions.push(actionButton('dismiss', 'Dismiss'));
+    actions.push({ action: 'dismiss', label: 'Dismiss', primary: false });
 
     return {
+        kind: 'actionable-error',
         icon: translated.icon,
         iconColorClass: translated.iconColorClass,
-        message: `<div class="w-full text-left"><div class="font-medium">${translated.message}</div><div class="mt-1 text-xs text-red-700">Code: ${escapeHtml(diagnosticCode)} · Reference: ${escapeHtml(reference)}</div><div class="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">${actions.join('')}</div><details class="mt-3 text-xs"><summary class="cursor-pointer font-medium">Technical details</summary><code class="mt-2 block break-words rounded bg-white/70 p-2">${escapeHtml(technicalMessage)}</code><button type="button" data-transcription-error-action="diagnostics" class="mt-2 min-h-[36px] underline font-medium">Download diagnostics</button></details></div>`,
+        message: translated.messageText,
+        messageText: translated.messageText,
+        diagnosticCode,
+        reference,
+        technicalMessage,
+        actions,
     };
+}
+
+function renderActionableErrorContent(error, container) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'w-full text-left';
+
+    const headline = document.createElement('div');
+    headline.className = 'font-medium';
+    headline.textContent = error.messageText || '';
+    wrapper.appendChild(headline);
+
+    const reference = document.createElement('div');
+    reference.className = 'mt-1 text-xs text-red-700';
+    reference.textContent = `Code: ${error.diagnosticCode || ''} · Reference: ${error.reference || ''}`;
+    wrapper.appendChild(reference);
+
+    const actions = document.createElement('div');
+    actions.className = 'mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap';
+    (error.actions || []).forEach(action => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.transcriptionErrorAction = action.action;
+        button.className = `inline-flex min-h-[40px] w-full sm:w-auto items-center justify-center rounded-md border px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 ${action.primary ? 'border-red-700 bg-red-700 text-white hover:bg-red-800 focus:ring-red-600' : 'border-red-300 bg-white text-red-800 hover:bg-red-100 focus:ring-red-500'}`;
+        button.textContent = action.label;
+        actions.appendChild(button);
+    });
+    wrapper.appendChild(actions);
+
+    const details = document.createElement('details');
+    details.className = 'mt-3 text-xs';
+    const summary = document.createElement('summary');
+    summary.className = 'cursor-pointer font-medium';
+    summary.textContent = 'Technical details';
+    details.appendChild(summary);
+    const technicalDetails = document.createElement('code');
+    technicalDetails.className = 'mt-2 block break-words rounded bg-white/70 p-2';
+    technicalDetails.textContent = error.technicalMessage || '';
+    details.appendChild(technicalDetails);
+    const diagnosticsButton = document.createElement('button');
+    diagnosticsButton.type = 'button';
+    diagnosticsButton.dataset.transcriptionErrorAction = 'diagnostics';
+    diagnosticsButton.className = 'mt-2 min-h-[36px] underline font-medium';
+    diagnosticsButton.textContent = 'Download diagnostics';
+    details.appendChild(diagnosticsButton);
+    wrapper.appendChild(details);
+
+    container.appendChild(wrapper);
 }
 
 window.downloadTranscriptionDiagnostics = downloadTranscriptionDiagnostics;
@@ -508,17 +609,17 @@ function pollProgress(jobId, initialJobData = null) {
             } else if (currentPhase === 'waiting') {
                 activityIcon = 'hourglass_empty'; activityMessage = 'Waiting for an available transcription slot...'; activityColor = 'text-blue-600';
             } else if (currentPhase === 'upload') {
-                activityIcon = 'cloud_upload'; activityMessage = `Uploading audio for ${escapeHtml(currentJobApiName)}...`;
+                activityIcon = 'cloud_upload'; activityMessage = `Uploading audio for ${currentJobApiName}...`;
             } else if (currentPhase === 'processing') {
-                activityIcon = 'sync'; activityMessage = `Processing audio for ${escapeHtml(currentJobApiName)}...`;
+                activityIcon = 'sync'; activityMessage = `Processing audio for ${currentJobApiName}...`;
             } else if (currentPhase === 'transcribing') {
-                activityIcon = 'record_voice_over'; activityMessage = `Transcribing with ${escapeHtml(currentJobApiName)}...`;
+                activityIcon = 'record_voice_over'; activityMessage = `Transcribing with ${currentJobApiName}...`;
             } else if (currentPhase === 'finished') {
                 activityIcon = 'check_circle'; activityMessage = 'Transcription completed successfully!'; activityColor = 'text-green-600';
             } else if (currentPhase === 'error' || currentPhase === 'interrupted') {
                 const backendError = jobData.error_message || "An unknown error occurred.";
                 const actionableError = renderActionableError(backendError, jobData);
-                activityIcon = actionableError.icon; activityMessage = actionableError.message; activityColor = actionableError.iconColorClass;
+                activityIcon = actionableError.icon; activityMessage = actionableError; activityColor = actionableError.iconColorClass;
             } else if (currentPhase === 'cancelled') {
                 activityIcon = 'cancel'; activityMessage = 'Transcription cancelled by user.'; activityColor = 'text-orange-500';
             }
@@ -611,7 +712,7 @@ function pollProgress(jobId, initialJobData = null) {
             if (error.message.includes('Authentication required') || error.message.includes('Access denied') || error.message.includes('Job not found') || errorCount >= maxErrors) {
                 jobIsFinishedOrErrored = true;
 
-                let userMessage = `Error polling status: ${escapeHtml(error.message)}`;
+                let userMessage = `Error polling status: ${error.message}`;
                 if (errorCount >= maxErrors) userMessage = "Connection lost while checking status. Please check history later.";
                 const toastType = error.message.includes('Authentication required') ? 'warning' : 'error';
 
@@ -620,7 +721,7 @@ function pollProgress(jobId, initialJobData = null) {
 
                 if (!isAlreadyShowingFinalState) {
                     const translatedError = translateBackendErrorMessage(`ERROR: ${userMessage}`);
-                    updateProgressActivity(translatedError.icon, `Error: ${translatedError.message}`, translatedError.iconColorClass);
+                    updateProgressActivity(translatedError.icon, `Error: ${translatedError.messageText}`, translatedError.iconColorClass);
                 } else {
                     window.logger.warn(mainPollLogPrefix, "Polling failed, but job already reached final state. Not updating activity message.");
                 }
@@ -712,7 +813,7 @@ async function resumeActiveTranscription() {
                 ? 'Cancellation requested. Waiting for process to stop...'
                 : job.status === 'pending'
                 ? 'Waiting for an available transcription slot...'
-                : `Reconnected to transcription of ${escapeHtml(job.filename || 'audio')}...`,
+                : `Reconnected to transcription of ${job.filename || 'audio'}...`,
             job.status === 'cancelling' ? 'text-orange-500' : 'text-blue-600'
         );
         window.logger.info(mainPollLogPrefix, `Reconnected to active transcription ${job.job_id}.`);
@@ -848,3 +949,12 @@ function hasMeaningfulContent(value) {
     return true;
 }
 window.hasMeaningfulContent = hasMeaningfulContent;
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        updateProgressActivity,
+        translateBackendErrorMessage,
+        renderActionableError,
+        renderActionableErrorContent,
+    };
+}

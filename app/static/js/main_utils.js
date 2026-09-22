@@ -154,7 +154,7 @@ window.escapeHtml = escapeHtml;
 
 /**
  * Displays a persistent notification message at the top of the page using Tailwind CSS.
- * @param {string} message - The message text (can include HTML).
+ * @param {string} message - The message text.
  * @param {string} [type='info'] - Type of notification ('error', 'info', 'warning', 'success'). Determines styling.
  * @param {number} [duration] - Duration in ms before auto-dismissal. 0 for no auto-dismiss.
  * @param {boolean} [persistent] - If true, message doesn't dismiss on click (unless a close button is added).
@@ -205,7 +205,7 @@ function showNotification(message, type = 'info', duration, persistent, id = nul
     const messageElement = document.createElement('div');
     messageElement.className = 'alert-content';
     const bodyElement = document.createElement('p');
-    bodyElement.innerHTML = (message === undefined || message === null) ? '' : message; // Allow HTML in message
+    bodyElement.textContent = (message === undefined || message === null) ? '' : String(message);
     messageElement.appendChild(bodyElement);
 
     notificationDiv.appendChild(iconWrapper);
@@ -217,7 +217,10 @@ function showNotification(message, type = 'info', duration, persistent, id = nul
         closeButton.type = 'button';
         closeButton.className = 'ml-auto -mr-1 flex-shrink-0 self-center p-1 rounded-md hover:bg-black hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-white text-current';
         closeButton.setAttribute('aria-label', 'Close notification');
-        closeButton.innerHTML = '<i class="material-icons text-base">close</i>';
+        const closeIcon = document.createElement('i');
+        closeIcon.className = 'material-icons text-base';
+        closeIcon.textContent = 'close';
+        closeButton.appendChild(closeIcon);
         closeButton.addEventListener('click', () => dismissNotification(notificationDiv));
         notificationDiv.appendChild(closeButton);
     }
@@ -238,6 +241,40 @@ function showNotification(message, type = 'info', duration, persistent, id = nul
     return notificationDiv;
 }
 window.showNotification = showNotification; // Expose globally
+
+/**
+ * Displays a text notification with one structured action button.
+ *
+ * This is intentionally separate from showNotification so ordinary messages
+ * can never be interpreted as markup.
+ * @param {string} message - The message text.
+ * @param {{label: string, onClick: function, className?: string}} action - Action definition.
+ * @param {string} [type='info'] - Notification type.
+ * @param {number} [duration] - Duration in ms before auto-dismissal.
+ * @param {boolean} [persistent] - Whether the notification is persistent.
+ * @param {string|null} [id=null] - Optional unique ID for the notification element.
+ * @returns {HTMLElement|null} The created notification element or null.
+ */
+function showNotificationWithAction(message, action, type = 'info', duration, persistent, id = null) {
+    const notification = showNotification(message, type, duration, persistent, id);
+    if (!notification || !action || typeof action.onClick !== 'function') {
+        return notification;
+    }
+
+    const messageElement = notification.querySelector('.alert-content');
+    if (!messageElement) return notification;
+
+    const actionButton = document.createElement('button');
+    actionButton.type = 'button';
+    actionButton.className = action.className || 'ml-3';
+    actionButton.textContent = action.label === undefined || action.label === null
+        ? ''
+        : String(action.label);
+    actionButton.addEventListener('click', event => action.onClick(event, notification, actionButton));
+    messageElement.appendChild(actionButton);
+    return notification;
+}
+window.showNotificationWithAction = showNotificationWithAction;
 
 function readPersistedNotifications() {
     if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') return [];
@@ -503,7 +540,7 @@ window.renderMarkdownSafe = renderMarkdownSafe;
 
 // Node test hook (same pattern as progress_timeline.js).
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { renderMarkdownSafe };
+    module.exports = { renderMarkdownSafe, showNotification, showNotificationWithAction };
 }
 
 mainUtilsLogger.info("Utilities ready.");

@@ -489,7 +489,7 @@ function handleGeneratePublicApiKey(event) {
     })
     .catch(error => {
         window.logger.error(userSettingsLogPrefix, 'Error generating public API key:', error);
-        window.showNotification(`Error generating API key: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error generating API key: ${error.message}`, 'error', 6000, false);
     })
     .finally(() => {
         submitButton.disabled = false;
@@ -533,7 +533,7 @@ function handleRevokePublicApiKey(button) {
     })
     .catch(error => {
         window.logger.error(userSettingsLogPrefix, 'Error revoking public API key:', error);
-        window.showNotification(`Error revoking API key: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error revoking API key: ${error.message}`, 'error', 6000, false);
     })
     .finally(() => {
         button.disabled = false;
@@ -661,7 +661,7 @@ function fetchApiKeyStatus() {
     })
     .catch(error => {
         window.logger.error(userSettingsLogPrefix, 'Error fetching API key status:', error);
-        window.showNotification(`Error fetching key status: ${escapeHtml(error.message)}`, 'error', 6000, false);
+        window.showNotification(`Error fetching key status: ${error.message}`, 'error', 6000, false);
         Object.entries(providerPermissions).forEach(([service, allowed]) => {
             if (allowed) renderProviderKeyRows(service, []);
         });
@@ -796,7 +796,7 @@ function handleApiKeySave(event) {
     .catch(error => {
         window.logger.error(logPrefix, 'Error saving API key:', error);
         if (!error.message.includes("fetching key status")) {
-            window.showNotification(`Error saving key: ${escapeHtml(error.message)}`, 'error', 6000, false);
+            window.showNotification(`Error saving key: ${error.message}`, 'error', 6000, false);
         }
         if (error.message.includes('Authentication required')) {
             closeApiKeyModalDialog();
@@ -887,7 +887,7 @@ function handleApiKeyDelete(button) {
     .catch(error => {
         window.logger.error(logPrefix, `Error deleting API key:`, error);
         if (!error.message.includes("fetching key status")) {
-             window.showNotification(`Error deleting key: ${escapeHtml(error.message)}`, 'error', 6000, false);
+             window.showNotification(`Error deleting key: ${error.message}`, 'error', 6000, false);
         }
         if (error.message.includes('Authentication required')) {
             closeApiKeyModalDialog(); // Close the new modal

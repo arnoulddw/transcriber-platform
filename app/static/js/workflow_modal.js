@@ -432,8 +432,7 @@ async function _handleSubmitWorkflow() {
         }
     } catch (error) {
         window.logger.error(submitLog, "Error starting workflow:", error);
-        const escapedError = typeof window.escapeHtml === 'function' ? window.escapeHtml(error.message) : error.message;
-        window.Workflow.showToast(`Error: ${escapedError}`, "error");
+        window.Workflow.showToast(`Error: ${error.message}`, "error");
         if (workflowPanel) {
             workflowPanel.className = "workflow-panel w-full lg:w-auto mt-4 lg:mt-0 p-4 border border-red-500 rounded-md bg-red-50 relative pb-11 text-center";
             workflowPanel.innerHTML = `<p class="text-red-700">Workflow failed to start.</p>`;
