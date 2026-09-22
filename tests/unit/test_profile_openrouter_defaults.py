@@ -365,6 +365,12 @@ def test_saved_openrouter_slug_is_visible_in_transcription_model_selectors():
     assert "transcription_models=available_transcription_models" in open("app/__init__.py", encoding="utf-8").read()
 
 
+def test_compose_passes_openrouter_key_to_web_service():
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}" in compose
+
+
 def test_live_openrouter_configuration_is_documented_and_detected():
     config_source = Path("app/config.py").read_text(encoding="utf-8")
     env_example = Path(".env.example").read_text(encoding="utf-8")
