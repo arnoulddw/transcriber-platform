@@ -256,7 +256,7 @@ def test_dispatch_does_not_mark_failed_transcription_as_succeeded():
         transcription_model,
         "get_transcription_by_id",
         return_value={"status": "error", "error_message": "provider rejected input"},
-    ):
+    ), patch.object(background_queue, "close_db"):
         with pytest.raises(background_queue.TerminalBackgroundTaskFailure):
             background_queue.dispatch_job(object(), job)
 
@@ -278,7 +278,7 @@ def test_dispatch_does_not_retain_input_on_final_transcription_attempt():
         transcription_model,
         "get_transcription_by_id",
         return_value={"status": "error", "error_message": "provider rejected input"},
-    ):
+    ), patch.object(background_queue, "close_db"):
         with pytest.raises(background_queue.TerminalBackgroundTaskFailure):
             background_queue.dispatch_job(object(), job)
 
@@ -303,6 +303,35 @@ def test_dispatch_skips_finished_transcription_to_avoid_a_second_provider_call()
         assert background_queue.dispatch_job(object(), job) == "saved text"
 
     process.assert_not_called()
+
+
+def test_dispatch_reads_finished_transcription_after_releasing_old_snapshot():
+    job = {
+        "id": 17,
+        "task_type": "transcription",
+        "payload": {"args": ["transcription-1", 7, "/tmp/audio.mp3", "en", "whisper", "audio.mp3"]},
+        "attempts": 1,
+        "max_attempts": 3,
+    }
+    snapshot_released = False
+
+    def get_transcription(*_args):
+        return {"status": "finished" if snapshot_released else "pending"}
+
+    def release_snapshot():
+        nonlocal snapshot_released
+        snapshot_released = True
+
+    with patch.object(
+        transcription_model, "get_transcription_by_id", side_effect=get_transcription
+    ), patch.object(
+        background_queue, "close_db", side_effect=release_snapshot
+    ), patch(
+        "app.services.transcription_service.process_transcription", return_value="saved text"
+    ) as process:
+        assert background_queue.dispatch_job(object(), job) == "saved text"
+
+    process.assert_called_once()
 
 
 def test_dispatch_treats_missing_transcription_as_terminal():
@@ -352,6 +381,66 @@ def test_dispatch_skips_finished_workflow_to_avoid_a_second_provider_call():
 
     get_operation.assert_called_once_with(42, 7)
     process.assert_not_called()
+
+
+def test_dispatch_reads_finished_workflow_after_releasing_old_snapshot():
+    job = {
+        "task_type": "workflow",
+        "payload": {
+            "user_id": 7,
+            "transcription_id": "transcription-1",
+            "operation_id": 42,
+            "prompt": "Summarize",
+            "llm_provider": "OPENROUTER",
+        },
+    }
+    snapshot_released = False
+
+    def get_operation(*_args):
+        return {"status": "finished" if snapshot_released else "pending"}
+
+    def release_snapshot():
+        nonlocal snapshot_released
+        snapshot_released = True
+
+    with patch(
+        "app.models.llm_operation.get_llm_operation_by_id", side_effect=get_operation
+    ), patch.object(
+        transcription_model, "get_transcription_by_id", return_value={"transcription_text": "Transcript"}
+    ), patch.object(
+        background_queue, "close_db", side_effect=release_snapshot
+    ), patch(
+        "app.services.workflow_service.process_workflow_background", return_value="Summary"
+    ) as process:
+        assert background_queue.dispatch_job(object(), job) == "Summary"
+
+    process.assert_called_once()
+
+
+def test_dispatch_reads_generated_title_after_releasing_old_snapshot():
+    job = {
+        "task_type": "title_generation",
+        "payload": {"transcription_id": "transcription-1", "user_id": 7},
+    }
+    snapshot_released = False
+
+    def get_transcription(*_args):
+        return {"title_generation_status": "success" if snapshot_released else "pending"}
+
+    def release_snapshot():
+        nonlocal snapshot_released
+        snapshot_released = True
+
+    with patch.object(
+        transcription_model, "get_transcription_by_id", side_effect=get_transcription
+    ), patch.object(
+        background_queue, "close_db", side_effect=release_snapshot
+    ), patch(
+        "app.tasks.title_generation.generate_title_task", return_value="Title"
+    ) as process:
+        assert background_queue.dispatch_job(object(), job) == "Title"
+
+    process.assert_called_once()
 
 
 def test_purge_terminal_jobs_targets_only_terminal_rows_in_a_bounded_batch():

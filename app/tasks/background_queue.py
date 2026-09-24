@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping, Optional
 
+from app.database import close_db
 from app.models import background_job as background_job_model
 
 
@@ -171,6 +172,9 @@ def dispatch_job(app, job: Mapping[str, Any]) -> Any:
             # charge the provider a second time just because queue finalization
             # was interrupted.
             return existing_transcription.get("transcription_text")
+        # The service uses a nested app context and commits on another
+        # connection. Release this read snapshot before checking its result.
+        close_db()
         result = process_transcription(
             app,
             *args,
@@ -221,6 +225,7 @@ def dispatch_job(app, job: Mapping[str, Any]) -> Any:
                 "Workflow background job transcription is missing or empty."
             )
 
+        close_db()
         result = process_workflow_background(
             app,
             payload["user_id"],
@@ -267,6 +272,7 @@ def dispatch_job(app, job: Mapping[str, Any]) -> Any:
             # issue another paid provider request.
             return transcription.get("generated_title")
 
+        close_db()
         result = generate_title_task(
             app,
             payload["transcription_id"],
