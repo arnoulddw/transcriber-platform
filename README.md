@@ -115,6 +115,8 @@ docker compose up -d --build
 
 Open [http://localhost:5004](http://localhost:5004). The application initializes the database, migrations, default roles, languages, and initial admin account on first startup. Compose also starts a durable `transcriber-worker` for transcription, workflow, and title jobs, plus a `transcriber-cleanup` process that runs retention cleanup every six hours.
 
+When running the published image as a single container, its default command starts both Gunicorn and a background worker. The worker must share the application's database and uploads directory. Set `START_EMBEDDED_WORKER=0` only if a separately supervised worker runs `flask worker` against those same resources.
+
 Useful operational commands:
 
 ```bash

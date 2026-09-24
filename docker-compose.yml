@@ -40,6 +40,7 @@ services:
       # --- Core App Settings ---
       SECRET_KEY: ${SECRET_KEY} # CRITICAL: Must be set in .env
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi}
+      START_EMBEDDED_WORKER: "0" # Compose runs the separate transcriber-worker service
       TZ: ${TZ:-UTC}
 
       # --- API Keys (Global Fallbacks / Single-User Mode) ---
