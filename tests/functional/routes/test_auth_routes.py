@@ -154,6 +154,21 @@ def test_login_non_existent_user(client, clean_db):
         assert b'Invalid username or password' in response.data
 
 
+def test_login_displays_repeated_auth_prompt_once(client):
+    with client.session_transaction() as session:
+        session['_flashes'] = [
+            ('info', 'Please log in to access this page.'),
+            ('info', 'Please log in to access this page.'),
+            ('warning', 'Your session expired.'),
+        ]
+
+    response = client.get('/login')
+
+    assert response.status_code == 200
+    assert response.data.count(b'Please log in to access this page.') == 1
+    assert b'Your session expired.' in response.data
+
+
 def test_logout_successfully(client, clean_db):
     """
     Tests that a logged-in user can successfully log out.

@@ -26,16 +26,21 @@
     {% call auth_card.render(title=_(title)) %}
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
+    {% set shown_messages = namespace(texts=[]) %}
     {% for category, message in messages %}
+    {% set message_text = _(message) %}
+    {% if message_text not in shown_messages.texts %}
+    {% set shown_messages.texts = shown_messages.texts + [message_text] %}
     <div class="alert {{ 'alert-danger' if category == 'danger' else 'alert-success' }}" role="alert">
         <div class="alert-icon">
             <i class="material-icons">{{ 'error' if category == 'danger' else 'check_circle' }}</i>
         </div>
         <div class="alert-content">
             <p class="font-semibold">{{ _('Message:') }}</p>
-            <p>{{ _(message) }}</p>
+            <p>{{ message_text }}</p>
         </div>
     </div>
+    {% endif %}
     {% endfor %}
     {% endif %}
     {% endwith %}
